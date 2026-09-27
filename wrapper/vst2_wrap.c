@@ -77,6 +77,8 @@ typedef struct {
     void *dsp;
     int16_t block[DSP_BLOCK * 2];
     int pos;                 /* read position in block; DSP_BLOCK = empty */
+    int16_t inb[DSP_BLOCK * 2];   /* effect: the host audio being collected for the engine */
+    int inpos;
     double bpm;
     volatile char release[NPARAMS];  /* momentary params to report back to 0 */
     float shadow[NPARAMS];   /* unrounded position last set on an integer param; <0 = none */
@@ -218,7 +220,7 @@ static void render_frames(wrap_t *w, float **out, int32_t n, int accumulate) {
     }
 }
 
-static void run_block(AEffect *e, float **out, int32_t n, int accumulate) {
+static void housekeeping(AEffect *e) {
     wrap_t *w = e->object;
     if (HAS_LFO_BPM) update_tempo(w);
     /* A trigger param (e.g. Generate) fired: tell the host it is back to 0 so
@@ -242,11 +244,49 @@ static void run_block(AEffect *e, float **out, int32_t n, int accumulate) {
             }
         }
     }
+}
+
+#ifdef PLUG_EFFECT
+static int16_t f2s(float f) { f *= 32768.0f; return f >= 32767.0f ? 32767 : f <= -32768.0f ? -32768 : (int16_t)lrintf(f); }
+
+/* An effect: whole 128-frame host blocks go straight through the engine (MPC's period is 128, so no added latency);
+ * any other block size is collected and processed one block late. */
+static void run_block(AEffect *e, float **in, float **out, int32_t n, int accumulate) {
+    wrap_t *w = e->object;
+    housekeeping(e);
+    int32_t i = 0;
+    while (i < n) {
+        int aligned = w->inpos == 0 && w->pos >= DSP_BLOCK && n - i >= DSP_BLOCK;
+        if (aligned) {
+            for (int j = 0; j < DSP_BLOCK; j++) { w->inb[2 * j] = f2s(in[0][i + j]); w->inb[2 * j + 1] = f2s(in[1][i + j]); }
+            g_api->process(w->dsp, w->inb, w->block, DSP_BLOCK);
+            for (int j = 0; j < DSP_BLOCK; j++) {
+                float l = w->block[2 * j] * (1.0f / 32768.0f), r = w->block[2 * j + 1] * (1.0f / 32768.0f);
+                if (accumulate) { out[0][i + j] += l; out[1][i + j] += r; } else { out[0][i + j] = l; out[1][i + j] = r; }
+            }
+            i += DSP_BLOCK;
+            continue;
+        }
+        float l = 0, r = 0;
+        if (w->pos < DSP_BLOCK) { l = w->block[w->pos * 2] * (1.0f / 32768.0f); r = w->block[w->pos * 2 + 1] * (1.0f / 32768.0f); w->pos++; }
+        if (accumulate) { out[0][i] += l; out[1][i] += r; } else { out[0][i] = l; out[1][i] = r; }
+        w->inb[2 * w->inpos] = f2s(in[0][i]); w->inb[2 * w->inpos + 1] = f2s(in[1][i]);
+        if (++w->inpos == DSP_BLOCK) { g_api->process(w->dsp, w->inb, w->block, DSP_BLOCK); w->pos = 0; w->inpos = 0; }
+        i++;
+    }
+}
+static void processReplacing(AEffect *e, float **in, float **out, int32_t n) { run_block(e, in, out, n, 0); }
+static void process(AEffect *e, float **in, float **out, int32_t n) { run_block(e, in, out, n, 1); }
+#else
+static void run_block(AEffect *e, float **out, int32_t n, int accumulate) {
+    wrap_t *w = e->object;
+    housekeeping(e);
     render_frames(w, out, n, accumulate);
 }
 
 static void processReplacing(AEffect *e, float **in, float **out, int32_t n) { (void)in; run_block(e, out, n, 0); }
 static void process(AEffect *e, float **in, float **out, int32_t n) { (void)in; run_block(e, out, n, 1); }
+#endif
 
 static void copy_str(void *dst, const char *src, size_t max) {
     strncpy(dst, src, max - 1);
@@ -262,7 +302,11 @@ static intptr_t dispatcher(AEffect *e, int32_t op, int32_t idx, intptr_t v, void
         g_api->destroy(w->dsp);
         free(w);
         return 1;
+#ifdef PLUG_EFFECT
+    case effGetPlugCategory: return 1; /* kPlugCategEffect */
+#else
     case effGetPlugCategory: return 2; /* kPlugCategSynth */
+#endif
     case effGetEffectName:
     case effGetProductString: copy_str(p, PLUG_NAME, 32); return 1;
     case effGetVendorString: copy_str(p, PLUG_VENDOR, 32); return 1;
@@ -321,6 +365,9 @@ static intptr_t dispatcher(AEffect *e, int32_t op, int32_t idx, intptr_t v, void
 __attribute__((visibility("default"))) AEffect *VSTPluginMain(audioMasterCallback master) {
     if (!g_api) g_api = mpc_engine();
     if (!g_api) return NULL;
+#ifdef PLUG_EFFECT
+    if (!g_api->process) return NULL;   /* an effect port must provide process() */
+#endif
     wrap_t *w = calloc(1, sizeof *w);
     if (!w) return NULL;
     for (int i = 0; i < NPARAMS; i++) w->shadow[i] = -1;
@@ -336,9 +383,15 @@ __attribute__((visibility("default"))) AEffect *VSTPluginMain(audioMasterCallbac
     e->getParameter = getParameter;
     e->processReplacing = processReplacing;
     e->numParams = NPARAMS;
+#ifdef PLUG_EFFECT
+    e->numInputs = 2;
+    e->numOutputs = 2;
+    e->flags = effFlagsCanReplacing | effFlagsProgramChunks;
+#else
     e->numInputs = 0;
     e->numOutputs = 2;
     e->flags = effFlagsCanReplacing | effFlagsIsSynth | effFlagsProgramChunks;
+#endif
     e->uniqueID = PLUG_UID;
     e->version = PLUG_VERSION;
     e->object = w;

@@ -13,6 +13,7 @@ vst.json (paths are relative to the vst.json's folder):
       "layout": "layout.conf",                   # optional; without it the skin studio's auto-layout is used
       "short_names": {"LFO1 > ": "L1 "},          # optional on-screen name shortening
       "art": "html",                             # optional: draw the skin artwork in a browser (tools/html_art.py)
+      "effect": true,                            # optional: an audio effect (2 inputs, category Effect); the engine provides process()
       "custom_skin": true,                       # optional: params.h + plugin-list entry only; the port makes the skin itself
       "defines": {"HAS_LFO_BPM": 1},             # optional extra #defines in params.h
       "build": {"root": "..", "sources": ["src/engine.c"], "cflags": ["-Isrc"], "libs": ["-lm"]}
@@ -109,13 +110,17 @@ def gen_params(cfg, params, out):
               "#define PLUG_UID 0x%08x /* '%s' */" % (int.from_bytes(cfg["uid"].encode(), "big"), cfg["uid"]),
               "#define PLUG_VERSION %d" % cfg.get("version", 1000)]
     lines += ["#define %s %s" % (k, v) for k, v in cfg.get("defines", {}).items()]
+    if cfg.get("effect"):
+        lines.append("#define PLUG_EFFECT 1")
     open(out, "w").write("\n".join(lines) + "\n")
 
 
 def entry(cfg):
-    return ('<PLUGIN name="{n}" descriptiveName="{n}" format="VST" category="Synth" manufacturer="{v}" version="1.0" '
-            'file="/sdcard/vst/{so}" uid="{u:x}" isInstrument="1" fileTime="0" infoUpdateTime="0" numInputs="0" '
-            'numOutputs="2" isShell="0"/>').format(n=cfg["name"], v=cfg["vendor"], so=cfg["so"],
+    fx = bool(cfg.get("effect"))
+    return ('<PLUGIN name="{n}" descriptiveName="{n}" format="VST" category="{c}" manufacturer="{v}" version="1.0" '
+            'file="/sdcard/vst/{so}" uid="{u:x}" isInstrument="{i}" fileTime="0" infoUpdateTime="0" numInputs="{ni}" '
+            'numOutputs="2" isShell="0"/>').format(n=cfg["name"], v=cfg["vendor"], so=cfg["so"], c="Effect" if fx else "Synth",
+                                                  i=0 if fx else 1, ni=2 if fx else 0,
                                                   u=int.from_bytes(cfg["uid"].encode(), "big"))
 
 
