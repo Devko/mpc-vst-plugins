@@ -203,6 +203,9 @@ u1=$(awk '{print $14}' /proc/<pid>/task/<tid>/stat); s1=$(awk '{print $15}' ...)
 u2=...; s2=...; t2=...
 # cpu% = (u2-u1 + s2-s1) / 100 (ticks/sec, usually HZ=100) / (t2-t1) * 100
 ```
+Update 2026-09-27 (jv880 v1.0.0, Force): sampling the same thread gave 19.8-19.9% of one core with no notes
+and 46.8% over 30 s of chords and held notes. `bench.sh` still passed with p99 3.3% and reported the thread at
+2.4%. The thread cost is not fixed: it rises while notes sound.
 
 ## Qlink curation for tabs with >16 controls (2026-09-24, jv880 port)
 A tab with more controls than one 16-key Q-Link bank needs several `qlinks "<name>" = ...` lines
