@@ -69,6 +69,7 @@ SEG_ON, SEG_OFF, SEG_ON_TX = "f2f1ee", "050403", "1c1a17"
 LCD, LINE, BTN_BG, BTN_TEXT, BOX = "1a120d", "2a2823", "", "fdf3ea", "1f1f1f"
 DISPLAY_INK = "cdeb63"   # theme_display_ink: live-text colour over a dotreadout/dotstepper (see readout/stepper below)
 TD3 = False   # style=td3: frames are filled boxes, so widget crops sit on BOX, not the page bg
+LABEL_SCALE = 1.0   # label_scale=<n>: scales knob/toggle/pill name+value live-text size and their boxes
 FRAMES = 128               # filmstrip frames (stock strips: 128, numFrames 127)
 KNOB_QLINKS = [13, 9, 5, 1, 14, 10, 6, 2]
 CONTROL_KINDS = ("knob", "slider_v", "slider_h", "toggle", "button", "enum_h", "enum_v", "readout", "stepper", "list", "menu",
@@ -160,6 +161,9 @@ def apply_theme(top):
             g["TD3"] = True
         if line.startswith("font_label="):
             g["FONT_LABEL_PATH"] = line[len("font_label="):].strip()
+            continue
+        if line.startswith("label_scale="):
+            g["LABEL_SCALE"] = float(line[len("label_scale="):].strip())
             continue
         k, _, v = line.partition("=")
         if k.startswith("theme_") and k[6:] in THEME_KEYS:
@@ -599,11 +603,13 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
             if kind == "knob":
                 r = w["r"]
                 s, cw = 2 * r + 10, max(130, 2 * r + 10)   # value label width; LFO knobs sit 138 px apart
-                name_y, name_h = s // 2 + r + 2, 20
+                name_h = round(20 * LABEL_SCALE)
+                name_y = s // 2 + r + 2
                 value_y = name_y + name_h + 2
-                ch = value_y + 26 + 6
+                value_h = round(26 * LABEL_SCALE)
+                ch = value_y + value_h + 6
                 radii.add((r, lid))
-                key = "shKnob%d%s" % (r, sfx)
+                key = "shKnob%d%s%s" % (r, sfx, ("_ls%g" % LABEL_SCALE) if LABEL_SCALE != 1.0 else "")
                 defs.setdefault(key, _local(key, [_action("Mouse Down", "Q-Link"),
                                                   _action("Double Click", "Show Overlay", "knob overlay"),
                                                   _action("Enter Pressed", "Show Overlay", "knob overlay")], [
@@ -611,14 +617,14 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                     _sub("Knob", {"version": 5, "knobType": "FilmStrip", "filmStrip": "sh_knob_r%d%s.png" % (r, sfx),
                                   "numFrames": FRAMES - 1, "invert": False, "dragOrientation": "Vertical",
                                   "handleName": "Data"}, _bounds((cw - s) // 2, 0, s, s), "Knob"),
-                    _name_label(0, name_y, cw, name_h, 17.0, INK),
+                    _name_label(0, name_y, cw, name_h, 17.0 * LABEL_SCALE, INK),
                     _sub("Label", {"version": 1, "textStyle": {"version": 1, "font": {"version": 1, "name": "Titillium Web",
-                                                                                     "style": "SemiBold", "height": 22.0},
+                                                                                     "style": "SemiBold", "height": 22.0 * LABEL_SCALE},
                                                                "colour": "ff" + INK_DIM,
                                                                "justification": "horizontallyCentred verticallyCentred",
                                                                "case": "Upper Case"},
                                    "type": "Value", "handleName": "Data"},
-                         _bounds(0, value_y, cw, 26), "Value")]))
+                         _bounds(0, value_y, cw, value_h), "Value")]))
                 kids.append(_placed(key, name, i, w["cx"] - cw // 2, w["cy"] - s // 2, cw, ch))
             elif kind == "toggle" and lk:
                 tw, th = skin_assets.toggle_size(w, lk)
