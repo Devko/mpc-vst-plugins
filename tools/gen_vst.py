@@ -13,6 +13,7 @@ vst.json (paths are relative to the vst.json's folder):
       "layout": "layout.conf",                   # optional; without it the skin studio's auto-layout is used
       "short_names": {"LFO1 > ": "L1 "},          # optional on-screen name shortening
       "art": "html",                             # optional: draw the skin artwork in a browser (tools/html_art.py)
+      "custom_skin": true,                       # optional: params.h + plugin-list entry only; the port makes the skin itself
       "defines": {"HAS_LFO_BPM": 1},             # optional extra #defines in params.h
       "build": {"root": "..", "sources": ["src/engine.c"], "cflags": ["-Isrc"], "libs": ["-lm"]}
     }
@@ -148,6 +149,9 @@ def main():
     if sys.argv[2:] == ["--params-h"]:
         return
     open(os.path.join(build, "pluginlist-entry.xml"), "w").write(entry(cfg) + "\n")
+    if cfg.get("custom_skin"):   # the port builds its own skin folder (e.g. from data it can't ship): nothing more to do
+        print("custom_skin: the port builds its skin")
+        return
 
     if cfg.get("layout"):
         layout = os.path.join(here, cfg["layout"])
