@@ -69,6 +69,13 @@ layouts render on device (every port since Maze Voice).
   different Q-Link sets. Values are MPC `Label` `Value` components (Titillium; the baked labels use the shadow font).
   Seen on device with every port since.
 
+**No per-plugin "save preset" UI for a VST2 instrument (verified on a Force, 2026-09-27, Monomodule One).**
+Saving the whole track Program works and round-trips the plugin's chunk (so the sound is preserved), but MPC has
+no separate "save this plugin's preset" action the way it does for native instruments -- the user tried two ways to
+reach one and found neither. So a VST2 port's own in-skin preset browser (like Monomodule One's PRESET strip) is
+still the only way to give users a browsable, swappable *sound* library shorter of a whole Program; MPC's Program
+save/load is the mechanism for keeping/recalling one sound, not for organizing many.
+
 ## Beyond synths: apps as plugins (probe run on a Force 2026-09-24)
 
 A VST2 plugin is ordinary native code inside the MPC process, which has root, the network and the
