@@ -80,7 +80,7 @@ typedef struct {
     int16_t inb[DSP_BLOCK * 2];   /* effect: the host audio being collected for the engine */
     int inpos;
     double bpm;
-    volatile char release[NPARAMS];  /* momentary params to report back to 0 */
+    volatile int holdFrames[NPARAMS];  /* momentary params: frames left before reporting back to 0 (hold_ms) */
     float shadow[NPARAMS];   /* unrounded position last set on an integer param; <0 = none */
     signed char last_on[NPARAMS];  /* last "<key>_on" value told to the host, +1 (0 = unknown) */
     volatile char need_update_display;  /* deferred audioMasterUpdateDisplay -- see setParameter() */
@@ -157,7 +157,7 @@ static void setParameter(AEffect *e, int32_t i, float n) {
                 snprintf(buf, sizeof buf, "%g", cur);
                 g_api->set_param(w->dsp, tp->key, buf);
             }
-            w->release[i] = 1;
+            w->holdFrames[i] = 1;
         }
         /* A string-display readout (e.g. patch_name/bank_name) bound elsewhere via get= has a
          * degenerate min==max range (its OWN reported normalized value never changes), so MPC has
@@ -166,7 +166,7 @@ static void setParameter(AEffect *e, int32_t i, float n) {
          * (docs/NOTES.md: MPC re-polls a Label "Name" on it; readouts stayed stuck on their
          * initial paint here without it -- confirmed on a real device, both via a stepper arrow
          * tap and a direct Q-Link turn on the underlying param). Deferred to processReplacing(),
-         * same as w->release[] -- the host must not be re-entered from inside its own call to us. */
+         * same as w->holdFrames[] -- the host must not be re-entered from inside its own call to us. */
         w->need_update_display = 1;
         return;
     }
@@ -187,8 +187,8 @@ static void setParameter(AEffect *e, int32_t i, float n) {
     norm_to_str(p, n, buf, sizeof buf);
     g_api->set_param(w->dsp, PARAMS[i].key, buf);
     w->shadow[i] = (p->int_display && !p->nopts) ? clamp01(n) : -1;
-    if (PARAMS[i].momentary && n > 0.5f) w->release[i] = 1;
-    if (!nudge) popup_picked(w->open, w->release, i);   /* a list pick closes it; a Q-Link nudge doesn't */
+    if (PARAMS[i].momentary && n > 0.5f) w->holdFrames[i] = PARAMS[i].hold_ms > 0 ? (int)(PARAMS[i].hold_ms * 44.1f) : 1;
+    if (!nudge) popup_picked(w->open, w->holdFrames, i);   /* a list pick closes it; a Q-Link nudge doesn't */
     w->need_update_display = 1;   /* deferred to processReplacing(), see the step_target branch above */
 }
 
@@ -220,14 +220,14 @@ static void render_frames(wrap_t *w, float **out, int32_t n, int accumulate) {
     }
 }
 
-static void housekeeping(AEffect *e) {
+static void housekeeping(AEffect *e, int32_t n) {
     wrap_t *w = e->object;
     if (HAS_LFO_BPM) update_tempo(w);
     /* A trigger param (e.g. Generate) fired: tell the host it is back to 0 so
      * buttons bound to it drop their highlight. Done here, not inside
      * setParameter, so the host is not re-entered from its own call. */
     for (int i = 0; i < NPARAMS; i++)
-        if (w->release[i]) { w->release[i] = 0; w->master(&w->fx, audioMasterAutomate, i, 0, 0, 0.0f); }
+        if (w->holdFrames[i] > 0 && (w->holdFrames[i] -= n) <= 0) { w->holdFrames[i] = 0; w->master(&w->fx, audioMasterAutomate, i, 0, 0, 0.0f); }
     if (w->need_update_display) {
         w->need_update_display = 0;
         w->master(&w->fx, audioMasterUpdateDisplay, 0, 0, 0, 0.0f);
@@ -253,7 +253,7 @@ static int16_t f2s(float f) { f *= 32768.0f; return f >= 32767.0f ? 32767 : f <=
  * any other block size is collected and processed one block late. */
 static void run_block(AEffect *e, float **in, float **out, int32_t n, int accumulate) {
     wrap_t *w = e->object;
-    housekeeping(e);
+    housekeeping(e, n);
     int32_t i = 0;
     while (i < n) {
         int aligned = w->inpos == 0 && w->pos >= DSP_BLOCK && n - i >= DSP_BLOCK;
@@ -280,7 +280,7 @@ static void process(AEffect *e, float **in, float **out, int32_t n) { run_block(
 #else
 static void run_block(AEffect *e, float **out, int32_t n, int accumulate) {
     wrap_t *w = e->object;
-    housekeeping(e);
+    housekeeping(e, n);
     render_frames(w, out, n, accumulate);
 }
 

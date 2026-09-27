@@ -4,10 +4,10 @@
  * Include after params.h. Usage:
  *   setParameter:  if (popup_set(w->open, i, n)) return;          before anything else
  *                  ... set the value ...
- *                  if (!nudge) popup_picked(w->open, w->release, i);   exact option picked
+ *                  if (!nudge) popup_picked(w->open, w->holdFrames, i);   exact option picked
  *   getParameter:  if (popup_is(i)) return w->open[i];
  *   chunk, engine polling: skip popup_is(i) params.
- *   processReplacing already reports release[] flags to the host with audioMasterAutomate(i, 0). */
+ *   processReplacing already reports holdFrames[] flags to the host with audioMasterAutomate(i, 0). */
 #ifndef MPC_POPUP_H
 #define MPC_POPUP_H
 
@@ -22,10 +22,10 @@ static inline int popup_set(float *open, int i, float n) {
 
 /* An option of param i picked exactly (a list button). A Q-Link nudge lands between options and
  * must not call this, so turning the knob leaves the list open. Closes i's open popup; the host
- * hears "open = 0" from processReplacing via release[], not from inside its own setParameter call. */
-static inline void popup_picked(float *open, volatile char *release, int i) {
+ * hears "open = 0" from processReplacing via holdFrames[], not from inside its own setParameter call. */
+static inline void popup_picked(float *open, volatile int *holdFrames, int i) {
     for (int j = 0; j < NPARAMS; j++)
-        if (PARAMS[j].popup_of == i && open[j] > 0.5f) { open[j] = 0; release[j] = 1; }
+        if (PARAMS[j].popup_of == i && open[j] > 0.5f) { open[j] = 0; holdFrames[j] = 1; }
 }
 
 #endif
