@@ -716,3 +716,15 @@ Findings:
 - The installers were run by the user in a terminal (an automated `-y` run was declined by the tooling), so their console
   output was not captured here; the resulting state was checked from the device after each step.
 - The old bank folder `/sdcard/vst/dx7_carts` is left behind by the move (unused). The installer does not remove data it did not install.
+
+## Portable folder is now the only release layout (2026-09-29, offline only)
+`tools/release.py` now writes one plugin folder, `portable/<skin>/` (`.so`, skin, data, `plugin-meta.xml`), with `install.sh` /
+`uninstall.sh` (the former `-portable` scripts); `payload/`, `plugin.xml` and `--no-portable` are gone, the manifest has
+`layout: "portable"` and `folder`. `--extra` DEST is relative to the plugin folder (a leading `vst/` is still accepted).
+`install.sh` also handles an old `/sdcard/vst` install of the same plugin: after the settings edit succeeded it removes the old
+`.so` and the data the package ships there, and moves the user's own `--user-data` folders from `/sdcard/vst/<path>` into the plugin
+folder (merged over the shipped files; nothing else in `/sdcard/vst` is touched). `catalog_check.py` still accepts old-layout zips.
+Checked offline only: `tools/test_catalog.py` (45 tests, dash), and a real Dexed build packaged and installed into scratch folders against
+a copy of a real `MPC.settings` with a fake old install (one entry, old `.so` gone, user bank merged with the 33 shipped ones).
+**Not yet run:** under BusyBox (no `busybox` on the build machine this time) or on a device with an old-layout install that has user
+data, e.g. JV-880 ROMs.

@@ -61,10 +61,10 @@ Ports built with it (each in its own repo) very much alpha drafts, not yet polis
 
 ## How it works
 
-1. **The plugin** is a small Linux library (`.so`) built for the device's ARM processor. It goes in `/sdcard/vst/`.
+1. **The plugin** is a small Linux library (`.so`) built for the device's ARM processor. It goes in the plugin's own folder in `/sdcard/Synths/`, next to its skin and data.
 2. **MPC finds it** through its settings file: one line per plugin in `MPC.settings` tells MPC where the file is and
    what it's called. MPC reads that list at startup and shows the plugin in its plugin browser.
-3. **Its page** is a skin folder in `/sdcard/Synths/`, in the same format Akai uses for its own plugins: a JSON
+3. **Its page** is the skin in that same folder (`Plugin Skins/`), in the same format Akai uses for its own plugins: a JSON
    description of the controls plus PNG artwork. Each knob or button is bound to one of the plugin's parameters, so
    MPC draws and drives the page itself; the plugin just reports values and their text.
 
@@ -132,7 +132,7 @@ What's next is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 1. MPC OS reads `<VALUE name="pluginList-arm"><KNOWNPLUGINS>…` from its `MPC.settings` at startup (on the Force:
    `/media/az01-internal/Settings/MPC/MPC.settings`) and adds each
-   `<PLUGIN format="VST" file="/sdcard/vst/x.so" …/>` to its plugin list. Edit it with MPC stopped and back it up
+   `<PLUGIN format="VST" file="/sdcard/Synths/<vendor> - VST - <name>/x.so" …/>` to its plugin list. Edit it with MPC stopped and back it up
    first: malformed XML makes MPC reset it to defaults.
 2. The `.so` exports `VSTPluginMain` (VST2 ABI, hand-written, no Steinberg SDK). Build for armhf against glibc ≤ 2.36
    (`arm32v7/gcc:12`). Audio is 44.1 kHz in 128-frame blocks.

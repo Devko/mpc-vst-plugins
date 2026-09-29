@@ -6,13 +6,14 @@ Validate a zip with `tools/catalog_check.py <zip> [--catalog]`; the offline test
 
 ## Release zip
 `<Name>-<X.Y.Z>-mpc-armv7.zip`, one top folder `<Name>-<X.Y.Z>/` (layout in `docs/RELEASING.md`), containing
-`mpc-plugin.json`, `plugin.xml`, `install.sh`, `uninstall.sh`, `plugin_list.awk`, `INSTALL.md`, `SHA256SUMS` and
-`payload/` and, unless built with `--no-portable`, `portable/<skin>/` (below). Every file except `SHA256SUMS` is listed
-there. No absolute or `..` paths, no symlinks leaving the package.
+`mpc-plugin.json`, `install.sh`, `uninstall.sh`, `plugin_list.awk`, `INSTALL.md`, `SHA256SUMS` and the plugin folder
+`portable/<skin>/` (below). Every file except `SHA256SUMS` is listed there. No absolute or `..` paths, no symlinks leaving
+the package. Releases made before 2026-09-29 have the old layout (`payload/`, `plugin.xml`, no `layout` field in the manifest);
+`catalog_check.py` still accepts them so the catalog can list their history, but new releases are always the plugin folder.
 
-### Portable layout (`portable/<skin>/`)
-The same plugin as **one self-contained folder** for installers that copy a folder into the device's `Synths` content
-folder and register it from a file inside it (received from Locrian's builds, 2026-09-29, not yet run on a device):
+### Plugin folder (`portable/<skin>/`)
+The plugin is **one self-contained folder**, the same shape as installers that copy a folder into the device's `Synths`
+content folder and register it from a file inside it (Locrian's builds; verified on a Force 2026-09-29, `docs/NOTES.md`):
 ```
 <Vendor> - VST - <Name>/
   version.xml          identical to our skin's version.xml (<plugincontent>, identifier <vendor>.vst.<name>, version 1.0.0.0)
@@ -21,17 +22,18 @@ folder and register it from a file inside it (received from Locrian's builds, 20
   Plugin Skins/        the skin
   <extras>             any engine data, next to the .so (relative paths like `engine/` for MODULE_SUBDIR)
 ```
-The zip also carries `install-portable.sh` / `uninstall-portable.sh` (preview; `sh install-portable.sh [-y] [-t <synths-dir>]`,
-default target `/sdcard/Synths`). The installer copies the folder in, registers it with `%payload-path%` replaced by the
-Synths folder, replaces an older entry of the same `uid` (so an old `/sdcard/vst/...` install is not duplicated), removes the
-old `.so`, and keeps the paths in the manifest's `user_data` (folders where the user puts ROMs or kits, given to `release.py`
-with `--user-data`) across upgrades and uninstalls. It is tested against a copy of `MPC.settings` (`python3 tools/test_catalog.py`),
-not yet on a device (`docs/PORTABLE_TEST.md`).
+`install.sh` / `uninstall.sh` (`sh install.sh [-y] [-t <synths-dir>]`, default target `/sdcard/Synths`) copy the folder in,
+register it with `%payload-path%` replaced by the Synths folder, and replace an older entry of the same `uid` (an old
+`/sdcard/vst/...` install is not duplicated). Files the user adds inside the folder are kept across upgrades and
+uninstalls: the paths in the manifest's `user_data` (folders where the user puts ROMs, kits or banks, given to `release.py`
+with `--user-data`). For a plugin installed the old way the installer also removes the old `.so` and the data the package
+ships in `/sdcard/vst`, and moves the user's own `user_data` files from `/sdcard/vst/<path>` into the plugin folder (merged
+over the shipped files), only after the settings edit succeeded.
 
-`plugin-meta.xml` is exactly our `plugin.xml` except `file=`: `%payload-path%` is a placeholder the installer replaces with
-the directory it copied the folder into (for example `/media/<card>/Synths`). The folder name in `file=` must equal the
-folder's own name. Because the `.so` can end up anywhere, engines must find their data next to it
-(`wrapper/plugin_dir.h`, `MODULE_SUBDIR`), never at a fixed `/sdcard/...` path.
+`%payload-path%` is a placeholder the installer replaces with the directory it copied the folder into (for example
+`/media/<card>/Synths`). The folder name in `file=` must equal the folder's own name. Because the `.so` can end up
+anywhere, engines must find their data next to it (`wrapper/plugin_dir.h`, `MODULE_SUBDIR`), never at a fixed
+`/sdcard/...` path; `gen_vst.py` warns about a fixed path.
 
 ## `mpc-plugin.json`
 | field | meaning |
@@ -43,10 +45,11 @@ folder's own name. Because the `.so` can end up anywhere, engines must find thei
 | `param_compat` | equals X: a bump means saved projects change |
 | `kind` | `instrument` or `effect` |
 | `uid` | VST uid (hex), same as `plugin.xml`; never changes |
-| `so`, `so_dir` | library file name and the directory in the plugin-list entry |
-| `skin`, `extras` | skin folder name; extra payload paths under `vst/` |
-| `portable` | `portable/<skin>` when the zip has the portable layout, else null |
-| `user_data` | list of folders inside the plugin folder that hold the user's own files; the portable installer keeps them |
+| `layout` | `"portable"` (the plugin folder). Absent in releases of the old layout |
+| `so` | library file name |
+| `skin`, `folder` | skin folder name; the plugin folder in the zip, `portable/<skin>` |
+| `extras` | data shipped next to the `.so`, relative to the plugin folder |
+| `user_data` | list of folders inside the plugin folder that hold the user's own files; the installer keeps them (and moves them in from `/sdcard/vst` for an old-layout install) |
 | `arch` | ELF machine of the `.so`; the catalog accepts `armv7` only |
 | `max_glibc` | highest `GLIBC_x.y` symbol version needed; the catalog limit is 2.36 |
 | `about`, `requires` | one-line description; extra requirements |
@@ -55,13 +58,13 @@ folder's own name. Because the `.so` can end up anywhere, engines must find thei
 
 ## Validator rules (`catalog_check.py`)
 Errors (exit 1): unsafe paths; missing required file; manifest missing a field or wrong schema; bad id/version;
-`param_compat` != major; arch not armv7; GLIBC above 2.36; `plugin.xml` `file=`/`uid`/`name` disagree with the
-manifest; `.so` not ELF; skin missing `version.xml` or `Plugin Skins/TUI.json`; a file missing from or wrong in
-`SHA256SUMS`; a `portable` folder that is missing `version.xml`, `Plugin Skins/TUI.json`, `plugin-meta.xml`, the `.so` or an
-extra, whose `.so` differs from `payload/vst/`, or whose `plugin-meta.xml` differs from `plugin.xml` in anything but
-`file=%payload-path%/<skin>/<so>`; with `--catalog`, no `source_repo` or `license`; with `--expect-id/--expect-repo`, a registry mismatch.
+`param_compat` != major; arch not armv7; GLIBC above 2.36; `.so` not ELF; a file missing from or wrong in `SHA256SUMS`;
+a plugin folder (`portable/<skin>/`) that is missing `version.xml`, `Plugin Skins/TUI.json`, `plugin-meta.xml`, the `.so` or
+an extra; a `plugin-meta.xml` whose `file=` is not `%payload-path%/<skin>/<so>` or whose `uid`/`name` disagree with the manifest;
+an unknown `layout`; with `--catalog`, no `source_repo` or `license`; with `--expect-id/--expect-repo`, a registry mismatch.
+Zips of the old layout (no `layout` field) are checked against their own rules (`payload/`, `plugin.xml`).
 Warnings (need a human look): `install.sh`/`uninstall.sh`/`plugin_list.awk` differ from the repo's current template
-(regenerated from the manifest and compared), `max_glibc` not recorded.
+(regenerated from the manifest and compared; not done for old-layout zips), `max_glibc` not recorded.
 
 ## Registry entry: `plugins/<id>.json` (catalog repo)
 ```json

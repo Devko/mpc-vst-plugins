@@ -8,7 +8,7 @@
 vst.json (paths are relative to the vst.json's folder):
     {
       "name": "My Synth", "vendor": "me", "uid": "MySy", "version": 1000,
-      "so": "my_synth.so",                       # installed as /sdcard/vst/<so>
+      "so": "my_synth.so",                       # lives in the plugin folder /sdcard/Synths/<vendor> - VST - <name>/
       "params": "params.json",                   # parameter list (tools/params.py), in VST index order
       "layout": "layout.conf",                   # optional; without it the skin studio's auto-layout is used
       "short_names": {"LFO1 > ": "L1 "},          # optional on-screen name shortening
@@ -138,7 +138,7 @@ def gen_params(cfg, params, out):
 def entry(cfg):
     fx = bool(cfg.get("effect"))
     return ('<PLUGIN name="{n}" descriptiveName="{n}" format="VST" category="{c}" manufacturer="{v}" version="1.0" '
-            'file="/sdcard/vst/{so}" uid="{u:x}" isInstrument="{i}" fileTime="0" infoUpdateTime="0" numInputs="{ni}" '
+            'file="/sdcard/Synths/{v} - VST - {n}/{so}" uid="{u:x}" isInstrument="{i}" fileTime="0" infoUpdateTime="0" numInputs="{ni}" '
             'numOutputs="2" isShell="0"/>').format(n=cfg["name"], v=cfg["vendor"], so=cfg["so"], c="Effect" if fx else "Synth",
                                                   i=0 if fx else 1, ni=2 if fx else 0,
                                                   u=int.from_bytes(cfg["uid"].encode(), "big"))

@@ -30,7 +30,7 @@ Stop any separately attached audio engines first.
 4. **Offline test first**: `tools/test_port.sh <port>/vst.json` builds `tools/host_test.c` with the port's sources and
    adapter on x86 under ASan/UBSan and must print PASSED: two instances, names, set/get, option select + nudge,
    popup open/close, note→audio, chunk round-trip. Hand-written wrappers keep their own host test.
-5. **Deploy (staged)**: `.so` → `/sdcard/vst/x.so.new` then `mv`; skin via `tar | ssh tar -C /sdcard/Synths -xf -`
+5. **Deploy (staged)**: `.so` → `/sdcard/Synths/<vendor> - VST - <name>/x.so.new` then `mv` (one folder: skin, `.so` and data); skin via `tar | ssh tar -C /sdcard/Synths -xf -`
    (**don't scp paths with spaces**: escaping created a folder with literal backslashes once). Verify md5.
 6. **Register** (needs MPC restart, **ask the user first**, and stop attached voice engines such as dx7_host/maze_host first):
    stop acvs → back up `MPC.settings` → insert the `<PLUGIN …/>` line before `</KNOWNPLUGINS>` (first time:
@@ -164,7 +164,7 @@ Always `preview` before deploying. Enum `options=` are optional in layouts (they
 ## CPU check and release
 - `tools/bench.sh build/x.so <ip> -j`: plays the plugin on the device (idle, chords, Q-Link sweep, release tail),
   thread-CPU timed, verdict PASS/WARN/FAIL against the 2902 µs block (docs/BENCH.md). Nothing installed; MPC keeps running.
-- `tools/release.py`: one shareable zip (payload + install.sh/uninstall.sh + generated INSTALL.md + SHA256SUMS); the
+- `tools/release.py`: one shareable zip (the `portable/<skin>/` plugin folder + install.sh/uninstall.sh + generated INSTALL.md + SHA256SUMS); the
   installer stops/restarts MPC, so installing a release on the user's device needs their go-ahead (docs/RELEASING.md).
 - `tools/probe_device.sh` (read-only): arch, CPU, audio workers, plugin formats. VST3 is **not** compiled into MPC OS
   (Force, 2026-09-24): don't build VST3 ports.
