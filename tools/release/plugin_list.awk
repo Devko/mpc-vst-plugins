@@ -1,10 +1,15 @@
 # Edit MPC.settings' plugin list (BusyBox awk). Shipped in every release zip (tools/release.py).
 #   awk -v mode=add    -v file=/sdcard/vst/x.so -v entryfile=plugin.xml -f plugin_list.awk MPC.settings
 #   awk -v mode=remove -v file=/sdcard/vst/x.so -f plugin_list.awk MPC.settings
+#   optional: -v uid=7a6f7574   also drops entries with that uid (an old install at another path)
+#             -v alt=/old/path.so  also drops entries with that file=
 # Drops every <PLUGIN .../> (single- or multi-line) whose file= matches, then in add mode inserts the entry
 # into <VALUE name="pluginList-arm"><KNOWNPLUGINS>, creating the value before </PROPERTIES> if it's missing.
 function flush() {
-    if (index(buf, "file=\"" file "\"") == 0) print buf
+    drop = index(buf, "file=\"" file "\"") != 0
+    if (!drop && alt != "" && index(buf, "file=\"" alt "\"") != 0) drop = 1
+    if (!drop && uid != "" && index(buf, " uid=\"" uid "\"") != 0) drop = 1
+    if (!drop) print buf
     buf = ""
 }
 BEGIN {

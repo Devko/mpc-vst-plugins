@@ -149,6 +149,17 @@ here first and move to its own repo (recommended, for community ownership) once 
       (e.g. `v0.9.1`) to be listed; Machinedrum's `v0.1.0` tag is on a side branch, not `main`. Add `tested.json` to both repos.
 - [ ] Installer/updater (Phase 4) must skip `build-yourself` entries: nothing to download or install.
 
+### Layout migration: one self-contained folder per plugin (started 2026-09-29)
+Locrian's installer uses a drop-in folder in `Synths` (`docs/CATALOG_SPEC.md`, "Portable layout"). Goal: make it our only layout.
+- [x] `release.py` writes `portable/<skin>/` and `install-portable.sh` / `uninstall-portable.sh` (preview, default layout unchanged);
+      `catalog_check.py` verifies it; the installer is tested against a copy of `MPC.settings`.
+- [ ] Device test passes (`docs/PORTABLE_TEST.md`): loads from `/sdcard/Synths/<skin>/`, upgrades an old install without duplicating,
+      keeps user files, uninstalls cleanly, and (optional) works from removable media.
+- [ ] Ports stop hardcoding `/sdcard/...` (JV-880 `MODULE_DIR`, Crate Digger, Monomodule paths) and use `MODULE_SUBDIR`.
+- [ ] Re-release the current plugins in the new layout.
+- [ ] The portable folder becomes the only layout: `install.sh` becomes the portable installer, the duplicate `payload/` goes, the
+      manifest gets a layout field, and the docs, guides (Install, Build, Workflow, Setup) and site cards are updated to match.
+
 ### Phase 4: Install and update from the device or desktop
 - [ ] Hardware check: does the device have `wget`/`curl` with modern TLS, DNS, and room to stage a zip? Record in NOTES.md.
 - [ ] `mpc-store.sh` (BusyBox `sh`): `list`, `install`, `update`, `remove`, `--check`; verifies sha256; keeps an
