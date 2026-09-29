@@ -730,4 +730,4 @@ a copy of a real `MPC.settings` with a fake old install (one entry, old `.so` go
 data, e.g. JV-880 ROMs.
 
 ### 2026-09-30: JV-880 v1.0.2 old-layout upgrade on the Force (install.sh, pre-restart checks)
-Installed the published v1.0.2 zip over an old `/sdcard/vst` install with ROMs. Result: old `jv880.so` removed, `/sdcard/vst/jv880-roms` moved into `/sdcard/Synths/sd88me - VST - JV-880/jv880-roms/roms` (all ROM files present), one `jv880` entry in MPC.settings, settings backup made. Still to confirm: the plugin loads and finds its ROMs in MPC.
+Installed the published v1.0.2 zip over an old `/sdcard/vst` install with ROMs. Result: old `jv880.so` removed, `/sdcard/vst/jv880-roms` moved into `/sdcard/Synths/sd88me - VST - JV-880/jv880-roms/roms` (all ROM files present), one `jv880` entry in MPC.settings, settings backup made. Load test in MPC: OK (plugin loads, ROMs found).
