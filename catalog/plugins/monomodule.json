@@ -8,7 +8,7 @@
   "build": {
     "command": "release/release.sh <Monomachine OS 1.32B .syx> [-d <device-ip>]",
     "script": "release/release.sh",
-    "docs_url": "https://github.com/sd88me/mpc-vst-monomodule/blob/{tag}/README.md#install",
+    "docs_url": "https://github.com/sd88me/mpc-vst-monomodule/blob/main/README.md#install",
     "needs": ["Docker", "ssh and scp (only with -d)"]
   },
   "components": [

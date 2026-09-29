@@ -241,6 +241,15 @@ class PagesTest(unittest.TestCase):
         self.assertIn("<th>h1</th>", html)
         self.assertNotIn("<b>", html)
 
+    def test_install_page_explains_where_to_build(self):
+        pages = catalog_site.load_pages(os.path.join(HERE, "..", "catalog", "pages"))
+        html = catalog_site.render_page([p for p in pages if p["slug"] == "install"][0], pages)
+        self.assertIn('id="plugins-you-build-yourself"', html)   # the card links here
+        self.assertIn("on <strong>your computer</strong>", html)
+        idx = catalog_site.render({"schema": 1, "generated": "x", "plugins": []}, pages)
+        self.assertIn("Run this on your computer (needs Docker), not on the device.", idx)
+        self.assertIn('install.html#plugins-you-build-yourself', idx)
+
     def test_repo_pages_render_with_nav(self):
         pages = catalog_site.load_pages(os.path.join(HERE, "..", "catalog", "pages"))
         self.assertGreaterEqual(len(pages), 4)
