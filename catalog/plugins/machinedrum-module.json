@@ -9,7 +9,7 @@
   "build": {
     "command": "release/build_release.sh <Elektron_SPS1-1UW_OS1.63.syx> <flash-image.bin> [-v ver] [-d <device-ip>]",
     "script": "release/build_release.sh",
-    "docs_url": "https://github.com/sd88me/mpc-vst-machinedrum/blob/{tag}/README.md#building",
+    "docs_url": "https://github.com/sd88me/mpc-vst-machinedrum/blob/main/README.md#building",
     "needs": ["Docker", "mdProbe (see tools/mdtrace/README.md in the repo)", "mpc-vst-monomodule's vst/build/art.json (the LCD fonts, made from your own Monomachine OS)", "ssh and scp (only with -d)"]
   },
   "components": [
