@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Validate a release zip made by tools/release.py against the catalog spec (docs/CATALOG_SPEC.md).
+"""Validate a release zip made by tools/release.py against the catalog spec (docs/CATALOG_SPEC.md). Zips of the
+old layout (payload/, no "layout" field) are still accepted so the catalog can list earlier releases.
 
   tools/catalog_check.py dist/Name-1.2.0-mpc-armv7.zip [--catalog] [--json] [--expect-id ID] [--expect-repo O/N]
 
@@ -45,20 +46,28 @@ def check(zpath, catalog=False, expect_id=None, expect_repo=None):
             if t.startswith("/") or not posixpath.normpath(posixpath.join(posixpath.dirname(n), t)).startswith(top + "/"):
                 err("symlink %s points outside the package: %s" % (n, t))
 
-    for need in ("install.sh", "uninstall.sh", "plugin_list.awk", "plugin.xml", "INSTALL.md", "SHA256SUMS", "mpc-plugin.json"):
-        if need not in files:
-            err("missing " + need)
-    if "mpc-plugin.json" not in files or "plugin.xml" not in files:
+    if "mpc-plugin.json" not in files:
+        err("missing mpc-plugin.json")
         return errors, warnings, None
     try:
         m = json.loads(files["mpc-plugin.json"])
     except ValueError as e:
         err("mpc-plugin.json is not valid JSON: %s" % e)
         return errors, warnings, None
+    # Releases made before the portable layout (no "layout" field) keep validating so the catalog can list their history.
+    legacy = m.get("layout") is None
+    for need in ("install.sh", "uninstall.sh", "plugin_list.awk", "INSTALL.md", "SHA256SUMS") + (("plugin.xml",) if legacy else ()):
+        if need not in files:
+            err("missing " + need)
+    if legacy and "plugin.xml" not in files:
+        return errors, warnings, None
+    if not legacy and m.get("layout") != "portable":
+        err("unknown layout %r" % m.get("layout"))
+        return errors, warnings, None
 
     if m.get("schema") != 1:
         err("unsupported manifest schema %r" % m.get("schema"))
-    for k in ("id", "name", "version", "kind", "uid", "so", "so_dir", "skin", "arch", "param_compat"):
+    for k in ("id", "name", "version", "kind", "uid", "so", "skin", "arch", "param_compat") + (("so_dir",) if legacy else ("folder",)):
         if m.get(k) in (None, ""):
             err("manifest missing " + k)
     if errors:
@@ -89,60 +98,85 @@ def check(zpath, catalog=False, expect_id=None, expect_repo=None):
         err("source_repo must be owner/name")
 
     # payload
-    so_rel = "payload/vst/" + m["so"]
-    if so_rel not in files:
-        err("missing " + so_rel)
-    elif files[so_rel][:4] != b"\x7fELF":
-        err(m["so"] + " is not an ELF file")
-    skin = "payload/Synths/%s/" % m["skin"]
-    for need in ("version.xml", "Plugin Skins/TUI.json"):
-        if skin + need not in files:
-            err("skin is missing " + need)
-    for e in m.get("extras", []):
-        if not any(f == "payload/vst/" + e or f.startswith("payload/vst/" + e + "/") for f in files):
-            err("extra %s listed but not in payload" % e)
-    entry = files["plugin.xml"].decode(errors="replace")
-    attr = dict(re.findall(r'(\w+)="([^"]*)"', entry))
-    if attr.get("file") != posixpath.join(m["so_dir"], m["so"]):
-        err("plugin.xml file=%r doesn't match so_dir/so" % attr.get("file"))
-    if attr.get("uid", "").lower() != str(m["uid"]).lower():
-        err("plugin.xml uid %r != manifest uid %r" % (attr.get("uid"), m["uid"]))
-    if attr.get("name") != m["name"]:
-        err("plugin.xml name doesn't match the manifest")
+    entry = None
+    if legacy:
+        so_rel = "payload/vst/" + m["so"]
+        if so_rel not in files:
+            err("missing " + so_rel)
+        elif files[so_rel][:4] != b"\x7fELF":
+            err(m["so"] + " is not an ELF file")
+        skin = "payload/Synths/%s/" % m["skin"]
+        for need in ("version.xml", "Plugin Skins/TUI.json"):
+            if skin + need not in files:
+                err("skin is missing " + need)
+        for e in m.get("extras", []):
+            if not any(f == "payload/vst/" + e or f.startswith("payload/vst/" + e + "/") for f in files):
+                err("extra %s listed but not in payload" % e)
+        entry = files["plugin.xml"].decode(errors="replace")
+        attr = dict(re.findall(r'(\w+)="([^"]*)"', entry))
+        if attr.get("file") != posixpath.join(m["so_dir"], m["so"]):
+            err("plugin.xml file=%r doesn't match so_dir/so" % attr.get("file"))
+        if attr.get("uid", "").lower() != str(m["uid"]).lower():
+            err("plugin.xml uid %r != manifest uid %r" % (attr.get("uid"), m["uid"]))
+        if attr.get("name") != m["name"]:
+            err("plugin.xml name doesn't match the manifest")
 
-    # portable layout (optional): one folder with the skin, the same .so, extras and a plugin-meta.xml using %payload-path%
-    portable = m.get("portable")
-    if portable:
+        # portable layout (optional): one folder with the skin, the same .so, extras and a plugin-meta.xml using %payload-path%
+        portable = m.get("portable")
+        if portable:
+            expect = "portable/" + m["skin"]
+            if portable != expect:
+                err("portable must be %r, not %r" % (expect, portable))
+            else:
+                base = portable + "/"
+                for need in ("version.xml", "Plugin Skins/TUI.json", "plugin-meta.xml", m["so"]):
+                    if base + need not in files:
+                        err("portable folder is missing " + need)
+                if base + m["so"] in files and so_rel in files and files[base + m["so"]] != files[so_rel]:
+                    err("portable %s differs from payload/vst/%s" % (m["so"], m["so"]))
+                for e in m.get("extras", []):
+                    if not any(f == base + e or f.startswith(base + e + "/") for f in files):
+                        err("portable folder is missing extra " + e)
+                meta = files.get(base + "plugin-meta.xml", b"").decode(errors="replace").strip()
+                want_file = "%%payload-path%%/%s/%s" % (m["skin"], m["so"])
+                mattr = dict(re.findall(r'(\w+)="([^"]*)"', meta))
+                if meta and mattr.get("file") != want_file:
+                    err("plugin-meta.xml file=%r, expected %r" % (mattr.get("file"), want_file))
+                norm = lambda x: re.sub(r'(\s)file="[^"]*"', r'\1file=""', x.strip())
+                if meta and norm(meta) != norm(entry):
+                    err("plugin-meta.xml differs from plugin.xml apart from file=")
+
+    else:
+        # the plugin folder: skin, the .so, extras and a plugin-meta.xml using %payload-path%
         expect = "portable/" + m["skin"]
-        if portable != expect:
-            err("portable must be %r, not %r" % (expect, portable))
+        if m["folder"] != expect:
+            err("folder must be %r, not %r" % (expect, m["folder"]))
         else:
-            base = portable + "/"
+            base = m["folder"] + "/"
             for need in ("version.xml", "Plugin Skins/TUI.json", "plugin-meta.xml", m["so"]):
                 if base + need not in files:
-                    err("portable folder is missing " + need)
-            if base + m["so"] in files and so_rel in files and files[base + m["so"]] != files[so_rel]:
-                err("portable %s differs from payload/vst/%s" % (m["so"], m["so"]))
+                    err("plugin folder is missing " + need)
+            if files.get(base + m["so"], b"\x7fELF")[:4] != b"\x7fELF":
+                err(m["so"] + " is not an ELF file")
             for e in m.get("extras", []):
                 if not any(f == base + e or f.startswith(base + e + "/") for f in files):
-                    err("portable folder is missing extra " + e)
-            meta = files.get(base + "plugin-meta.xml", b"").decode(errors="replace").strip()
+                    err("extra %s listed but not in the plugin folder" % e)
+            entry = files.get(base + "plugin-meta.xml", b"").decode(errors="replace").strip()
+            attr = dict(re.findall(r'(\w+)="([^"]*)"', entry))
             want_file = "%%payload-path%%/%s/%s" % (m["skin"], m["so"])
-            mattr = dict(re.findall(r'(\w+)="([^"]*)"', meta))
-            if meta and mattr.get("file") != want_file:
-                err("plugin-meta.xml file=%r, expected %r" % (mattr.get("file"), want_file))
-            norm = lambda x: re.sub(r'(\s)file="[^"]*"', r'\1file=""', x.strip())
-            if meta and norm(meta) != norm(entry):
-                err("plugin-meta.xml differs from plugin.xml apart from file=")
+            if entry and attr.get("file") != want_file:
+                err("plugin-meta.xml file=%r, expected %r" % (attr.get("file"), want_file))
+            if entry and attr.get("uid", "").lower() != str(m["uid"]).lower():
+                err("plugin-meta.xml uid %r != manifest uid %r" % (attr.get("uid"), m["uid"]))
+            if entry and attr.get("name") != m["name"]:
+                err("plugin-meta.xml name doesn't match the manifest")
+            for e in m.get("extras", []):
+                if not re.fullmatch(r"[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*", e) or ".." in e.split("/"):
+                    err("bad extra path %r" % e)
 
     for d in m.get("user_data", []):
         if not re.fullmatch(r"[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*", d) or ".." in d.split("/"):
             err("bad user_data path %r" % d)
-    if portable:
-        for sc in ("install-portable.sh", "uninstall-portable.sh"):
-            if sc not in files:
-                err("missing " + sc)
-
     # checksums: every file listed and matching, nothing unlisted
     listed = {}
     for line in files.get("SHA256SUMS", b"").decode().splitlines():
@@ -159,11 +193,11 @@ def check(zpath, catalog=False, expect_id=None, expect_repo=None):
         if f not in files:
             err("SHA256SUMS lists a missing file: " + f)
 
-    # installer: regenerate from the current template and compare
-    sub = {"@NAME@": m["name"], "@SO_DIR@": m["so_dir"], "@SO_NAME@": m["so"], "@SKIN@": m["skin"],
+    # installer: regenerate from the current template and compare (releases of the old layout were made by older templates)
+    sub = {"@NAME@": m["name"], "@SO_NAME@": m["so"], "@SKIN@": m["skin"],
            "@EXTRAS@": " ".join("'%s'" % e for e in m.get("extras", [])), "@VERSION@": m["version"],
-           "@UID@": str(m["uid"]), "@LEGACY_SO@": posixpath.join(m["so_dir"], m["so"]), "@USER_DATA@": " ".join(m.get("user_data", []))}
-    for script in ["install.sh", "uninstall.sh"] + (["install-portable.sh", "uninstall-portable.sh"] if m.get("portable") else []):
+           "@UID@": str(m["uid"]), "@LEGACY_SO@": "/sdcard/vst/" + m["so"], "@USER_DATA@": " ".join(m.get("user_data", []))}
+    for script in ([] if legacy else ["install.sh", "uninstall.sh"]):
         tpl = os.path.join(HERE, "release", script)
         if os.path.exists(tpl) and script in files:
             text = open(tpl).read()

@@ -85,15 +85,17 @@ class CatalogTest(Base):
                 zout.writestr(i, data[i.filename])
         return out
 
-    def test_portable_layout_matches_the_payload(self):
+    def test_plugin_folder_layout(self):
         eng = os.path.join(self.tmp, "engine")
         os.makedirs(eng)
         open(os.path.join(eng, "banks.bin"), "wb").write(b"data")
-        z = self.build(extra=("--extra", eng + ":vst/engine"))
+        z = self.build(extra=("--extra", eng + ":engine"))
         errors, warnings, rec = catalog_check.check(z, catalog=True)
         self.assertEqual((errors, warnings), ([], []))
         skin = "Acme - VST - Test Synth"
-        self.assertEqual(rec["manifest"]["portable"], "portable/" + skin)
+        m = rec["manifest"]
+        self.assertEqual((m["layout"], m["folder"], m["extras"]), ("portable", "portable/" + skin, ["engine"]))
+        self.assertNotIn("so_dir", m)
         with zipfile.ZipFile(z) as zf:
             names = zf.namelist()
             top = names[0].split("/")[0]
@@ -102,27 +104,52 @@ class CatalogTest(Base):
             self.assertNotIn("/sdcard", meta)
             for need in ("version.xml", "Plugin Skins/TUI.json", "test_synth.so", "engine/banks.bin"):
                 self.assertIn("%s/portable/%s/%s" % (top, skin, need), names)
-            self.assertEqual(zf.read("%s/portable/%s/test_synth.so" % (top, skin)), zf.read(top + "/payload/vst/test_synth.so"))
+            self.assertFalse([n for n in names if "/payload/" in n or n.endswith("/plugin.xml")])   # one copy, one layout
+            self.assertFalse([n for n in names if "install-portable" in n])
 
-    def test_portable_is_optional(self):
-        z = self.build(extra=("--no-portable",))
-        errors, warnings, rec = catalog_check.check(z, catalog=True)
-        self.assertEqual((errors, warnings), ([], []))
-        self.assertIsNone(rec["manifest"]["portable"])
-        with zipfile.ZipFile(z) as zf:
-            self.assertFalse([n for n in zf.namelist() if "/portable/" in n])
+    def test_old_vst_prefix_of_extra_is_accepted(self):
+        eng = os.path.join(self.tmp, "engine")
+        os.makedirs(eng)
+        open(os.path.join(eng, "a"), "w").write("x")
+        z = self.build(extra=("--extra", eng + ":vst/engine"))
+        self.assertEqual(catalog_check.check(z, catalog=True)[2]["manifest"]["extras"], ["engine"])
 
-    def test_portable_tampering_is_caught(self):
+    def test_tampering_is_caught(self):
         z = self.build()
         bad = self.resum(z, "plugin-meta.xml", lambda d: d.replace(b"%payload-path%", b"/sdcard/vst"))
         e, _, _ = catalog_check.check(bad)
         self.assertTrue(any("plugin-meta.xml file=" in x for x in e), e)
-        bad = self.resum(z, "portable/Acme - VST - Test Synth/test_synth.so", lambda d: d + b"x")
+        bad = self.resum(z, "test_synth.so", lambda d: b"not elf")
         e, _, _ = catalog_check.check(bad)
-        self.assertTrue(any("differs from payload" in x for x in e), e)
+        self.assertTrue(any("not an ELF" in x for x in e), e)
         bad = self.resum(z, "plugin-meta.xml", lambda d: d.replace(b'name="Test Synth"', b'name="Other"'))
         e, _, _ = catalog_check.check(bad)
-        self.assertTrue(any("differs from plugin.xml" in x for x in e), e)
+        self.assertTrue(any("name doesn't match" in x for x in e), e)
+
+    def legacy_zip(self):
+        """A release of the old layout (payload/, plugin.xml, no "layout" field), as earlier tool versions made them."""
+        import hashlib
+        skin = "Acme - VST - Test Synth"
+        m = {"schema": 1, "id": "test-synth", "name": "Test Synth", "version": "1.0.0", "kind": "instrument", "uid": "1a2b3c4d",
+             "manufacturer": "Acme", "so": "test_synth.so", "so_dir": "/sdcard/vst", "skin": skin, "extras": [], "portable": None,
+             "user_data": [], "arch": "armv7", "max_glibc": "2.30", "param_compat": 1, "about": "", "requires": "",
+             "source_repo": "acme/test-synth", "license": "MIT", "cpu": None}
+        fake_so(os.path.join(self.tmp, "l.so"))
+        files = {"payload/vst/test_synth.so": open(os.path.join(self.tmp, "l.so"), "rb").read(),
+                 "payload/Synths/%s/version.xml" % skin: b"<v/>", "payload/Synths/%s/Plugin Skins/TUI.json" % skin: b"{}",
+                 "plugin.xml": ENTRY.encode(), "install.sh": b"#!/bin/sh\n", "uninstall.sh": b"#!/bin/sh\n",
+                 "plugin_list.awk": b"", "INSTALL.md": b"x", "mpc-plugin.json": json.dumps(m).encode()}
+        files["SHA256SUMS"] = "".join("%s  %s\n" % (hashlib.sha256(d).hexdigest(), n) for n, d in sorted(files.items())).encode()
+        out = os.path.join(self.tmp, "legacy.zip")
+        with zipfile.ZipFile(out, "w") as z:
+            for n, d in files.items():
+                z.writestr("Test-Synth-1.0.0/" + n, d)
+        return out
+
+    def test_old_layout_releases_still_validate(self):
+        e, w, rec = catalog_check.check(self.legacy_zip(), catalog=True)
+        self.assertEqual(e, [])
+        self.assertNotIn("layout", rec["manifest"])
 
     def test_wrong_arch_and_glibc(self):
         e, _, _ = catalog_check.check(self.build(machine=62))
@@ -131,7 +158,7 @@ class CatalogTest(Base):
         self.assertTrue(any("GLIBC" in x for x in e))
 
     def test_tampered_file_fails_checksum(self):
-        z = self.tamper(self.build(), "payload/vst/test_synth.so", lambda d: d + b"x")
+        z = self.tamper(self.build(), "portable/Acme - VST - Test Synth/test_synth.so", lambda d: d + b"x")
         e, _, _ = catalog_check.check(z)
         self.assertTrue(any("checksum mismatch" in x for x in e))
 
@@ -168,7 +195,7 @@ class CatalogTest(Base):
                 for i in zin.infolist():
                     zout.writestr(i, zin.read(i.filename))
                 top = zin.namelist()[0].split("/")[0]
-                i = zipfile.ZipInfo(top + "/payload/vst/d1/l"); i.external_attr = 0o120777 << 16
+                i = zipfile.ZipInfo(top + "/portable/Acme - VST - Test Synth/d1/l"); i.external_attr = 0o120777 << 16
                 zout.writestr(i, target)
             return out
         e, _, _ = catalog_check.check(add("../d2/x"), catalog=True)
@@ -218,7 +245,7 @@ class BuildTest(Base):
 
     def test_build_keeps_good_versions_and_reports_bad(self):
         good, newer = self.build("1.0.0"), self.build("1.1.0")
-        bad = self.tamper(self.build("1.2.0"), "payload/vst/test_synth.so", lambda d: d + b"x")
+        bad = self.tamper(self.build("1.2.0"), "portable/Acme - VST - Test Synth/test_synth.so", lambda d: d + b"x")
         gh = FakeGitHub({"acme/test-synth": [self.rel("v1.2.0", 3), self.rel("v1.1.0", 2), self.rel("v1.0.0", 1),
                                               self.rel("v1.3.0-b", 4, pre=True, name="nope.txt")]},
                         {1: good, 2: newer, 3: bad})
@@ -507,13 +534,19 @@ SETTINGS_XML = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 class InstallerTest(Base):
-    """Runs the generated install-portable.sh / uninstall-portable.sh against a copy of MPC.settings (device checks skipped)."""
+    """Runs the generated install.sh / uninstall.sh against a copy of MPC.settings (device checks skipped)."""
     SKIN = "Acme - VST - Test Synth"
 
     def setUp(self):
         super().setUp()
         import xml.etree.ElementTree  # noqa: F401  (used by settings())
-        z = self.build(extra=("--user-data", "roms"))
+        packaged = os.path.join(self.tmp, "packaged_banks")   # data the package ships (an extra) and the user adds to (user data)
+        os.makedirs(packaged)
+        open(os.path.join(packaged, "shipped.syx"), "w").write("shipped")
+        engine = os.path.join(self.tmp, "engine_bin")          # data the package ships that is not the user's
+        os.makedirs(engine)
+        open(os.path.join(engine, "tool"), "w").write("tool")
+        z = self.build(extra=("--user-data", "roms", "--user-data", "banks", "--extra", packaged + ":banks", "--extra", engine + ":engine/bin"))
         self.pkg = os.path.join(self.tmp, "pkg")
         with zipfile.ZipFile(z) as zf:
             zf.extractall(self.pkg)
@@ -538,7 +571,7 @@ class InstallerTest(Base):
         return {e.get("name"): e.get("file") for e in root.iter("PLUGIN")}
 
     def test_fresh_and_legacy_upgrade(self):
-        r = self.run_script("install-portable.sh")
+        r = self.run_script("install.sh")
         self.assertEqual(r.returncode, 0, r.stderr)
         folder = os.path.join(self.synths, self.SKIN)
         for f in ("test_synth.so", "plugin-meta.xml", "version.xml", os.path.join("Plugin Skins", "TUI.json")):
@@ -550,13 +583,56 @@ class InstallerTest(Base):
         self.assertFalse(os.path.exists(os.path.join(self.legacy_root, "sdcard", "vst", "test_synth.so")))
         self.assertTrue([n for n in os.listdir(self.tmp) if n.startswith("MPC.settings.bak-")])
 
+    def legacy(self, *parts):
+        return os.path.join(self.legacy_root, "sdcard", "vst", *parts)
+
+    def test_legacy_user_files_are_moved_and_packaged_data_removed(self):
+        os.makedirs(self.legacy("roms")); open(self.legacy("roms", "mine.rom"), "w").write("my rom")      # user data, only there
+        os.makedirs(self.legacy("banks")); open(self.legacy("banks", "mine.syx"), "w").write("my bank")   # user data next to shipped data
+        open(self.legacy("banks", "shipped.syx"), "w").write("old shipped")
+        os.makedirs(self.legacy("engine", "bin")); open(self.legacy("engine", "bin", "tool"), "w").write("old tool")   # packaged data
+        os.makedirs(self.legacy("unrelated")); open(self.legacy("unrelated", "x"), "w").write("keep")
+        r = self.run_script("install.sh")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        folder = os.path.join(self.synths, self.SKIN)
+        self.assertEqual(open(os.path.join(folder, "roms", "mine.rom")).read(), "my rom")      # moved, not lost
+        self.assertEqual(open(os.path.join(folder, "banks", "mine.syx")).read(), "my bank")    # merged over the shipped folder
+        self.assertEqual(open(os.path.join(folder, "banks", "shipped.syx")).read(), "old shipped")
+        self.assertEqual(open(os.path.join(folder, "engine", "bin", "tool")).read(), "tool")   # packaged data comes from the package
+        self.assertFalse(os.path.exists(self.legacy("roms")))
+        self.assertFalse(os.path.exists(self.legacy("banks")))
+        self.assertFalse(os.path.exists(self.legacy("engine", "bin")))
+        self.assertEqual(open(self.legacy("unrelated", "x")).read(), "keep")                   # anything else in /sdcard/vst stays
+        self.assertFalse(os.path.exists(self.legacy("test_synth.so")))
+        self.assertIn("moved your files", r.stdout)
+
+    def test_legacy_data_is_left_alone_when_the_edit_fails(self):
+        os.makedirs(self.legacy("roms")); open(self.legacy("roms", "mine.rom"), "w").write("my rom")
+        open(self.settings_path, "w").write(SETTINGS_XML.replace("</PROPERTIES>", ""))
+        self.assertNotEqual(self.run_script("install.sh").returncode, 0)
+        self.assertEqual(open(self.legacy("roms", "mine.rom")).read(), "my rom")
+        self.assertTrue(os.path.exists(self.legacy("test_synth.so")))
+
+    def test_files_next_to_no_legacy_install_are_not_touched(self):
+        os.remove(self.legacy("test_synth.so"))       # no old install of this plugin: /sdcard/vst/roms is not ours to move
+        os.makedirs(self.legacy("roms")); open(self.legacy("roms", "x"), "w").write("other")
+        self.assertEqual(self.run_script("install.sh").returncode, 0)
+        self.assertEqual(open(self.legacy("roms", "x")).read(), "other")
+        self.assertFalse(os.path.exists(os.path.join(self.synths, self.SKIN, "roms")))
+
+    def test_second_run_keeps_what_the_first_moved(self):
+        os.makedirs(self.legacy("roms")); open(self.legacy("roms", "mine.rom"), "w").write("my rom")
+        self.assertEqual(self.run_script("install.sh").returncode, 0)
+        self.assertEqual(self.run_script("install.sh").returncode, 0)
+        self.assertEqual(open(os.path.join(self.synths, self.SKIN, "roms", "mine.rom")).read(), "my rom")
+
     def test_reinstall_is_idempotent_and_keeps_user_files(self):
-        self.assertEqual(self.run_script("install-portable.sh").returncode, 0)
+        self.assertEqual(self.run_script("install.sh").returncode, 0)
         rom = os.path.join(self.synths, self.SKIN, "roms", "mine.rom")
         os.makedirs(os.path.dirname(rom))
         open(rom, "w").write("user data")
         open(os.path.join(self.synths, self.SKIN, "stale.txt"), "w").write("not shipped")
-        r = self.run_script("install-portable.sh")
+        r = self.run_script("install.sh")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(open(rom).read(), "user data")                              # the user's files survive an upgrade
         self.assertFalse(os.path.exists(os.path.join(self.synths, self.SKIN, "stale.txt")))
@@ -564,31 +640,33 @@ class InstallerTest(Base):
         self.assertEqual(len(self.entries()), 2)
 
     def test_uninstall_removes_entry_and_folder_but_keeps_user_files(self):
-        self.assertEqual(self.run_script("install-portable.sh").returncode, 0)
+        self.assertEqual(self.run_script("install.sh").returncode, 0)
         rom = os.path.join(self.synths, self.SKIN, "roms", "mine.rom")
         os.makedirs(os.path.dirname(rom))
         open(rom, "w").write("user data")
-        r = self.run_script("uninstall-portable.sh")
+        r = self.run_script("uninstall.sh")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(list(self.entries()), ["Other"])
         self.assertEqual(open(rom).read(), "user data")
         self.assertFalse(os.path.exists(os.path.join(self.synths, self.SKIN, "test_synth.so")))
 
-    def test_uninstall_leaves_no_folder_without_user_files(self):
-        self.assertEqual(self.run_script("install-portable.sh").returncode, 0)
-        self.assertEqual(self.run_script("uninstall-portable.sh").returncode, 0)
-        self.assertEqual(os.listdir(self.synths), [])
+    def test_uninstall_leaves_only_the_user_data_folders(self):
+        self.assertEqual(self.run_script("install.sh").returncode, 0)
+        self.assertEqual(self.run_script("uninstall.sh").returncode, 0)
+        # "banks" is user data that the package also ships (kept whole); nothing else of the plugin stays
+        self.assertEqual(os.listdir(self.synths), [self.SKIN])
+        self.assertEqual(os.listdir(os.path.join(self.synths, self.SKIN)), ["banks"])
 
     def test_refuses_unsafe_target_and_missing_settings(self):
-        r = self.run_script("install-portable.sh", "-t", "/tmp/a&b")
+        r = self.run_script("install.sh", "-t", "/tmp/a&b")
         self.assertNotEqual(r.returncode, 0)
         os.remove(self.settings_path)
-        self.assertNotEqual(self.run_script("install-portable.sh").returncode, 0)
+        self.assertNotEqual(self.run_script("install.sh").returncode, 0)
 
     def test_settings_untouched_when_the_edit_would_break_it(self):
         broken = SETTINGS_XML.replace("</PROPERTIES>", "")   # not valid XML to begin with: the check must refuse to replace it
         open(self.settings_path, "w").write(broken)
-        r = self.run_script("install-portable.sh")
+        r = self.run_script("install.sh")
         self.assertNotEqual(r.returncode, 0)
         self.assertEqual(open(self.settings_path).read(), broken)
 
