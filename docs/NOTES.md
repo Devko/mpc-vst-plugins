@@ -728,3 +728,6 @@ Checked offline only: `tools/test_catalog.py` (45 tests, dash), and a real Dexed
 a copy of a real `MPC.settings` with a fake old install (one entry, old `.so` gone, user bank merged with the 33 shipped ones).
 **Not yet run:** under BusyBox (no `busybox` on the build machine this time) or on a device with an old-layout install that has user
 data, e.g. JV-880 ROMs.
+
+### 2026-09-30: JV-880 v1.0.2 old-layout upgrade on the Force (install.sh, pre-restart checks)
+Installed the published v1.0.2 zip over an old `/sdcard/vst` install with ROMs. Result: old `jv880.so` removed, `/sdcard/vst/jv880-roms` moved into `/sdcard/Synths/sd88me - VST - JV-880/jv880-roms/roms` (all ROM files present), one `jv880` entry in MPC.settings, settings backup made. Still to confirm: the plugin loads and finds its ROMs in MPC.
