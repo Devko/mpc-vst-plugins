@@ -8,6 +8,8 @@ summary: How to turn a sound engine or an app into a native MPC OS plugin with i
 An MPC OS plugin is a small Linux library (`.so`) for the device's ARM processor, plus a **skin**: a folder that describes the plugin's page on the MPC screen. This repo's tools build both from one small description file, and they test the result on your PC before it goes anywhere near a device.
 
 ## What you need
+New to this? [Get set up](setup.html) walks through the tools below step by step.
+
 - A checkout of [mpc-vst-plugins](https://github.com/sd88me/mpc-vst-plugins). A plugin lives in its own repo next to it, and points at it with the `MPC_VST` variable.
 - Python 3 and Docker. The build runs the ARM compiler (`arm32v7/gcc:12`) under emulation, and the skin and preview tools run in containers.
 - An engine to wrap: a synth or effect core in C or C++, or an engine from Schwung (it plugs in through an adapter).

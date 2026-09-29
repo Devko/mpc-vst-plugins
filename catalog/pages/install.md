@@ -41,8 +41,29 @@ ssh root@<device-ip> sh /tmp/Name-1.2.0/install.sh
 
 It checks the device, copies the plugin and its skin, backs up `MPC.settings` next to the original, adds the plugin to MPC's plugin list and restarts MPC. Add `-y` to skip the confirmation question. If anything fails, MPC is restarted and your settings are left unchanged.
 
+## Easy option: use Termius instead of typing commands
+If you would rather click than type, use an SSH app with a file browser. [Termius](https://termius.com/) is one (macOS, Windows, Linux, iPhone, iPad and Android); other SFTP and SSH apps work the same way. You do the same two things as steps 2 and 3, with the mouse:
+
+1. **Add your device as a host.** In Termius, add a new host with the device's IP address and the username `root`, using the same login you would use with `ssh`. Connect once to check it works.
+2. **Copy the folder over.** Unzip the plugin's zip on your computer first. Open the host's file browser (SFTP), go to `/tmp` on the device, and drag the unzipped plugin folder into it.
+3. **Run the installer.** Open a terminal on the same host and type `sh /tmp/<the-folder-name>/install.sh` (Tab completes the folder name). Save your project first: it stops and restarts MPC. Answer `y` when it asks, or add `-y` to skip the question.
+
+The app's buttons and plans change over time, so check Termius's own help if a screen looks different. It is only a nicer way to do steps 2 and 3: the plugin, the checksum check and the installer are the same.
+
 ## 4. Use it
 On the device, add the plugin to a track from the plugin browser: instruments under Instrument plugins, effects under Insert effects. Its screen appears in the plugin view, and the Q-Links follow the page. Save and reload a project once to make sure it comes back.
+
+## Plugins you build yourself
+A plugin with the **Build it yourself** badge has no download: its build embeds your own firmware, so nobody can publish the result. You build it once, on **your computer**, then install it on your device. The device itself does not build anything.
+
+1. **Get your own files.** The plugin's card lists them under "You need" (for example an Elektron OS `.syx` file). Keep them somewhere you can find.
+2. **Set up your computer.** You need Docker, git and Python 3, and a Linux-style shell: macOS, Ubuntu, or Ubuntu in WSL on Windows. The [Get set up](setup.html) page walks through it, with a check after each step.
+3. **Get the plugin's source on your computer.** This is the `git clone` step in the plugin's README: run `git clone --recursive https://github.com/<owner>/<plugin-repo>.git`, then `cd <plugin-repo>`. The card's Source link shows the repo.
+4. **Run the build command** from the plugin's card, with the path to your own file. It builds inside Docker and takes a few minutes; the first run also downloads what it needs. It stops with an error if its self-check fails rather than giving you a build that is not verified.
+5. **Install it.** If the command has a `-d <device-ip>` option, adding it copies the result to your device over SSH and runs the installer, which **stops and restarts MPC** (save your project first). Without it, the build leaves a zip in the plugin's `dist/` folder; install that as described in "Install a plugin" above, from step 2.
+6. **Keep the result to yourself.** It contains data derived from your firmware. Install it on your own devices only and never share or upload it.
+
+The exact command, and any extra tools it needs, are on the plugin's card and in its README.
 
 ## Update to a new version
 Run the new version's `install.sh` the same way. It replaces the old files in place and keeps the same plugin entry, so your projects still find the plugin.
