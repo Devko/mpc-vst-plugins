@@ -185,6 +185,16 @@ class CatalogTest(Base):
 import catalog_build  # noqa: E402
 
 
+class LayoutWarningTest(unittest.TestCase):
+    def test_hardcoded_data_path(self):
+        import gen_vst
+        old = {"name": "X", "defines": {"MODULE_DIR": '"/sdcard/vst/x"'}}
+        self.assertEqual(len(gen_vst.layout_warnings(old)), 1)
+        self.assertEqual(gen_vst.layout_warnings({"name": "X", "defines": {"MODULE_SUBDIR": '"x"', "MODULE_DIR": '"/sdcard/vst/x"'}}), [])
+        self.assertEqual(gen_vst.layout_warnings({"name": "X", "defines": {"HAS_LFO_BPM": 1}}), [])
+        self.assertEqual(gen_vst.layout_warnings({"name": "X"}), [])
+
+
 class FakeGitHub:
     def __init__(self, releases, zips):
         self.releases, self.zips = releases, zips
