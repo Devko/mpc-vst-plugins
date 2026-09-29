@@ -1,10 +1,9 @@
 # Releasing a plugin
 
 A release is **one zip** people can share around: `<Name>-<version>-mpc-armv7.zip`. It unpacks to a folder with
-the plugin, its skin, `install.sh` / `uninstall.sh` and a generated `INSTALL.md` (scripted and manual steps,
-requirements, CPU result, checksums). Unless `--no-portable` is passed it also holds `portable/<skin>/`, the same plugin as
-one drop-in folder for installers that copy a folder into `Synths` and read its `plugin-meta.xml`
-(`docs/CATALOG_SPEC.md`, "Portable layout").
+the plugin as one folder (`portable/<skin>/`: the `.so`, the skin, its data and a `plugin-meta.xml`), `install.sh` /
+`uninstall.sh` and a generated `INSTALL.md` (scripted and manual steps, requirements, CPU result, checksums). The folder is
+the only layout: it can be dropped into any `Synths` folder by other installers too (`docs/CATALOG_SPEC.md`, "Plugin folder").
 
 ## Checklist
 1. **Build** with the port's `build.sh` (armhf, `arm32v7/gcc:12`; highest GLIBC symbol ≤ 2.36).
@@ -61,17 +60,24 @@ version that is already published. Publishing the draft creates the tag.
 - `X.Y.Z` in the zip name and INSTALL.md. Bump Z for fixes, Y for new parameters or pages, X when parameter
   indices change. Changing the indices breaks saved projects, because MPC stores values by index.
 - Keep the plugin `uid` and `.so` name fixed across versions: the installer replaces the entry with the same
-  `file=`, and projects find the plugin by uid.
+  `uid` or `file=`, and projects find the plugin by uid.
+- Release data the user adds to (ROMs, kits, banks) with `--user-data <folder>`; `--extra SRC:DEST` ships data next to the
+  `.so` (`DEST` is relative to the plugin folder).
 
 ## What the installer does
 Run on the device as root (`sh install.sh [-y]`):
 1. Checks root, armv7, that `MPC.settings` exists and `SHA256SUMS`, and asks for confirmation.
 2. Stops MPC (`systemctl stop acvs`) and waits for it to exit. A trap restarts MPC on any error.
-3. Copies the `.so` (as `.new`, then `mv`), the extras and the skin (`/sdcard/Synths/<skin>`).
+3. Copies `portable/<skin>/` next to its target (`/sdcard/Synths`, or `-t <folder>`), carries over the files the user
+   added (the manifest's `user_data`, see `--user-data`), and swaps the new folder in.
 4. Backs up `MPC.settings` to `MPC.settings.bak-<so>-<date>`. `plugin_list.awk` (BusyBox awk) drops any entry with
-   the same `file=` and inserts the new one into `pluginList-arm`, creating the list if needed. The result is checked
-   (exactly one entry, valid XML when python3 exists) before it replaces the original.
-5. Starts MPC.
+   the same `file=` or `uid` (an older install at another path) and inserts the folder's `plugin-meta.xml`, with
+   `%payload-path%` replaced by the Synths folder, into `pluginList-arm`, creating the list if needed. The result is
+   checked (exactly one entry, valid XML when python3 exists) before it replaces the original.
+5. If the plugin was installed the old way (`.so` in `/sdcard/vst`): removes that `.so` and the data the package ships
+   there, and moves the user's own files (`user_data`) from `/sdcard/vst/<path>` into the plugin folder. Done only after
+   the settings edit succeeded; nothing else in `/sdcard/vst` is touched.
+6. Starts MPC.
 
 The settings edit was tested 2026-09-24 against a copy of a real Force `MPC.settings`: replacing an entry, running
 twice (identical output), removing, a missing `pluginList-arm`, and a self-closing `<KNOWNPLUGINS/>`. A full

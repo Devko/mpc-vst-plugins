@@ -1,8 +1,8 @@
 # Testing the portable layout on a device
 
 The portable layout puts a plugin in one folder (`<Vendor> - VST - <Name>/`: skin, `plugin-meta.xml`, the `.so`, its data) inside a
-Synths folder. It is tested against a copy of `MPC.settings` (`python3 tools/test_catalog.py`), not yet on a device. This is the
-checklist that decides whether it becomes the only layout. Record results in `docs/NOTES.md` with the date.
+Synths folder. It passed on a Force with Dexed on 2026-09-29 (`docs/NOTES.md`) and is now the only layout; `install.sh` / `uninstall.sh` are the
+portable installers. This is the checklist to repeat for a port with data (ROMs, banks) or after changing the installer. Record results in `docs/NOTES.md` with the date.
 
 Offline first: `python3 tools/test_catalog.py` runs the installer scripts against a copy of `MPC.settings` (under dash and awk). To imitate the
 device's userland, put BusyBox applets first on the path and run the installer tests without Python:
@@ -22,7 +22,7 @@ The device is shared with a live setup: save projects, and ask before anything t
 ## 1. Build a test zip (about 10 minutes)
 Use a plugin with no big data files, ideally one already installed the old way so the upgrade path is tested too.
 ```
-git checkout claude/portable-installer            # this branch of mpc-vst-plugins (or main once merged)
+git checkout main                                 # mpc-vst-plugins
 <your port>/build.sh                               # as usual
 tools/release.py --so build/x.so --skin "build/skin/<vendor> - VST - <Name>" --entry build/pluginlist-entry.xml \
     --version <X.Y.Z> --repo owner/name --license <SPDX> --user-data <folder for user files, if any> -o dist
@@ -34,7 +34,7 @@ unzip -l dist/<zip> | grep -E 'portable/|install-portable|uninstall-portable'
 ```
 unzip dist/<zip> && scp -r <Name>-<version> root@<device-ip>:/tmp/
 ssh root@<device-ip>
-sh /tmp/<Name>-<version>/install-portable.sh          # answer y; MPC stops and restarts
+sh /tmp/<Name>-<version>/install.sh          # answer y; MPC stops and restarts
 ```
 Expect: "Installing...", possibly "removed the old copy /sdcard/vst/..." if it was installed the old way, then "Done. Settings backup: ...".
 Then on the device shell:
@@ -51,11 +51,11 @@ grep 'file=.*<so name>' /media/az01-internal/Settings/*/MPC.settings   # file= i
 - [ ] Anything that reads data next to the plugin (banks, ROMs, kits) finds it.
 
 ## 4. Upgrade and uninstall (10 minutes)
-- [ ] Put a file in the user-data folder (`<folder>/roms/test.rom`), run `install-portable.sh` again: still one entry, plugin still works, your file is still there.
-- [ ] `sh /tmp/<Name>-<version>/uninstall-portable.sh`: the plugin is gone from the list, a project that used it opens without it, your file is kept.
+- [ ] Put a file in the user-data folder (`<folder>/roms/test.rom`), run `install.sh` again: still one entry, plugin still works, your file is still there.
+- [ ] `sh /tmp/<Name>-<version>/uninstall.sh`: the plugin is gone from the list, a project that used it opens without it, your file is kept.
 
 ## 5. Optional: another location
-Only if `mount` showed no `noexec` for it: `install-portable.sh -t /media/<id>/Synths`. If the plugin loads from there, removable-media installs work.
+Only if `mount` showed no `noexec` for it: `install.sh -t /media/<id>/Synths`. If the plugin loads from there, removable-media installs work.
 
 ## If something goes wrong
 Stop MPC (`systemctl stop acvs`), copy the newest `MPC.settings.bak-*` over `MPC.settings` (or your `~/MPC.settings.backup`), delete the plugin folder,

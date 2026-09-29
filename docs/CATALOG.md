@@ -151,14 +151,19 @@ here first and move to its own repo (recommended, for community ownership) once 
 
 ### Layout migration: one self-contained folder per plugin (started 2026-09-29)
 Locrian's installer uses a drop-in folder in `Synths` (`docs/CATALOG_SPEC.md`, "Portable layout"). Goal: make it our only layout.
-- [x] `release.py` writes `portable/<skin>/` and `install-portable.sh` / `uninstall-portable.sh` (preview, default layout unchanged);
-      `catalog_check.py` verifies it; the installer is tested against a copy of `MPC.settings`.
-- [ ] Device test passes (`docs/PORTABLE_TEST.md`): loads from `/sdcard/Synths/<skin>/`, upgrades an old install without duplicating,
-      keeps user files, uninstalls cleanly, and (optional) works from removable media.
-- [ ] Ports stop hardcoding `/sdcard/...` (JV-880 `MODULE_DIR`, Crate Digger, Monomodule paths) and use `MODULE_SUBDIR`.
-- [ ] Re-release the current plugins in the new layout.
-- [ ] The portable folder becomes the only layout: `install.sh` becomes the portable installer, the duplicate `payload/` goes, the
-      manifest gets a layout field, and the docs, guides (Install, Build, Workflow, Setup) and site cards are updated to match.
+- [x] `release.py` writes `portable/<skin>/`; `catalog_check.py` verifies it; the installer is tested against a copy of `MPC.settings`.
+- [x] Device test passes (`docs/PORTABLE_TEST.md`; Dexed on a Force, 2026-09-29): loads from `/sdcard/Synths/<skin>/` and from a USB stick,
+      upgrades an old install without duplicating, keeps user files, uninstalls cleanly. Results in `docs/NOTES.md`.
+- [x] Ports stop hardcoding `/sdcard/...` and use `MODULE_SUBDIR`: Dexed, JV-880 and Monomodule done (their old-layout installs still
+      resolve to the same folder); Crate Digger already used `dladdr`; `gen_vst.py` warns about a fixed path.
+- [x] The portable folder is the only layout (2026-09-29): `install.sh` / `uninstall.sh` are the portable installers (they also move an
+      old `/sdcard/vst` install and its user files over), the duplicate `payload/` and `plugin.xml` are gone, the manifest has
+      `layout: "portable"`; `catalog_check.py` still accepts old-layout zips so earlier releases stay listed.
+- [ ] Monomodule: rewrite its own `release/package.sh`, `install.sh` and `uninstall.sh` for the plugin folder (two folders, One and FX;
+      the engine reads the user's OS file at run time, so both need it).
+- [ ] Re-release the current plugins in the new layout (Dexed, JV-880, Crate Digger, Acid, Euclidier, Maze Voice, Machinedrum, Monomodule)
+      and test one with big data (JV-880 ROMs) on a device.
+- [ ] Guides (Install, Build, Workflow, Setup) and site cards checked against the new layout.
 
 ### Phase 4: Install and update from the device or desktop
 - [ ] Hardware check: does the device have `wget`/`curl` with modern TLS, DNS, and room to stage a zip? Record in NOTES.md.

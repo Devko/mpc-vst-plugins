@@ -47,7 +47,7 @@ for the pattern). This applies to every future port, not just ones that hit the 
       layout never shows it; build the test fixture to the port's layout.
 - [ ] Never hardcode `/sdcard/...` in an engine. Set `"defines": {"MODULE_SUBDIR": "\"engine\""}` in vst.json and
       the wrapper passes `<dir of the .so>/engine` to `create()`, found at runtime with `dladdr` (`wrapper/plugin_dir.h`,
-      also usable directly via `mpc_plugin_dir()`), so the plugin works from `/sdcard/vst`, `/media/*/...` or anywhere
+      also usable directly via `mpc_plugin_dir()`), so the plugin works from `/sdcard/Synths`, `/media/*/Synths` or anywhere
       else. The `.so` must be dlopen'd by absolute path (MPC does this from the plugin list's `file=`). `gen_vst.py` warns when a
       `defines` value is a fixed `/sdcard` or `/media` path and `MODULE_SUBDIR` is not set (an absolute `MODULE_DIR` may stay as the fallback).
 - [ ] State saved via chunks (`effGetChunk`/`effSetChunk`).
@@ -89,7 +89,7 @@ for the pattern). This applies to every future port, not just ones that hit the 
       layout lines, so each mode shows its own set in the same space (SKIN_STUDIO "Mode panels").
 
 ## 4. Device
-- [ ] `.so` → `/sdcard/vst/`, skin → `/sdcard/Synths/<vendor> - VST - <name>/`.
+- [ ] The plugin is one folder, `/sdcard/Synths/<vendor> - VST - <name>/`: the `.so`, `Plugin Skins/`, `version.xml` and any data next to the `.so`.
 - [ ] `pluginList-arm` entry (MPC stopped, settings backed up), then restart (ask first).
 - [ ] User test: list → insert → play → skin → Q-Links → save/reload project. Record results in NOTES.md.
 

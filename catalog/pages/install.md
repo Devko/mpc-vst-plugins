@@ -66,7 +66,7 @@ A plugin with the **Build it yourself** badge has no download: its build embeds 
 The exact command, and any extra tools it needs, are on the plugin's card and in its README.
 
 ## Update to a new version
-Run the new version's `install.sh` the same way. It replaces the old files in place and keeps the same plugin entry, so your projects still find the plugin.
+Run the new version's `install.sh` the same way. It replaces the old files in place and keeps the same plugin entry, so your projects still find the plugin. Files you added yourself (ROMs, kits, banks) are kept. If you installed the plugin with an older release (the `.so` in `/sdcard/vst`), the installer replaces that install and moves your files into the plugin's new folder in `/sdcard/Synths`.
 
 The catalog shows a **Compat** number for each version. If it goes up, the parameters changed, and projects saved with an older version will sound different. Read the release notes before updating a plugin you use in finished songs.
 
