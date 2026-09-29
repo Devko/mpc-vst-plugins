@@ -48,7 +48,8 @@ for the pattern). This applies to every future port, not just ones that hit the 
 - [ ] Never hardcode `/sdcard/...` in an engine. Set `"defines": {"MODULE_SUBDIR": "\"engine\""}` in vst.json and
       the wrapper passes `<dir of the .so>/engine` to `create()`, found at runtime with `dladdr` (`wrapper/plugin_dir.h`,
       also usable directly via `mpc_plugin_dir()`), so the plugin works from `/sdcard/vst`, `/media/*/...` or anywhere
-      else. The `.so` must be dlopen'd by absolute path (MPC does this from the plugin list's `file=`).
+      else. The `.so` must be dlopen'd by absolute path (MPC does this from the plugin list's `file=`). `gen_vst.py` warns when a
+      `defines` value is a fixed `/sdcard` or `/media` path and `MODULE_SUBDIR` is not set (an absolute `MODULE_DIR` may stay as the fallback).
 - [ ] State saved via chunks (`effGetChunk`/`effSetChunk`).
 - [ ] Offline x86 test: `tools/test_port.sh <port>/vst.json` prints PASSED (instances, parameter round-trip,
       options, popups, MIDI → audio, chunk restore, under ASan).
