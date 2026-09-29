@@ -21,6 +21,13 @@ folder and register it from a file inside it (received from Locrian's builds, 20
   Plugin Skins/        the skin
   <extras>             any engine data, next to the .so (relative paths like `engine/` for MODULE_SUBDIR)
 ```
+The zip also carries `install-portable.sh` / `uninstall-portable.sh` (preview; `sh install-portable.sh [-y] [-t <synths-dir>]`,
+default target `/sdcard/Synths`). The installer copies the folder in, registers it with `%payload-path%` replaced by the
+Synths folder, replaces an older entry of the same `uid` (so an old `/sdcard/vst/...` install is not duplicated), removes the
+old `.so`, and keeps the paths in the manifest's `user_data` (folders where the user puts ROMs or kits, given to `release.py`
+with `--user-data`) across upgrades and uninstalls. It is tested against a copy of `MPC.settings` (`python3 tools/test_catalog.py`),
+not yet on a device (`docs/PORTABLE_TEST.md`).
+
 `plugin-meta.xml` is exactly our `plugin.xml` except `file=`: `%payload-path%` is a placeholder the installer replaces with
 the directory it copied the folder into (for example `/media/<card>/Synths`). The folder name in `file=` must equal the
 folder's own name. Because the `.so` can end up anywhere, engines must find their data next to it
@@ -39,6 +46,7 @@ folder's own name. Because the `.so` can end up anywhere, engines must find thei
 | `so`, `so_dir` | library file name and the directory in the plugin-list entry |
 | `skin`, `extras` | skin folder name; extra payload paths under `vst/` |
 | `portable` | `portable/<skin>` when the zip has the portable layout, else null |
+| `user_data` | list of folders inside the plugin folder that hold the user's own files; the portable installer keeps them |
 | `arch` | ELF machine of the `.so`; the catalog accepts `armv7` only |
 | `max_glibc` | highest `GLIBC_x.y` symbol version needed; the catalog limit is 2.36 |
 | `about`, `requires` | one-line description; extra requirements |

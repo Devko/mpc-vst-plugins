@@ -40,6 +40,8 @@ ap.add_argument("--id", help="catalog id: lowercase letters, digits, hyphens (de
 ap.add_argument("--repo", help="source repo, owner/name (for the catalog manifest)")
 ap.add_argument("--license", help="SPDX license id of the plugin (for the catalog manifest)")
 ap.add_argument("--requires", default="", help="extra requirements, one line (e.g. 'MockbaMod firmware')")
+ap.add_argument("--user-data", action="append", default=[], metavar="REL",
+                help="path inside the plugin folder where the USER puts their own files (ROMs, kits); the portable installer keeps it on upgrade")
 ap.add_argument("--no-portable", action="store_true", help="omit the portable/<skin>/ folder (the plugin-meta.xml layout)")
 ap.add_argument("-o", "--out", default="dist")
 a = ap.parse_args()
@@ -95,9 +97,14 @@ if not a.no_portable:
     meta = re.sub(r'(\s)file="[^"]*"', lambda m: '%sfile="%%payload-path%%/%s/%s"' % (m.group(1), skin_name, so_name), entry, count=1)
     open(os.path.join(pdir, "plugin-meta.xml"), "w").write(meta + "\n")
 
+for d in a.user_data:
+    if not re.fullmatch(r"[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*", d) or ".." in d.split("/"):
+        raise SystemExit("--user-data must be a relative path of letters, digits, . _ - and / (no spaces or ..): %r" % d)
 sub = {"@NAME@": name, "@SO_DIR@": so_dir, "@SO_NAME@": so_name, "@SKIN@": skin_name,
-       "@EXTRAS@": " ".join("'%s'" % e for e in extras), "@VERSION@": a.version}
-for script in ("install.sh", "uninstall.sh"):
+       "@EXTRAS@": " ".join("'%s'" % e for e in extras), "@VERSION@": a.version,
+       "@UID@": attr["uid"], "@LEGACY_SO@": so_path, "@USER_DATA@": " ".join(a.user_data)}
+scripts = ["install.sh", "uninstall.sh"] + ([] if a.no_portable else ["install-portable.sh", "uninstall-portable.sh"])
+for script in scripts:
     text = open(os.path.join(HERE, "release", script)).read()
     for k, v in sub.items():
         text = text.replace(k, v)
@@ -113,9 +120,13 @@ if bench:
          "[mpc-vst-plugins](https://github.com/sd88me/mpc-vst-plugins): worst p99 **%.1f%%** of one audio block, worst "
          "block %.1f%%, verdict **%s**. As a rule of thumb, several instances run comfortably when p99 is under 15%%.\n"
          % (bench["p99_pct"], bench["max_pct"], bench["verdict"]))
-portable_md = ("\n## Installers that take a Synths folder\n\n`portable/%s/` is the same plugin as one self-contained folder: the skin, "
-               "`plugin-meta.xml` (its `file=` uses a `%%payload-path%%` placeholder) and the `.so`. It is for installers that copy a "
-               "folder into the device's `Synths` content folder and register it from `plugin-meta.xml`.\n" % skin_name) if portable else ""
+portable_md = ("\n## The portable layout (preview)\n\n`portable/%s/` is the same plugin as one self-contained folder: the skin, "
+               "`plugin-meta.xml` (its `file=` uses a `%%payload-path%%` placeholder) and the `.so`. Installers that copy a folder into "
+               "the device's `Synths` content folder can register it from `plugin-meta.xml`.\n\n"
+               "This package also has `install-portable.sh` and `uninstall-portable.sh`, which do that on the device "
+               "(`sh install-portable.sh [-y] [-t <synths-dir>]`, default `/sdcard/Synths`). They replace an older install of "
+               "this plugin instead of duplicating it and keep files you added yourself. **Preview:** tested against a copy of "
+               "`MPC.settings`, not yet on a device; the normal install above is the proven path.\n" % skin_name) if portable else ""
 extra_md = "".join("- `payload/vst/%s` → `%s/%s`\n" % (e, so_dir, e) for e in extras)
 install_md = """# {name} {ver}
 
@@ -206,6 +217,7 @@ manifest = {
     "skin": skin_name,
     "extras": extras,
     "portable": portable,
+    "user_data": a.user_data,
     "arch": elf_machine(a.so),
     "max_glibc": max_glibc(a.so),
     "param_compat": int(a.version.split(".")[0]),

@@ -483,5 +483,103 @@ class BuildYourselfTest(Base):
         self.assertIn("<link href=\"https://github.com/a/b/tree/v0.1.0\"/>", catalog_site.atom(cat))
 
 
+SETTINGS_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<PROPERTIES>
+  <VALUE name="SynthContentLocations" val="/sdcard/Synths"/>
+  <VALUE name="pluginList-arm">
+    <KNOWNPLUGINS>
+      <PLUGIN name="Other" format="VST" manufacturer="x" version="1.0" file="/sdcard/vst/other.so" uid="6f746872" isInstrument="1"/>
+      <PLUGIN name="Test Synth" format="VST" manufacturer="Acme" version="1.0" file="/sdcard/vst/test_synth.so" uid="1a2b3c4d" isInstrument="1"/>
+    </KNOWNPLUGINS>
+  </VALUE>
+</PROPERTIES>
+"""
+
+
+class InstallerTest(Base):
+    """Runs the generated install-portable.sh / uninstall-portable.sh against a copy of MPC.settings (device checks skipped)."""
+    SKIN = "Acme - VST - Test Synth"
+
+    def setUp(self):
+        super().setUp()
+        import xml.etree.ElementTree  # noqa: F401  (used by settings())
+        z = self.build(extra=("--user-data", "roms"))
+        self.pkg = os.path.join(self.tmp, "pkg")
+        with zipfile.ZipFile(z) as zf:
+            zf.extractall(self.pkg)
+        self.top = os.path.join(self.pkg, os.listdir(self.pkg)[0])
+        self.synths = os.path.join(self.tmp, "device", "Synths")
+        self.legacy_root = os.path.join(self.tmp, "device", "root")
+        self.settings_path = os.path.join(self.tmp, "MPC.settings")
+        open(self.settings_path, "w").write(SETTINGS_XML)
+        os.makedirs(os.path.join(self.legacy_root, "sdcard", "vst"))
+        open(os.path.join(self.legacy_root, "sdcard", "vst", "test_synth.so"), "wb").write(b"old")
+
+    def run_script(self, script, *args):
+        env = dict(os.environ, MPC_INSTALL_TEST="1", MPC_SETTINGS=self.settings_path, MPC_LEGACY_ROOT=self.legacy_root)
+        return subprocess.run(["sh", os.path.join(self.top, script), "-y", "-t", self.synths, *args], cwd=self.top, env=env,
+                              capture_output=True, text=True)
+
+    def entries(self):
+        import xml.etree.ElementTree as ET
+        root = ET.parse(self.settings_path).getroot()
+        return {e.get("name"): e.get("file") for e in root.iter("PLUGIN")}
+
+    def test_fresh_and_legacy_upgrade(self):
+        r = self.run_script("install-portable.sh")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        folder = os.path.join(self.synths, self.SKIN)
+        for f in ("test_synth.so", "plugin-meta.xml", "version.xml", os.path.join("Plugin Skins", "TUI.json")):
+            self.assertTrue(os.path.exists(os.path.join(folder, f)), f)
+        e = self.entries()
+        self.assertEqual(e["Test Synth"], os.path.join(folder, "test_synth.so"))   # %payload-path% became the Synths folder
+        self.assertEqual(e["Other"], "/sdcard/vst/other.so")                        # a neighbour is untouched
+        self.assertEqual(len(e), 2)                                                 # replaced, not duplicated
+        self.assertFalse(os.path.exists(os.path.join(self.legacy_root, "sdcard", "vst", "test_synth.so")))
+        self.assertTrue([n for n in os.listdir(self.tmp) if n.startswith("MPC.settings.bak-")])
+
+    def test_reinstall_is_idempotent_and_keeps_user_files(self):
+        self.assertEqual(self.run_script("install-portable.sh").returncode, 0)
+        rom = os.path.join(self.synths, self.SKIN, "roms", "mine.rom")
+        os.makedirs(os.path.dirname(rom))
+        open(rom, "w").write("user data")
+        open(os.path.join(self.synths, self.SKIN, "stale.txt"), "w").write("not shipped")
+        r = self.run_script("install-portable.sh")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(open(rom).read(), "user data")                              # the user's files survive an upgrade
+        self.assertFalse(os.path.exists(os.path.join(self.synths, self.SKIN, "stale.txt")))
+        self.assertEqual(sorted(os.listdir(self.synths)), [self.SKIN])              # no .new/.old leftovers
+        self.assertEqual(len(self.entries()), 2)
+
+    def test_uninstall_removes_entry_and_folder_but_keeps_user_files(self):
+        self.assertEqual(self.run_script("install-portable.sh").returncode, 0)
+        rom = os.path.join(self.synths, self.SKIN, "roms", "mine.rom")
+        os.makedirs(os.path.dirname(rom))
+        open(rom, "w").write("user data")
+        r = self.run_script("uninstall-portable.sh")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(list(self.entries()), ["Other"])
+        self.assertEqual(open(rom).read(), "user data")
+        self.assertFalse(os.path.exists(os.path.join(self.synths, self.SKIN, "test_synth.so")))
+
+    def test_uninstall_leaves_no_folder_without_user_files(self):
+        self.assertEqual(self.run_script("install-portable.sh").returncode, 0)
+        self.assertEqual(self.run_script("uninstall-portable.sh").returncode, 0)
+        self.assertEqual(os.listdir(self.synths), [])
+
+    def test_refuses_unsafe_target_and_missing_settings(self):
+        r = self.run_script("install-portable.sh", "-t", "/tmp/a&b")
+        self.assertNotEqual(r.returncode, 0)
+        os.remove(self.settings_path)
+        self.assertNotEqual(self.run_script("install-portable.sh").returncode, 0)
+
+    def test_settings_untouched_when_the_edit_would_break_it(self):
+        broken = SETTINGS_XML.replace("</PROPERTIES>", "")   # not valid XML to begin with: the check must refuse to replace it
+        open(self.settings_path, "w").write(broken)
+        r = self.run_script("install-portable.sh")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(open(self.settings_path).read(), broken)
+
+
 if __name__ == "__main__":
     unittest.main()

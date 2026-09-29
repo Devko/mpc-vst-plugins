@@ -135,6 +135,14 @@ def check(zpath, catalog=False, expect_id=None, expect_repo=None):
             if meta and norm(meta) != norm(entry):
                 err("plugin-meta.xml differs from plugin.xml apart from file=")
 
+    for d in m.get("user_data", []):
+        if not re.fullmatch(r"[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*", d) or ".." in d.split("/"):
+            err("bad user_data path %r" % d)
+    if portable:
+        for sc in ("install-portable.sh", "uninstall-portable.sh"):
+            if sc not in files:
+                err("missing " + sc)
+
     # checksums: every file listed and matching, nothing unlisted
     listed = {}
     for line in files.get("SHA256SUMS", b"").decode().splitlines():
@@ -153,8 +161,9 @@ def check(zpath, catalog=False, expect_id=None, expect_repo=None):
 
     # installer: regenerate from the current template and compare
     sub = {"@NAME@": m["name"], "@SO_DIR@": m["so_dir"], "@SO_NAME@": m["so"], "@SKIN@": m["skin"],
-           "@EXTRAS@": " ".join("'%s'" % e for e in m.get("extras", [])), "@VERSION@": m["version"]}
-    for script in ("install.sh", "uninstall.sh"):
+           "@EXTRAS@": " ".join("'%s'" % e for e in m.get("extras", [])), "@VERSION@": m["version"],
+           "@UID@": str(m["uid"]), "@LEGACY_SO@": posixpath.join(m["so_dir"], m["so"]), "@USER_DATA@": " ".join(m.get("user_data", []))}
+    for script in ["install.sh", "uninstall.sh"] + (["install-portable.sh", "uninstall-portable.sh"] if m.get("portable") else []):
         tpl = os.path.join(HERE, "release", script)
         if os.path.exists(tpl) and script in files:
             text = open(tpl).read()
