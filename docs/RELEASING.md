@@ -2,7 +2,9 @@
 
 A release is **one zip** people can share around: `<Name>-<version>-mpc-armv7.zip`. It unpacks to a folder with
 the plugin, its skin, `install.sh` / `uninstall.sh` and a generated `INSTALL.md` (scripted and manual steps,
-requirements, CPU result, checksums).
+requirements, CPU result, checksums). Unless `--no-portable` is passed it also holds `portable/<skin>/`, the same plugin as
+one drop-in folder for installers that copy a folder into `Synths` and read its `plugin-meta.xml`
+(`docs/CATALOG_SPEC.md`, "Portable layout").
 
 ## Checklist
 1. **Build** with the port's `build.sh` (armhf, `arm32v7/gcc:12`; highest GLIBC symbol ≤ 2.36).

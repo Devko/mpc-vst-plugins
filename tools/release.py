@@ -11,6 +11,8 @@ The zip unpacks to <Name>-<version>/ with:
   plugin.xml                  the pluginList-arm <PLUGIN> entry
   payload/vst/...             the .so (+ --extra payload), copied to the directory in the entry's file="..."
   payload/Synths/<skin>/      the skin, copied to /sdcard/Synths
+  portable/<skin>/            the same plugin as ONE self-contained folder for "drop it into Synths" installers: version.xml,
+                              plugin-meta.xml (file="%payload-path%/<skin>/<so>"), the .so, Plugin Skins/ and any extras
   SHA256SUMS
 Standard library only. See docs/RELEASING.md.
 """
@@ -38,6 +40,7 @@ ap.add_argument("--id", help="catalog id: lowercase letters, digits, hyphens (de
 ap.add_argument("--repo", help="source repo, owner/name (for the catalog manifest)")
 ap.add_argument("--license", help="SPDX license id of the plugin (for the catalog manifest)")
 ap.add_argument("--requires", default="", help="extra requirements, one line (e.g. 'MockbaMod firmware')")
+ap.add_argument("--no-portable", action="store_true", help="omit the portable/<skin>/ folder (the plugin-meta.xml layout)")
 ap.add_argument("-o", "--out", default="dist")
 a = ap.parse_args()
 
@@ -76,6 +79,22 @@ for spec in a.extra:
 open(os.path.join(root, "plugin.xml"), "w").write(entry + "\n")
 shutil.copy2(os.path.join(HERE, "release", "plugin_list.awk"), root)
 
+# Portable layout: the .so lives INSIDE the skin folder and plugin-meta.xml names it with a %payload-path% placeholder that
+# the installer fills in with wherever it puts the folder (e.g. /media/<card>/Synths). Engines find their data next to the
+# .so (wrapper/plugin_dir.h, MODULE_SUBDIR), so extras go under the same folder.
+portable = None
+if not a.no_portable:
+    portable = "portable/" + skin_name
+    pdir = os.path.join(root, "portable", skin_name)
+    shutil.copytree(a.skin, pdir)
+    shutil.copy2(a.so, os.path.join(pdir, so_name))
+    for e in extras:
+        src_e, dst_e = os.path.join(root, "payload", "vst", e), os.path.join(pdir, e)
+        os.makedirs(os.path.dirname(dst_e), exist_ok=True)
+        shutil.copytree(src_e, dst_e, symlinks=True) if os.path.isdir(src_e) else shutil.copy2(src_e, dst_e)
+    meta = re.sub(r'(\s)file="[^"]*"', lambda m: '%sfile="%%payload-path%%/%s/%s"' % (m.group(1), skin_name, so_name), entry, count=1)
+    open(os.path.join(pdir, "plugin-meta.xml"), "w").write(meta + "\n")
+
 sub = {"@NAME@": name, "@SO_DIR@": so_dir, "@SO_NAME@": so_name, "@SKIN@": skin_name,
        "@EXTRAS@": " ".join("'%s'" % e for e in extras), "@VERSION@": a.version}
 for script in ("install.sh", "uninstall.sh"):
@@ -94,6 +113,9 @@ if bench:
          "[mpc-vst-plugins](https://github.com/sd88me/mpc-vst-plugins): worst p99 **%.1f%%** of one audio block, worst "
          "block %.1f%%, verdict **%s**. As a rule of thumb, several instances run comfortably when p99 is under 15%%.\n"
          % (bench["p99_pct"], bench["max_pct"], bench["verdict"]))
+portable_md = ("\n## Installers that take a Synths folder\n\n`portable/%s/` is the same plugin as one self-contained folder: the skin, "
+               "`plugin-meta.xml` (its `file=` uses a `%%payload-path%%` placeholder) and the `.so`. It is for installers that copy a "
+               "folder into the device's `Synths` content folder and register it from `plugin-meta.xml`.\n" % skin_name) if portable else ""
 extra_md = "".join("- `payload/vst/%s` → `%s/%s`\n" % (e, so_dir, e) for e in extras)
 install_md = """# {name} {ver}
 
@@ -140,12 +162,12 @@ restarts MPC). Projects that use the plugin will load without it.
    </VALUE>
    ```
 5. Start MPC: `systemctl start acvs`. If MPC shows default settings, restore your backup (the XML was malformed).
-{bench}
+{portable_md}{bench}
 ## Files
 
 See `SHA256SUMS`. Made with [mpc-vst-plugins](https://github.com/sd88me/mpc-vst-plugins).
 """.format(name=name, ver=a.version, about=(a.about + "\n\n") if a.about else "", kind=kind, top=top, so=so_name,
-           so_path=so_path, skin=skin_name, extra_md=extra_md, bench=b,
+           so_path=so_path, skin=skin_name, extra_md=extra_md, bench=b, portable_md=portable_md,
            where="Instrument plugins" if kind == "instrument" else "Insert effects")
 open(os.path.join(root, "INSTALL.md"), "w").write(install_md)
 
@@ -183,6 +205,7 @@ manifest = {
     "so_dir": so_dir,
     "skin": skin_name,
     "extras": extras,
+    "portable": portable,
     "arch": elf_machine(a.so),
     "max_glibc": max_glibc(a.so),
     "param_compat": int(a.version.split(".")[0]),
