@@ -9,7 +9,7 @@ You do not need to be a programmer. This page gets a computer ready for the othe
 
 ## What you need
 **To install a downloaded plugin** you only need:
-- A computer on the same network as your device, with a terminal that has `ssh` and `scp`. macOS and Linux have them; Windows 10 and 11 have them in PowerShell.
+- A computer on the same network as your device, with a terminal that has `ssh` and `scp`. macOS and Linux have them; Windows 10 and 11 have them in PowerShell. Or, if you prefer clicking to typing, an SSH app such as [Termius](https://termius.com/), which also has a file browser (see [Install](install.html#easy-option-use-termius-instead-of-typing-commands)).
 - **Root SSH access** to your MPC or Force, and its IP address. Stock MPC OS does not offer this; you need a modded unit.
 
 **To build a plugin yourself** (a "Build it yourself" plugin, or your own port) you also need:
@@ -44,7 +44,7 @@ Find the IP address in the device's network settings, or in your router's list o
 ssh root@<device-ip>
 ```
 
-Answer `yes` to the fingerprint question. You should get a shell prompt on the device; type `exit` to leave. If this does not work, fix it first, because every install uses it.
+Answer `yes` to the fingerprint question. You should get a shell prompt on the device; type `exit` to leave. If this does not work, fix it first, because every install uses it. In an SSH app such as Termius, the same test is adding a host with the IP and the username `root`, then connecting.
 
 ## 5. Keep your files in the right place
 On Windows with WSL, work inside your Ubuntu home folder (`cd ~`), not under `/mnt/c/`. Builds are much faster there and file permissions behave.

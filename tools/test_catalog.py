@@ -246,6 +246,7 @@ class PagesTest(unittest.TestCase):
         html = catalog_site.render_page([p for p in pages if p["slug"] == "install"][0], pages)
         self.assertIn('id="plugins-you-build-yourself"', html)   # the card links here
         self.assertIn("on <strong>your computer</strong>", html)
+        self.assertIn('id="easy-option-use-termius-instead-of-typing-commands"', html)   # linked from the Setup page
         idx = catalog_site.render({"schema": 1, "generated": "x", "plugins": []}, pages)
         self.assertIn("Run this on your computer (needs Docker), not on the device.", idx)
         self.assertIn('install.html#plugins-you-build-yourself', idx)

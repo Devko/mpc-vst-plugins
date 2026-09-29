@@ -41,6 +41,15 @@ ssh root@<device-ip> sh /tmp/Name-1.2.0/install.sh
 
 It checks the device, copies the plugin and its skin, backs up `MPC.settings` next to the original, adds the plugin to MPC's plugin list and restarts MPC. Add `-y` to skip the confirmation question. If anything fails, MPC is restarted and your settings are left unchanged.
 
+## Easy option: use Termius instead of typing commands
+If you would rather click than type, use an SSH app with a file browser. [Termius](https://termius.com/) is one (macOS, Windows, Linux, iPhone, iPad and Android); other SFTP and SSH apps work the same way. You do the same two things as steps 2 and 3, with the mouse:
+
+1. **Add your device as a host.** In Termius, add a new host with the device's IP address and the username `root`, using the same login you would use with `ssh`. Connect once to check it works.
+2. **Copy the folder over.** Unzip the plugin's zip on your computer first. Open the host's file browser (SFTP), go to `/tmp` on the device, and drag the unzipped plugin folder into it.
+3. **Run the installer.** Open a terminal on the same host and type `sh /tmp/<the-folder-name>/install.sh` (Tab completes the folder name). Save your project first: it stops and restarts MPC. Answer `y` when it asks, or add `-y` to skip the question.
+
+The app's buttons and plans change over time, so check Termius's own help if a screen looks different. It is only a nicer way to do steps 2 and 3: the plugin, the checksum check and the installer are the same.
+
 ## 4. Use it
 On the device, add the plugin to a track from the plugin browser: instruments under Instrument plugins, effects under Insert effects. Its screen appears in the plugin view, and the Q-Links follow the page. Save and reload a project once to make sure it comes back.
 
