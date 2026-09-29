@@ -55,7 +55,8 @@ thread's ticks on the device during actual playback instead.
 | Crate Digger (stream player, idle) | 0.1% | 0.1% | 1.0% | 5.9% | PASS |
 
 ## Gen2 devices
-Untested: nobody on the project owns one yet. `tools/probe_device.sh` (read-only) reports the CPU, whether the
+One user report (MPC Live III, OS 3.9.1, 2026-09-29): JV-880's armv7 build installed and ran, which points to a 32-bit
+MPC there too (docs/NOTES.md, "Gen2"). No probe or bench output yet. `tools/probe_device.sh` (read-only) reports the CPU, whether the
 `MPC` binary is 32- or 64-bit, the audio worker layout and which plugin formats MPC has compiled in. If the
 binary is 64-bit, ports need an aarch64 build (`arm64v8/gcc:12`) and possibly a different `pluginList-…` key, and
 `bench.c` needs building for aarch64 too. A PASS on Gen1 should be comfortable on faster Gen2 CPUs, but only a

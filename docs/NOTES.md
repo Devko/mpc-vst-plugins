@@ -728,3 +728,31 @@ Checked offline only: `tools/test_catalog.py` (45 tests, dash), and a real Dexed
 a copy of a real `MPC.settings` with a fake old install (one entry, old `.so` gone, user bank merged with the 33 shipped ones).
 **Not yet run:** under BusyBox (no `busybox` on the build machine this time) or on a device with an old-layout install that has user
 data, e.g. JV-880 ROMs.
+
+## Gen2 (MPC Live III): first report and open questions (2026-09-29, not verified by us)
+**User report, not probed:** a Gen2 owner installed and ran JV-880 (our armv7 build) on an MPC Live III with MPC OS 3.9.1,
+and sent a screenshot and feedback. A 64-bit process cannot `dlopen` a 32-bit `.so`, so if this was the stock armv7
+release, **MPC on the Live III is still a 32-bit (armv7) program** and today's builds, skins and portable folder carry over
+with no second build. Still to confirm with `tools/probe_device.sh` ("MPC binary: 32-bit"). Also unknown: which installer
+version they used, whether they installed by hand, and the settings path it found.
+
+Published spec of that unit (from the user, not read by us): board inMusic ACVG / AZ04, Rockchip RK3588, 4x Cortex-A76
+@ 2.4 GHz + 4x Cortex-A55 @ 1.8 GHz, 8 GB RAM, no swap, Mali-G610 (Panthor), 16 GB eMMC, 128 GB NVMe split into `/synths`
+(40 GiB) and `/nvme` (79 GiB), kernel `6.18.26-imb-...-rt4` (AArch64, `PREEMPT_RT`).
+
+What reading the repo against that spec turned up (offline review, nothing tested):
+- **The kernel is 64-bit even if MPC is 32-bit.** `uname -m` then says `aarch64`, and `tools/release/install.sh`
+  (`case "$(uname -m)" in armv7*`) would refuse a build that works. If the probe confirms a 32-bit MPC, check the MPC binary's
+  ELF class instead of `uname -m`.
+- **Settings path:** installers look in `/media/az01-internal/Settings/*/`. The Live III board is AZ04, so it may be
+  `/media/az04-internal`. Unconfirmed.
+- **Synths location:** `/synths` on NVMe is probably one of the `SynthContentLocations`; check whether `/sdcard/Synths` exists.
+- **The VST2 structs are 64-bit safe** (`intptr_t` fields; the x86_64 host test exercises that layout), so a 64-bit
+  build needs only an aarch64 toolchain (`arm64v8/gcc:12`), not wrapper changes. Only relevant if a later OS ships a 64-bit MPC.
+- **CPU:** an A76 core should be roughly 2.5-3.5x a Gen1 A17 core for the same code; an A55 core is in-order and slower
+  than an A17 per clock. What matters is which cores MPC puts `AudioWorker*` on (probe output) and the sample rate and
+  block size (the 2902 µs budget assumes 44.1 kHz / 128 frames). `tools/bench.sh` pins to core 1, which may be an A55.
+- **Skin canvas:** layouts assume the Gen1 1280 x 628 canvas under MPC's header; the Live III screen size and offsets
+  are unconfirmed. Compare the user's screenshot against a Force screenshot of the same page.
+- Wanted from a Gen2 owner: probe output, glibc version, audio rate and period, screen size, the `jv880-emu` thread's CPU%
+  and core while playing chords (method above, in the bench.sh section).
