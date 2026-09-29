@@ -66,6 +66,64 @@ class CatalogTest(Base):
         self.assertEqual((m["id"], m["arch"], m["max_glibc"], m["param_compat"]), ("test-synth", "armv7", "2.30", 1))
         self.assertEqual(len(rec["sha256"]), 64)
 
+    def resum(self, zpath, suffix, fn):
+        """Modify one member and fix SHA256SUMS, so only the check under test can object."""
+        import hashlib
+        out = zpath + ".r.zip"
+        with zipfile.ZipFile(zpath) as zin:
+            data = {i.filename: zin.read(i.filename) for i in zin.infolist()}
+            infos = list(zin.infolist())
+        for n in data:
+            if n.endswith(suffix):
+                data[n] = fn(data[n])
+        top = infos[0].filename.split("/")[0]
+        sums = "\n".join("%s  %s" % (hashlib.sha256(d).hexdigest(), n[len(top) + 1:]) for n, d in sorted(data.items())
+                         if not n.endswith("/") and not n.endswith("SHA256SUMS")) + "\n"
+        data[top + "/SHA256SUMS"] = sums.encode()
+        with zipfile.ZipFile(out, "w") as zout:
+            for i in infos:
+                zout.writestr(i, data[i.filename])
+        return out
+
+    def test_portable_layout_matches_the_payload(self):
+        eng = os.path.join(self.tmp, "engine")
+        os.makedirs(eng)
+        open(os.path.join(eng, "banks.bin"), "wb").write(b"data")
+        z = self.build(extra=("--extra", eng + ":vst/engine"))
+        errors, warnings, rec = catalog_check.check(z, catalog=True)
+        self.assertEqual((errors, warnings), ([], []))
+        skin = "Acme - VST - Test Synth"
+        self.assertEqual(rec["manifest"]["portable"], "portable/" + skin)
+        with zipfile.ZipFile(z) as zf:
+            names = zf.namelist()
+            top = names[0].split("/")[0]
+            meta = zf.read("%s/portable/%s/plugin-meta.xml" % (top, skin)).decode()
+            self.assertIn('file="%%payload-path%%/%s/test_synth.so"' % skin, meta)
+            self.assertNotIn("/sdcard", meta)
+            for need in ("version.xml", "Plugin Skins/TUI.json", "test_synth.so", "engine/banks.bin"):
+                self.assertIn("%s/portable/%s/%s" % (top, skin, need), names)
+            self.assertEqual(zf.read("%s/portable/%s/test_synth.so" % (top, skin)), zf.read(top + "/payload/vst/test_synth.so"))
+
+    def test_portable_is_optional(self):
+        z = self.build(extra=("--no-portable",))
+        errors, warnings, rec = catalog_check.check(z, catalog=True)
+        self.assertEqual((errors, warnings), ([], []))
+        self.assertIsNone(rec["manifest"]["portable"])
+        with zipfile.ZipFile(z) as zf:
+            self.assertFalse([n for n in zf.namelist() if "/portable/" in n])
+
+    def test_portable_tampering_is_caught(self):
+        z = self.build()
+        bad = self.resum(z, "plugin-meta.xml", lambda d: d.replace(b"%payload-path%", b"/sdcard/vst"))
+        e, _, _ = catalog_check.check(bad)
+        self.assertTrue(any("plugin-meta.xml file=" in x for x in e), e)
+        bad = self.resum(z, "portable/Acme - VST - Test Synth/test_synth.so", lambda d: d + b"x")
+        e, _, _ = catalog_check.check(bad)
+        self.assertTrue(any("differs from payload" in x for x in e), e)
+        bad = self.resum(z, "plugin-meta.xml", lambda d: d.replace(b'name="Test Synth"', b'name="Other"'))
+        e, _, _ = catalog_check.check(bad)
+        self.assertTrue(any("differs from plugin.xml" in x for x in e), e)
+
     def test_wrong_arch_and_glibc(self):
         e, _, _ = catalog_check.check(self.build(machine=62))
         self.assertTrue(any("armv7" in x for x in e))

@@ -110,6 +110,31 @@ def check(zpath, catalog=False, expect_id=None, expect_repo=None):
     if attr.get("name") != m["name"]:
         err("plugin.xml name doesn't match the manifest")
 
+    # portable layout (optional): one folder with the skin, the same .so, extras and a plugin-meta.xml using %payload-path%
+    portable = m.get("portable")
+    if portable:
+        expect = "portable/" + m["skin"]
+        if portable != expect:
+            err("portable must be %r, not %r" % (expect, portable))
+        else:
+            base = portable + "/"
+            for need in ("version.xml", "Plugin Skins/TUI.json", "plugin-meta.xml", m["so"]):
+                if base + need not in files:
+                    err("portable folder is missing " + need)
+            if base + m["so"] in files and so_rel in files and files[base + m["so"]] != files[so_rel]:
+                err("portable %s differs from payload/vst/%s" % (m["so"], m["so"]))
+            for e in m.get("extras", []):
+                if not any(f == base + e or f.startswith(base + e + "/") for f in files):
+                    err("portable folder is missing extra " + e)
+            meta = files.get(base + "plugin-meta.xml", b"").decode(errors="replace").strip()
+            want_file = "%%payload-path%%/%s/%s" % (m["skin"], m["so"])
+            mattr = dict(re.findall(r'(\w+)="([^"]*)"', meta))
+            if meta and mattr.get("file") != want_file:
+                err("plugin-meta.xml file=%r, expected %r" % (mattr.get("file"), want_file))
+            norm = lambda x: re.sub(r'(\s)file="[^"]*"', r'\1file=""', x.strip())
+            if meta and norm(meta) != norm(entry):
+                err("plugin-meta.xml differs from plugin.xml apart from file=")
+
     # checksums: every file listed and matching, nothing unlisted
     listed = {}
     for line in files.get("SHA256SUMS", b"").decode().splitlines():

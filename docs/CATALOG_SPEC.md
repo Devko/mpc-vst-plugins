@@ -7,7 +7,24 @@ Validate a zip with `tools/catalog_check.py <zip> [--catalog]`; the offline test
 ## Release zip
 `<Name>-<X.Y.Z>-mpc-armv7.zip`, one top folder `<Name>-<X.Y.Z>/` (layout in `docs/RELEASING.md`), containing
 `mpc-plugin.json`, `plugin.xml`, `install.sh`, `uninstall.sh`, `plugin_list.awk`, `INSTALL.md`, `SHA256SUMS` and
-`payload/`. Every file except `SHA256SUMS` is listed there. No absolute or `..` paths, no symlinks leaving the package.
+`payload/` and, unless built with `--no-portable`, `portable/<skin>/` (below). Every file except `SHA256SUMS` is listed
+there. No absolute or `..` paths, no symlinks leaving the package.
+
+### Portable layout (`portable/<skin>/`)
+The same plugin as **one self-contained folder** for installers that copy a folder into the device's `Synths` content
+folder and register it from a file inside it (received from Locrian's builds, 2026-09-29, not yet run on a device):
+```
+<Vendor> - VST - <Name>/
+  version.xml          identical to our skin's version.xml (<plugincontent>, identifier <vendor>.vst.<name>, version 1.0.0.0)
+  plugin-meta.xml      the plugin-list <PLUGIN .../> element, with file="%payload-path%/<Vendor> - VST - <Name>/<so>"
+  <name>.so            the plugin, inside the skin folder
+  Plugin Skins/        the skin
+  <extras>             any engine data, next to the .so (relative paths like `engine/` for MODULE_SUBDIR)
+```
+`plugin-meta.xml` is exactly our `plugin.xml` except `file=`: `%payload-path%` is a placeholder the installer replaces with
+the directory it copied the folder into (for example `/media/<card>/Synths`). The folder name in `file=` must equal the
+folder's own name. Because the `.so` can end up anywhere, engines must find their data next to it
+(`wrapper/plugin_dir.h`, `MODULE_SUBDIR`), never at a fixed `/sdcard/...` path.
 
 ## `mpc-plugin.json`
 | field | meaning |
@@ -21,6 +38,7 @@ Validate a zip with `tools/catalog_check.py <zip> [--catalog]`; the offline test
 | `uid` | VST uid (hex), same as `plugin.xml`; never changes |
 | `so`, `so_dir` | library file name and the directory in the plugin-list entry |
 | `skin`, `extras` | skin folder name; extra payload paths under `vst/` |
+| `portable` | `portable/<skin>` when the zip has the portable layout, else null |
 | `arch` | ELF machine of the `.so`; the catalog accepts `armv7` only |
 | `max_glibc` | highest `GLIBC_x.y` symbol version needed; the catalog limit is 2.36 |
 | `about`, `requires` | one-line description; extra requirements |
@@ -31,7 +49,9 @@ Validate a zip with `tools/catalog_check.py <zip> [--catalog]`; the offline test
 Errors (exit 1): unsafe paths; missing required file; manifest missing a field or wrong schema; bad id/version;
 `param_compat` != major; arch not armv7; GLIBC above 2.36; `plugin.xml` `file=`/`uid`/`name` disagree with the
 manifest; `.so` not ELF; skin missing `version.xml` or `Plugin Skins/TUI.json`; a file missing from or wrong in
-`SHA256SUMS`; with `--catalog`, no `source_repo` or `license`; with `--expect-id/--expect-repo`, a registry mismatch.
+`SHA256SUMS`; a `portable` folder that is missing `version.xml`, `Plugin Skins/TUI.json`, `plugin-meta.xml`, the `.so` or an
+extra, whose `.so` differs from `payload/vst/`, or whose `plugin-meta.xml` differs from `plugin.xml` in anything but
+`file=%payload-path%/<skin>/<so>`; with `--catalog`, no `source_repo` or `license`; with `--expect-id/--expect-repo`, a registry mismatch.
 Warnings (need a human look): `install.sh`/`uninstall.sh`/`plugin_list.awk` differ from the repo's current template
 (regenerated from the manifest and compared), `max_glibc` not recorded.
 
