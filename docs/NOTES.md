@@ -675,3 +675,44 @@ changes need no restart, re-insert the plugin) and read the screenshot.
 **Integer param display beats truncation everywhere.** Any port with integer DSP params should set
 `"display": "int"` on them (gen_vst.py `int_display`): it fixes the formatting *and* enables the rounding and
 shadow behaviour above.
+
+## Portable layout verified on a Force (Dexed), 2026-09-29
+Verified on a Force (armv7l, BusyBox 1.36.1 userland; MPC OS version not read directly, `MPC.settings` mentions 3.8.0.25 and
+3.9.1), 2026-09-29, with `install-portable.sh` / `uninstall-portable.sh` from `claude/portable-installer` and a Dexed (DX7) 1.0.1
+test zip (`docs/PORTABLE_TEST.md`). **Result: pass, steps 0-6.** The catalog check printed OK; the offline host test
+(`tools/test_port.sh`) has one failure that predates this work (below).
+
+| step | result |
+|---|---|
+| 0 prepare | pass. Settings backed up to the host (sha256 matched the device file); no `noexec` on any mount |
+| 1 build the zip | pass. `catalog_check.py --catalog` OK, 0 warnings; `plugin-meta.xml` `file=` starts with `%payload-path%/` |
+| 2 install (old layout to portable) | pass. Folder in `/sdcard/Synths`, `uid` count 1, `file=` is the `/sdcard/Synths/...` path, old `/sdcard/vst/dx7_dexed.so` removed, no duplicate entry |
+| 3 use in MPC | pass (user report): listed once, adds to a track, plays, skin shows, Q-Links, project save and reload, banks found |
+| 4 upgrade | pass. Second run: still one entry, plays, the user's test file and 35 banks they copied into `dx7_carts/` all kept (69 files), no `.new`/`.old`/`.keep` folders, a new `.bak-` file |
+| 5 uninstall | pass. Entry gone (`<PLUGIN>` count 11 to 10), `.so`, skin and metadata gone, `dx7_carts/` (user data) kept, a project that used Dexed opens without it |
+| 6 other location | pass. `-t /media/<id>/Synths` on the exfat USB stick: registered, loads and plays; then a reinstall at `/sdcard/Synths` moved the entry back and kept the 69 user files |
+
+Mount lines (no `noexec` anywhere):
+```
+/dev/mmcblk0p7 on /media/acvs-synths type ext4 (ro,relatime)
+/dev/mmcblk0p8 on /media/az01-internal type ext4 (rw,relatime)
+/dev/mmcblk1p1 on /sdcard type ext4 (rw,relatime)
+/dev/mmcblk1p1 on /media/az01-internal-sd type ext4 (rw,relatime)
+/dev/sda1 on /media/<id> type exfat (rw,relatime,fmask=0022,dmask=0022,iocharset=utf8,errors=remount-ro,uhelper=edisksd)
+```
+Registered entry after step 2: `file="/sdcard/Synths/sd88me - VST - Dexed (DX7)/dx7_dexed.so" uid="46445832"`.
+
+Findings:
+- **MPC loads a `.so` from inside a Synths folder**, both on the internal SD card (`/sdcard/Synths`, ext4) and on a USB stick
+  (exfat, which reports every file as executable through its mount mask). Neither is `noexec`.
+- The stick's `Synths` folder was already one of MPC's `SynthContentLocations`, so the skin was found there too.
+- **Engine data must sit next to the `.so`.** Dexed had `MODULE_DIR=/sdcard/vst/dx7_carts` hardcoded. It was changed to
+  `"MODULE_SUBDIR": "dx7_carts"` (the absolute `MODULE_DIR` stays as a fallback) and `release.sh` got `--user-data dx7_carts`.
+  In the old layout the `.so` is in `/sdcard/vst/`, so the same setting resolves to the old folder and still works.
+- `--user-data` behaved as documented: files the user adds, or copies in, survive an upgrade and an uninstall.
+- **Pre-existing host-test failure, not caused by the portable work:** for Dexed, `tools/test_port.sh` fails
+  `set preset 0.25 -> get 0.000` with and without the `MODULE_SUBDIR` change (the other checks pass). Likely the host has no
+  bank folder to scan; not investigated. On the device, preset selection worked.
+- The installers were run by the user in a terminal (an automated `-y` run was declined by the tooling), so their console
+  output was not captured here; the resulting state was checked from the device after each step.
+- The old bank folder `/sdcard/vst/dx7_carts` is left behind by the move (unused). The installer does not remove data it did not install.
