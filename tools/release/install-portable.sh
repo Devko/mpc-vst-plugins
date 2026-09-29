@@ -71,6 +71,9 @@ rm -f "$SETTINGS.entry"
 n=$(grep -c "file=\"$FILE\"" "$SETTINGS.new" || true)
 u=$(grep -c " uid=\"$UID_HEX\"" "$SETTINGS.new" || true)
 [ "$n" = 1 ] && [ "$u" = 1 ] || { rm -f "$SETTINGS.new"; die "settings edit failed (entries: $n by file, $u by uid); MPC.settings unchanged"; }
+# without python3 (it may be absent on the device) at least make sure the file still has its root element
+grep -q '<PROPERTIES' "$SETTINGS.new" && grep -q '</PROPERTIES>' "$SETTINGS.new" ||
+    { rm -f "$SETTINGS.new"; die "edited settings lost their root element; MPC.settings unchanged"; }
 if command -v python3 >/dev/null; then
     python3 -c 'import sys, xml.etree.ElementTree as E; E.parse(sys.argv[1])' "$SETTINGS.new" 2>/dev/null ||
         { rm -f "$SETTINGS.new"; die "edited settings aren't valid XML; MPC.settings unchanged"; }

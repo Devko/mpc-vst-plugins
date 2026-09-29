@@ -4,6 +4,11 @@ The portable layout puts a plugin in one folder (`<Vendor> - VST - <Name>/`: ski
 Synths folder. It is tested against a copy of `MPC.settings` (`python3 tools/test_catalog.py`), not yet on a device. This is the
 checklist that decides whether it becomes the only layout. Record results in `docs/NOTES.md` with the date.
 
+Offline first: `python3 tools/test_catalog.py` runs the installer scripts against a copy of `MPC.settings` (under dash and awk). To imitate the
+device's userland, put BusyBox applets first on the path and run the installer tests without Python:
+`busybox --install -s /tmp/bb && INSTALLER_TEST_PATH=/tmp/bb python3 -m unittest tools.test_catalog.InstallerTest`
+(passed with BusyBox 1.36.1, 2026-09-29).
+
 The device is shared with a live setup: save projects, and ask before anything that restarts MPC. Every step that changes
 `MPC.settings` makes a backup next to it (`MPC.settings.bak-<plugin>-<date>`).
 

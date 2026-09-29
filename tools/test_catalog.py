@@ -517,6 +517,8 @@ class InstallerTest(Base):
 
     def run_script(self, script, *args):
         env = dict(os.environ, MPC_INSTALL_TEST="1", MPC_SETTINGS=self.settings_path, MPC_LEGACY_ROOT=self.legacy_root)
+        if os.environ.get("INSTALLER_TEST_PATH"):   # e.g. a folder of BusyBox applets, to imitate the device's userland
+            env["PATH"] = os.environ["INSTALLER_TEST_PATH"]
         return subprocess.run(["sh", os.path.join(self.top, script), "-y", "-t", self.synths, *args], cwd=self.top, env=env,
                               capture_output=True, text=True)
 
