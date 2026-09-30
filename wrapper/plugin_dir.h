@@ -1,10 +1,10 @@
 /* Where is this plugin? The directory its own .so was loaded from, so an engine can find presets, banks, ROMs and
- * other files shipped next to it wherever the host installed it (/sdcard/vst, /media/<card>/vst, ...): no hardcoded
- * /sdcard, and no need to parse MPC.settings. dladdr() reports the path the host passed to dlopen(), which is the
+ * other files shipped next to it wherever it was installed (/sdcard/Synths/<folder>, /media/<card>/Synths/<folder>,
+ * or the old /sdcard/vst): no hardcoded /sdcard, and no need to parse MPC.settings. dladdr() reports the path the host passed to dlopen(), which is the
  * file= path from the plugin list.
  *
  *   char dir[512];
- *   if (mpc_plugin_dir(dir, sizeof dir)) ...      dir = "/sdcard/vst", no trailing slash
+ *   if (mpc_plugin_dir(dir, sizeof dir)) ...      dir = "/sdcard/Synths/<folder>", no trailing slash
  *
  * Define _GNU_SOURCE before the first #include (vst2_wrap.c does). Header-only, static inline. Needs dladdr (glibc >= 2.34 has it in libc; older glibc needs -ldl). Returns 1 on
  * success, 0 if it can't tell (buf is then ""). Falls back to /proc/self/maps if dladdr gives no usable path. */

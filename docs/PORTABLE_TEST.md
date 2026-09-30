@@ -27,7 +27,7 @@ git checkout main                                 # mpc-vst-plugins
 tools/release.py --so build/x.so --skin "build/skin/<vendor> - VST - <Name>" --entry build/pluginlist-entry.xml \
     --version <X.Y.Z> --repo owner/name --license <SPDX> --user-data <folder for user files, if any> -o dist
 tools/catalog_check.py dist/<zip> --catalog        # must print OK
-unzip -l dist/<zip> | grep -E 'portable/|install-portable|uninstall-portable'
+unzip -l dist/<zip> | grep -E 'portable/|install.sh|uninstall.sh'
 ```
 
 ## 2. Install (about 5 minutes)
@@ -65,4 +65,4 @@ and start MPC (`systemctl start acvs`).
 Pass or fail for each checkbox, the `mount` lines from step 0, the installer's output, and the plugin's `<PLUGIN .../>` line from `MPC.settings`.
 
 ## If it passes
-Make the portable folder the only layout, re-release the current plugins with it, and update the docs, guides and site (plan in `docs/CATALOG.md`, "Layout migration").
+Record it in `docs/NOTES.md`, and add the device and firmware to the port's `tested.json`.

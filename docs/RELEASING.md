@@ -18,11 +18,13 @@ the only layout: it can be dropped into any `Synths` folder by other installers 
    ```
    tools/release.py --so build/x.so --skin "build/skin/<vendor> - VST - <Name>" \
        --entry build/pluginlist-entry.xml --version 1.2.0 --bench build/bench.txt \
-       --about "One line about the plugin." [--extra engine:vst/x] -o dist
+       --about "One line about the plugin." [--extra engine:engine] [--user-data roms] -o dist
    ```
    Add `--repo owner/name --license <SPDX> [--id my-plugin]` to make it listable in the catalog
    (`docs/CATALOG_SPEC.md`), then check it: `tools/catalog_check.py dist/<zip> --catalog`.
-   `--extra SRC:vst/DEST` ships extra runtime files next to the `.so` (an engine bundle, presets).
+   `--extra SRC:DEST` ships extra runtime files in the plugin folder, next to the `.so` (an engine bundle, presets; `DEST` is
+   relative to the plugin folder, a leading `vst/` from older scripts is still accepted). `--user-data <folder>` marks a folder
+   where the user adds files (ROMs, kits, banks); the installer keeps it.
 7. **Publish**: tag `<port>-vX.Y.Z` in the port's repo and attach the zip:
    `gh release create maze-voice-vst-v1.2.0 dist/Maze-Voice-1.2.0-mpc-armv7.zip --notes-file ...`
    Paste the zip's INSTALL.md "Requirements" and "Install" sections into the notes.
@@ -80,6 +82,11 @@ Run on the device as root (`sh install.sh [-y]`):
    there, and moves the user's own files (`user_data`) from `/sdcard/vst/<path>` into the plugin folder. Done only after
    the settings edit succeeded; nothing else in `/sdcard/vst` is touched.
 6. Starts MPC.
+
+Why MPC is stopped for the edit: it holds its settings in memory while it runs and saves them itself, so an edit made
+underneath it can be lost (then the plugin is missing after the next restart). Tools that rebuild the whole list from the
+plugin folders in the `Synths` folders keep a plugin installed this way, because each one is such a folder with its own
+`plugin-meta.xml`; a plugin registered any other way (by hand, or the old `/sdcard/vst` layout) is dropped by such a rebuild.
 
 The settings edit was tested 2026-09-24 against a copy of a real Force `MPC.settings`: replacing an entry, running
 twice (identical output), removing, a missing `pluginList-arm`, and a self-closing `<KNOWNPLUGINS/>`. A full

@@ -56,7 +56,7 @@ Use `X.Y.Z`.
 | Y | New parameters or pages |
 | X | Parameter positions change (this breaks saved projects, so avoid it) |
 
-Keep the plugin `uid` and the `.so` name fixed forever. Projects find the plugin by uid, and the installer replaces the entry with the same file name.
+Keep the plugin `uid` and the `.so` name fixed forever. Projects find the plugin by uid, and the installer replaces the entry with the same uid or file name.
 
 ## Say where you tested
 Add a `tested.json` at the root of your repo's default branch, and the catalog shows it on the release:
