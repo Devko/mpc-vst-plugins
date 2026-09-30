@@ -125,9 +125,9 @@ install_md = """# {name} {ver}
 1. Unzip, then copy the whole folder to the device, e.g. `scp -r {top} root@<device-ip>:/tmp/`
 2. Run it: `ssh root@<device-ip> sh /tmp/{top}/install.sh`
 
-The installer checks the device, copies `portable/{skin}/` (the plugin, its skin and its data, as one folder) into
-`/sdcard/Synths`, then **stops MPC** (save your project first), backs up `MPC.settings`, adds the plugin to MPC's plugin
-list from the folder's `plugin-meta.xml` and starts MPC again. Running it again upgrades in place, keeping your own files.
+The installer checks the device, **stops MPC** (save your project first), copies `portable/{skin}/` (the plugin, its skin
+and its data, as one folder) into `/sdcard/Synths`, backs up `MPC.settings`, adds the plugin to MPC's plugin list from the
+folder's `plugin-meta.xml` and starts MPC again. Running it again upgrades in place, keeping your own files.
 An older install of this plugin (the previous layout, with the `.so` in `/sdcard/vst`) is replaced, not duplicated.
 `-y` skips the confirmation prompt; `-t <folder>` installs into another Synths folder (for example on a card).
 {user_md}
@@ -155,6 +155,9 @@ restarts MPC). Projects that use the plugin will load without it. Files you adde
    </VALUE>
    ```
 5. Start MPC: `systemctl start acvs`. If MPC shows default settings, restore your backup (the XML was malformed).
+
+Edit `MPC.settings` only while MPC is stopped: MPC can save its own copy over a change made while it runs. Tools that
+rebuild the whole plugin list from the plugin folders in `Synths` keep this plugin, because it is such a folder.
 {bench}
 ## Files
 

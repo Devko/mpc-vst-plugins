@@ -39,7 +39,7 @@ Save your project on the device first. The installer **stops MPC and starts it a
 ssh root@<device-ip> sh /tmp/Name-1.2.0/install.sh
 ```
 
-It checks the device, copies the plugin and its skin, backs up `MPC.settings` next to the original, adds the plugin to MPC's plugin list and restarts MPC. Add `-y` to skip the confirmation question. If anything fails, MPC is restarted and your settings are left unchanged.
+It checks the device, stops MPC, copies the plugin folder (the plugin, its skin and its data) into `/sdcard/Synths`, backs up `MPC.settings` next to the original, adds the plugin to MPC's plugin list and starts MPC again. Add `-y` to skip the confirmation question. If anything fails, MPC is restarted and your settings are left unchanged.
 
 ## Easy option: use Termius instead of typing commands
 If you would rather click than type, use an SSH app with a file browser. [Termius](https://termius.com/) is one (macOS, Windows, Linux, iPhone, iPad and Android); other SFTP and SSH apps work the same way. You do the same two things as steps 2 and 3, with the mouse:
@@ -80,11 +80,32 @@ ssh root@<device-ip> sh /tmp/Name-1.2.0/uninstall.sh
 This removes the files and the plugin-list entry (after a backup) and restarts MPC. Projects that used the plugin still open, without it.
 
 ## Install by hand
-Each zip's `INSTALL.md` lists the manual steps: copy the files, stop MPC (`systemctl stop acvs`), back up `MPC.settings`, add the line from `plugin.xml` to the plugin list, and start MPC (`systemctl start acvs`).
+Each zip's `INSTALL.md` lists the manual steps: copy the plugin folder (`portable/<Vendor> - VST - <Name>/` in the zip) to `/sdcard/Synths/`, stop MPC (`systemctl stop acvs`), back up `MPC.settings`, add the line from that folder's `plugin-meta.xml` to the plugin list with `%payload-path%` replaced by `/sdcard/Synths`, and start MPC (`systemctl start acvs`). Edit the settings file only while MPC is stopped (see below).
+
+## If a plugin disappears after a restart
+MPC keeps its whole plugin list in one place: the `pluginList-arm` list in its settings file, `MPC.settings`. Every way of installing plugins edits that same list, so one method can undo another. The plugin's files usually are still on the card; only its line in the list is gone. The usual causes:
+
+- **The settings file was edited while MPC was running.** MPC holds its settings in memory while it runs and saves them itself, so a change made underneath it can be overwritten. Stop MPC first (`systemctl stop acvs`), edit, then start it (`systemctl start acvs`). The installer does this for you.
+- **Another tool rebuilt the whole list.** Some community installers and scan scripts do not add one line: they write a new list from the plugin folders they find in the `Synths` folders (each folder with a `plugin-meta.xml` inside). A plugin that is not such a folder, for example one added by hand or installed by an older release with its `.so` in `/sdcard/vst`, drops off the list at the next scan. A release is such a folder if its zip has a `portable/` folder inside, and a scan keeps it. Reinstall anything older with a release that has one.
+- **The settings file became invalid.** After a broken edit MPC resets `MPC.settings` to its defaults, which empties the plugin list along with your other preferences. Restore a backup (below).
+- **The line points to a file that is not there**: a plugin folder was moved or renamed, or the card it is on is not inserted.
+
+Check what MPC has registered, and whether each file exists (on the device, over SSH):
+
+```
+grep -o 'file="[^"]*"' /media/az01-internal/Settings/*/MPC.settings | cut -d'"' -f2 |
+    while read -r f; do [ -f "$f" ] && echo "ok       $f" || echo "MISSING  $f"; done
+```
+
+To get plugins back:
+- **Run each plugin's `install.sh` again** (the current release). It adds its own line back and leaves every other plugin's line alone. This is the safest fix.
+- **Or restore a backup of the settings file.** The installer and uninstaller leave one next to the original each time they run, named `MPC.settings.bak-<plugin>-<date>`. List them newest first with `ls -t /media/az01-internal/Settings/*/MPC.settings.bak-*`, then stop MPC, copy the one you want over `MPC.settings`, and start MPC. A backup also brings back the preferences you had at that time.
+
+Before you paste a command you found online into the device's shell, copy the settings file to your computer: `scp "root@<device-ip>:/media/az01-internal/Settings/*/MPC.settings" .` Any command that rebuilds, restores or resets that file replaces your whole plugin list.
 
 ## If something goes wrong
 - **MPC shows default settings after the restart.** The edited settings file was not accepted. Restore the backup the installer made, named `MPC.settings.bak-<plugin>-<date>`, next to `MPC.settings`.
-- **The plugin is not in the list.** MPC reads its plugin list at startup. Restart MPC and check that the installer finished with "Done".
+- **The plugin is not in the list.** MPC reads its plugin list at startup. Check that the installer finished with "Done", then see "If a plugin disappears after a restart" above.
 - **The plugin loads but has no screen.** The skin goes in a `/sdcard/Synths` folder, and MPC must have that folder in its content locations. The installer warns if it does not.
 - **A message about ARM or `armv7`.** Your device is not a supported model.
 - **Silence, or default sounds.** Some plugins need files you provide, such as ROMs or banks. Check the plugin's own page.

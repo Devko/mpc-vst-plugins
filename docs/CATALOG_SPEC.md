@@ -44,7 +44,7 @@ anywhere, engines must find their data next to it (`wrapper/plugin_dir.h`, `MODU
 | `version` | `X.Y.Z`; X bumps when parameter indices change |
 | `param_compat` | equals X: a bump means saved projects change |
 | `kind` | `instrument` or `effect` |
-| `uid` | VST uid (hex), same as `plugin.xml`; never changes |
+| `uid` | VST uid (hex), same as `plugin-meta.xml`; never changes |
 | `layout` | `"portable"` (the plugin folder). Absent in releases of the old layout |
 | `so` | library file name |
 | `skin`, `folder` | skin folder name; the plugin folder in the zip, `portable/<skin>` |
