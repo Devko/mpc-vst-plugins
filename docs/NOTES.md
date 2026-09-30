@@ -760,3 +760,21 @@ whose file is missing at startup is dropped from the saved list.
 
 ### 2026-09-30: device hardware check for an on-device installer (Force, MPC OS, MockbaMod)
 `wget` (GNU 1.20.3, musl) fetched this site's `catalog.json` over HTTPS and `curl` reached github.com; `/tmp` is a 1 GB tmpfs (RAM), `/sdcard` ext4 with GBs free. Present: `python3`, `dialog`, BusyBox `unzip`/`tar`/`sha256sum`/`nc` (no BusyBox `httpd`); `python3` and `dialog` may be MockbaMod additions. MPC drops a plugin-list entry whose file is missing at startup. `tools/mpc-store.sh` `list`, `install --dry-run acid` (real download + sha256 check from GitHub, extracted, nothing installed) and `sync --dry-run` (planned 4 additions: unregistered AIRWINDOWS folders) ran on the device against a catalog served from the device itself; MPC.settings unchanged.
+
+## Multiple outputs and shared state between instances (tested on a Force, 2026-09-30)
+
+- **MPC uses only the first stereo pair of a VST2 instrument.** `poc/multiout.c` (as registered, `numOutputs="8"`, one sine per
+  output): MPC calls `effGetOutputProperties` up to pin 7 and passes 8 valid `processReplacing` buffers, but a track only offers
+  one audio-out setting (1,2) and only the main pair is heard; the mixer's return/submix buses have no input selector. So per-track
+  outputs from one instance are not possible.
+- **Every instance of a plugin lives in one process with one copy of the library's statics.** `poc/shared.c` (three instances,
+  a process-wide id counter, log in /tmp/shared.log): same pid, ids 0,1,2, `effClose` sees the shared count. `effOpen` is called
+  twice per instance. `processReplacing` (n=128, every ~2.9 ms per instance) runs on MPC's pool of worker threads (4 on a Force),
+  and the thread for one instance changes between calls, so instances run concurrently and in no fixed order: share data between
+  them producer/consumer style, never drive a shared engine from a callback.
+- Used by mpc-vst-machinedrum's Machinedrum Tap / Tap FX (separate plugins that read one Machinedrum Module's tracks and sends):
+  measured on the Force, the primary's callback ran 166-256 us before the tap's in each period, so a tap can pick the same block.
+  A plugin in its own Synths folder finds another plugin's loaded copy with `dlopen("<its soname>", RTLD_NOLOAD)` (or its path
+  from /proc/self/maps).
+- Build note: these PoCs are plain C; on a recent cross toolchain add `-U_TIME_BITS -D_TIME_BITS=32` if you call time functions,
+  or the .so asks for GLIBC_2.34 time64 symbols.
