@@ -67,9 +67,12 @@ version that is already published. Publishing the draft creates the tag.
   `.so` (`DEST` is relative to the plugin folder).
 
 ## What the installer does
-Run on the device as root (`sh install.sh [-y]`):
+Run on the device as root (`sh install.sh [-y] [-n] [-t <synths-dir>]`):
 1. Checks root, armv7, that `MPC.settings` exists and `SHA256SUMS`, and asks for confirmation.
 2. Stops MPC (`systemctl stop acvs`) and waits for it to exit. A trap restarts MPC on any error.
+   `-n` (also on `uninstall.sh`) defers this to the caller: the script neither stops nor starts MPC and refuses to run while MPC is
+   running. A batch installer stops MPC once, runs every plugin's `install.sh -y -n`, then starts MPC once. The caller must
+   start MPC again even if one install fails.
 3. Copies `portable/<skin>/` next to its target (`/sdcard/Synths`, or `-t <folder>`), carries over the files the user
    added (the manifest's `user_data`, see `--user-data`), and swaps the new folder in.
    Then it puts back executable bits and symlinks from the package's `MODES` file (written by `release.py`): a zip unpacked
@@ -93,3 +96,14 @@ twice (identical output), removing, a missing `pluginList-arm`, and a self-closi
 scripted install on a device (which restarts MPC) is step 5 of the checklist.
 
 Audience: root access is needed to edit `MPC.settings`, so releases are for modded units. Say so up front.
+
+## Keeping the plugin list in step with the folders: `tools/release/sync.sh`
+
+`sh sync.sh [-y] [-n] [--dry-run] [-t <synths-dir>]...` (BusyBox `sh`, needs `plugin_list.awk` next to it) makes MPC.settings' plugin list
+follow the plugin folders in `/sdcard/Synths` and every `/media/*/Synths` (or the `-t` folders): it registers a folder that has no entry,
+replaces an entry with the same uid whose `.so` is gone, removes an entry that points into a Synths folder whose `.so` is gone, and
+leaves every other entry alone. Nothing to do means no restart; otherwise it backs up `MPC.settings`, checks the result and stops and
+starts MPC once (`-n`: the caller does, as for `install.sh -n`). `--dry-run` prints the plan only. It uses the same folder rule as
+MockbaMod's `vstscanner.sh` (`/media/*/Synths/*/plugin-meta.xml`) but not its whole-list rebuild, so entries from other tools survive.
+It is not shipped in the release zips yet; the device-side store script (docs/CATALOG.md, Phase 4) will call it after a batch of
+`install.sh -y -n`. Only the first `<PLUGIN>` in a `plugin-meta.xml` is read (the packages `release.py` builds have one).
