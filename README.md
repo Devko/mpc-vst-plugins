@@ -178,6 +178,7 @@ What's next is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 The route was first described on the MPC-Forums thread
 "Proof of Concept: Custom Standalone Plugins" (Sep 2026) by NoQuestion and dustyslices.
+Credits also to the MockbaMod community for assistance in development, especially @Locrian.
 
 ## Legal
 
