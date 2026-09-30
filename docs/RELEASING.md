@@ -67,9 +67,12 @@ version that is already published. Publishing the draft creates the tag.
   `.so` (`DEST` is relative to the plugin folder).
 
 ## What the installer does
-Run on the device as root (`sh install.sh [-y]`):
+Run on the device as root (`sh install.sh [-y] [-n] [-t <synths-dir>]`):
 1. Checks root, armv7, that `MPC.settings` exists and `SHA256SUMS`, and asks for confirmation.
 2. Stops MPC (`systemctl stop acvs`) and waits for it to exit. A trap restarts MPC on any error.
+   `-n` (also on `uninstall.sh`) defers this to the caller: the script neither stops nor starts MPC and refuses to run while MPC is
+   running. A batch installer stops MPC once, runs every plugin's `install.sh -y -n`, then starts MPC once. The caller must
+   start MPC again even if one install fails.
 3. Copies `portable/<skin>/` next to its target (`/sdcard/Synths`, or `-t <folder>`), carries over the files the user
    added (the manifest's `user_data`, see `--user-data`), and swaps the new folder in.
    Then it puts back executable bits and symlinks from the package's `MODES` file (written by `release.py`): a zip unpacked

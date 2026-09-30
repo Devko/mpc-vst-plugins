@@ -559,7 +559,9 @@ class InstallerTest(Base):
         open(os.path.join(self.legacy_root, "sdcard", "vst", "test_synth.so"), "wb").write(b"old")
 
     def run_script(self, script, *args):
-        env = dict(os.environ, MPC_INSTALL_TEST="1", MPC_SETTINGS=self.settings_path, MPC_LEGACY_ROOT=self.legacy_root)
+        self.ctl_log = os.path.join(self.tmp, "mpc_ctl.log")
+        env = dict(os.environ, MPC_INSTALL_TEST="1", MPC_SETTINGS=self.settings_path, MPC_LEGACY_ROOT=self.legacy_root,
+                   MPC_TEST_LOG=self.ctl_log)
         if os.environ.get("INSTALLER_TEST_PATH"):   # e.g. a folder of BusyBox applets, to imitate the device's userland
             env["PATH"] = os.environ["INSTALLER_TEST_PATH"]
         return subprocess.run(["sh", os.path.join(self.top, script), "-y", "-t", self.synths, *args], cwd=self.top, env=env,
@@ -649,6 +651,36 @@ class InstallerTest(Base):
         self.assertTrue(os.access(os.path.join(ib, "py", "bin", "python3.11"), os.X_OK))
         self.assertEqual(os.readlink(os.path.join(ib, "py", "bin", "python3")), "python3.11")
         self.assertFalse(os.access(os.path.join(ib, "data.txt"), os.X_OK))
+
+    def mpc_calls(self):
+        return open(self.ctl_log).read().split() if os.path.exists(self.ctl_log) else []
+
+    def test_install_and_uninstall_stop_and_start_mpc_once(self):
+        self.assertEqual(self.run_script("install.sh").returncode, 0)
+        self.assertEqual(self.mpc_calls(), ["stop", "start"])
+        os.remove(self.ctl_log)
+        self.assertEqual(self.run_script("uninstall.sh").returncode, 0)
+        self.assertEqual(self.mpc_calls(), ["stop", "start"])
+
+    def test_defer_flag_leaves_mpc_alone_for_a_batch(self):
+        r = self.run_script("install.sh", "-n")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.mpc_calls(), [])                                   # the caller owns stop/start
+        self.assertIn("Test Synth", self.entries())                              # but the install itself happened
+        r = self.run_script("uninstall.sh", "-n")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.mpc_calls(), [])
+        self.assertNotIn("Test Synth", self.entries())
+
+    def test_a_failed_settings_edit_still_restarts_mpc_unless_deferred(self):
+        open(self.settings_path, "w").write("not xml at all\n")                  # the edit finds nowhere to put the entry
+        r = self.run_script("install.sh")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(self.mpc_calls(), ["stop", "start"])                    # MPC is never left stopped
+        os.remove(self.ctl_log)
+        r = self.run_script("install.sh", "-n")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(self.mpc_calls(), [])                                   # the batch caller decides what to do
 
     def test_reinstall_is_idempotent_and_keeps_user_files(self):
         self.assertEqual(self.run_script("install.sh").returncode, 0)
