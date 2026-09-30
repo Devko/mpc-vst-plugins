@@ -173,6 +173,11 @@ def check(zpath, catalog=False, expect_id=None, expect_repo=None):
             for e in m.get("extras", []):
                 if not re.fullmatch(r"[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*", e) or ".." in e.split("/"):
                     err("bad extra path %r" % e)
+            for f, data in files.items():   # MPC draws an image taller than 16384 px wrongly (another user's report, not yet reproduced here)
+                if f.startswith(base + "Plugin Skins/") and f.endswith(".png") and data[:8] == b"\x89PNG\r\n\x1a\n" and len(data) >= 24:
+                    h = int.from_bytes(data[20:24], "big")
+                    if h > 16384:
+                        warn("%s is %d px tall; keep skin images under 16384 px (fewer or smaller filmstrip frames)" % (f[len(base):], h))
 
     for d in m.get("user_data", []):
         if not re.fullmatch(r"[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*", d) or ".." in d.split("/"):

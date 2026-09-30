@@ -50,6 +50,12 @@ for the pattern). This applies to every future port, not just ones that hit the 
       also usable directly via `mpc_plugin_dir()`), so the plugin works from `/sdcard/Synths`, `/media/*/Synths` or anywhere
       else. The `.so` must be dlopen'd by absolute path (MPC does this from the plugin list's `file=`). `gen_vst.py` warns when a
       `defines` value is a fixed `/sdcard` or `/media` path and `MODULE_SUBDIR` is not set (an absolute `MODULE_DIR` may stay as the fallback).
+- [ ] An engine that lets the user pick files (ROMs, kits, IRs, models, dumps) from folders it scans:
+      scan when the plugin opens and on request, on a separate thread, never on the audio thread; limit the depth (3-4 levels)
+      and don't follow symlinks; sort the list (folder, then name) so a Q-Link position always means the same file; save the
+      chosen file by NAME in the plugin state, not by position (positions shift when files are added), and re-find it by name
+      if it moved; a missing file shows as not found and the audio keeps running. Users keep collections on cards, so an engine
+      may also look for its data folder under `/media` (the plugin's own folder first), not only next to the `.so`.
 - [ ] State saved via chunks (`effGetChunk`/`effSetChunk`).
 - [ ] Offline x86 test: `tools/test_port.sh <port>/vst.json` prints PASSED (instances, parameter round-trip,
       options, popups, MIDI → audio, chunk restore, under ASan).
@@ -77,6 +83,9 @@ for the pattern). This applies to every future port, not just ones that hit the 
 - [ ] Generate (`tools/shadow_skin.py` via the port's gen script), then look at an offline composite
       (`tools/studio.py preview`) before deploying -- compare it against the real shadow page's own
       screenshot/mockup if one exists (`docs/*.png` in the app's repo), not just "does it look plausible".
+- [ ] No skin image taller than 16384 px. A filmstrip of many frames of a tall control passes that easily, and MPC then
+      draws it wrongly (misaligned half-frames); reduce the frame count or size. (Reported by another port author; not yet
+      reproduced on our device. `catalog_check.py` warns about such images.)
 - [ ] Q-Links: 1–8 = knob bank 1, 9–16 = bank 2; nested pages via several `qlinks` lines.
 - [ ] Choice lists: `enum_h`/`enum_v` (all options on screen) or `popup` (a field; a tap opens a drawn list, a
       pick closes it). Not `menu`: MPC's native picker opens empty for a VST2. A `popup` adds a hidden
