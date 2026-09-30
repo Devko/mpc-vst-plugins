@@ -248,13 +248,31 @@ Limits that shape this (NOTES/ROADMAP): no native envelope or XY component for a
 no live meters (the wrapper has no engine-driven update path yet), so the wave picture and readouts refresh when a
 control is touched, not while a note plays. A live oscilloscope would need that ROADMAP item first.
 
-### Look
-- The XT's feel rather than a copy of its panel: dark anodised plate, white screened labels, red accent (the XT's
-  big red encoder) for the active control, rubber-cap knobs (`knob_look=cap`), and a backlit **2x40 LCD strip** at
-  the top of every page showing the sound name and the last touched parameter as "FILTER 1 CUTOFF   64". The XT's
-  own UI is a 2x40 character LCD (DISD in the SysEx spec is 80 characters), so this is the recognisable part.
-- Built with the browser renderer (`"art": "html"`, `art_css=`) and SVG plate art we draw ourselves. No Waldorf logo,
-  photos of the panel or trade dress, and the product name doesn't use Waldorf or Microwave.
+### Look: the orange XT
+Palette sampled from a photo of the orange rack XT (approximate; adjust by eye against the hardware):
+
+| Role | Colour | On the XT |
+|---|---|---|
+| Plate | `#F38302` | The orange front panel |
+| Plate lines | `#D86000` | The darker orange arcs and section rules |
+| Display surround | `#3290B1` | The teal band around the LCD |
+| LCD glass | `#9FAE62` lit, `#797F57` unlit, text `#1F2414` | The yellow-green backlit 2x40 LCD |
+| Section titles | `#4F6C9E` (slate blue, italic) | "Oscillator 1", "Filter", "Envelopes" |
+| Control labels | `#5A5A6A` (small, condensed) | Names under each knob |
+| Knob caps | `#6C6470` top, `#4A444E` skirt | The grey-violet rubber caps |
+| Accent | `#F84D4C`, darker `#C8424A` | The big red encoder, red Cutoff and Wavetable knobs, red Shift button |
+| Light knob | `#9C98A3` | Power / Sync caps |
+
+- **Layout idea from the panel:** section titles sit on a thin rule with the title breaking it
+  (`— Filter —`), knobs in two rows per section, and the most-used control of a section gets the red cap (Cutoff
+  on FILTER, Wavetable on WAVE, the value/data knob on PLAY). Theme keys in `layout.conf`, knobs as `look=cap`
+  recoloured, frames styled through `art_css=`.
+- **LCD strip** at the top of every page (sound name + last touched parameter, "FILTER 1 CUTOFF   64"), yellow-green
+  on a teal surround. The XT's UI is a 2x40 LCD (DISD in the SysEx spec is 80 characters).
+- **Own motif, not a copy:** colours and general layout are the influence. The panel's own graphics are not copied:
+  no Waldorf logo, no "microWAVE XT" script, no traced arc/swoosh artwork, no panel photos. Our plate art is drawn from
+  scratch (a different line motif, e.g. a stepped wave outline). The product name doesn't use Waldorf or Microwave.
+- Built with the browser renderer (`"art": "html"`, `art_css=`) and SVG plate art.
 - Wave picture: a filmstrip rendered at build time from the **open** wave set only (section 10). Imported Waldorf waves
   don't appear in shipped images; the picture shows slot position (0-63) and the fixed tri/square/saw marks.
 - Preview every page offline (`tools/studio.py preview`) before anything goes to a device.
