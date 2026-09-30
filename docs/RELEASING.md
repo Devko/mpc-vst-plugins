@@ -74,6 +74,8 @@ Run on the device as root (`sh install.sh [-y]`):
    the same `file=` or `uid` (an older install at another path) and inserts the folder's `plugin-meta.xml`, with
    `%payload-path%` replaced by the Synths folder, into `pluginList-arm`, creating the list if needed. The result is
    checked (exactly one entry, valid XML when python3 exists) before it replaces the original.
+4b. Puts back executable bits and symlinks from the package's `MODES` file (written by `release.py`) on the copied folder: a zip unpacked
+   on Windows, or copied file by file, loses both, and an engine that bundles binaries (yt-dlp, ffmpeg, a private Python) then fails.
 5. If the plugin was installed the old way (`.so` in `/sdcard/vst`): removes that `.so` and the data the package ships
    there, and moves the user's own files (`user_data`) from `/sdcard/vst/<path>` into the plugin folder. Done only after
    the settings edit succeeded; nothing else in `/sdcard/vst` is touched.

@@ -211,6 +211,20 @@ manifest = {
 }
 open(os.path.join(root, "mpc-plugin.json"), "w").write(json.dumps(manifest, indent=2) + "\n")
 
+# MODES: the executable files and symlinks inside the plugin folder (tab separated: "x<TAB>path", "l<TAB>path<TAB>target").
+# A zip unpacked on Windows, or copied file by file, loses exec bits and turns symlinks into small text files; install.sh
+# re-applies this list after copying so an engine's bundled binaries (yt-dlp, ffmpeg, a private Python) still run.
+modes = []
+for p in walk(pdir):
+    rel = os.path.relpath(p, pdir)
+    if "\t" in rel or "\n" in rel:
+        raise SystemExit("a file name with a tab or newline can't go in MODES: %r" % rel)
+    if os.path.islink(p):
+        modes.append("l\t%s\t%s" % (rel, os.readlink(p)))
+    elif os.stat(p).st_mode & stat.S_IXUSR:
+        modes.append("x\t" + rel)
+open(os.path.join(root, "MODES"), "w", newline="\n").write("\n".join(modes) + ("\n" if modes else ""))
+
 sums = []
 for p in walk(root):
     if not os.path.islink(p):

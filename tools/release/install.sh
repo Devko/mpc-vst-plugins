@@ -56,6 +56,16 @@ fi
 NEW="$SYNTHS/$SKIN"; STAGE="$SYNTHS/.$SKIN.new"; OLD="$SYNTHS/.$SKIN.old"
 rm -rf "$STAGE" "$OLD"
 cp -a "portable/$SKIN" "$STAGE"
+if [ -f MODES ]; then   # a zip unpacked on Windows or copied file by file loses exec bits and symlinks: put them back
+    TAB=$(printf '\t')
+    while IFS=$TAB read -r kind rel target; do
+        case "$rel" in ""|/*|..|../*|*/..|*/../*) continue ;; esac
+        if [ -f "$STAGE/$rel" ] && [ ! -L "$STAGE/$rel" ]; then
+            if [ "$kind" = x ]; then chmod 755 "$STAGE/$rel"
+            elif [ "$kind" = l ]; then rm -f "$STAGE/$rel"; ln -s "$target" "$STAGE/$rel"; fi
+        fi
+    done < MODES
+fi
 for d in $USER_DATA; do
     if [ -e "$NEW/$d" ]; then          # an earlier install of this layout: its files win over the shipped ones
         rm -rf "$STAGE/$d"; mkdir -p "$(dirname "$STAGE/$d")"; cp -a "$NEW/$d" "$STAGE/$d"

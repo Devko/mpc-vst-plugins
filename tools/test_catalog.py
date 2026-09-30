@@ -626,6 +626,30 @@ class InstallerTest(Base):
         self.assertEqual(self.run_script("install.sh").returncode, 0)
         self.assertEqual(open(os.path.join(self.synths, self.SKIN, "roms", "mine.rom")).read(), "my rom")
 
+    def test_lost_exec_bits_and_symlinks_are_restored(self):
+        eng = os.path.join(self.tmp, "eng2")
+        os.makedirs(os.path.join(eng, "py", "bin"))
+        for f in ("yt-dlp", os.path.join("py", "bin", "python3.11")):
+            open(os.path.join(eng, f), "w").write("#!/bin/sh\n"); os.chmod(os.path.join(eng, f), 0o755)
+        os.symlink("python3.11", os.path.join(eng, "py", "bin", "python3"))
+        open(os.path.join(eng, "data.txt"), "w").write("plain")
+        z = self.build(version="1.2.1", extra=("--extra", eng + ":engine/bin"))
+        pkg = os.path.join(self.tmp, "pkg2")
+        with zipfile.ZipFile(z) as zf:
+            zf.extractall(pkg)   # like a Windows unzip: no exec bits, the symlink becomes a text file
+        top = os.path.join(pkg, os.listdir(pkg)[0])
+        eb = os.path.join(top, "portable", self.SKIN, "engine", "bin")
+        self.assertFalse(os.path.islink(os.path.join(eb, "py", "bin", "python3")))
+        self.assertFalse(os.access(os.path.join(eb, "yt-dlp"), os.X_OK))
+        self.top = top
+        r = self.run_script("install.sh")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        ib = os.path.join(self.synths, self.SKIN, "engine", "bin")
+        self.assertTrue(os.access(os.path.join(ib, "yt-dlp"), os.X_OK))
+        self.assertTrue(os.access(os.path.join(ib, "py", "bin", "python3.11"), os.X_OK))
+        self.assertEqual(os.readlink(os.path.join(ib, "py", "bin", "python3")), "python3.11")
+        self.assertFalse(os.access(os.path.join(ib, "data.txt"), os.X_OK))
+
     def test_reinstall_is_idempotent_and_keeps_user_files(self):
         self.assertEqual(self.run_script("install.sh").returncode, 0)
         rom = os.path.join(self.synths, self.SKIN, "roms", "mine.rom")
