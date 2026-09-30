@@ -52,6 +52,8 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/discard", a.discard)
 	mux.HandleFunc("/api/plan", a.plan)
 	mux.HandleFunc("/api/install", a.install)
+	mux.HandleFunc("/api/device", a.devicePlugins)
+	mux.HandleFunc("/api/remove", a.remove)
 	mux.HandleFunc("/api/job", a.jobStatus)
 	return a.guard(mux)
 }
@@ -418,4 +420,140 @@ func (a *App) jobStatus(w http.ResponseWriter, r *http.Request) {
 	fmt.Sscanf(r.URL.Query().Get("since"), "%d", &since)
 	st, lines, next, result := j.snapshot(since)
 	writeJSON(w, 200, map[string]any{"id": j.ID, "state": st, "lines": lines, "next": next, "result": result})
+}
+
+// knownPlugin says what the app can tell about a plugin folder on the device: which files are the user's own is only known for
+// plugins from the catalog and for zips dropped into this session, so those are the ones it will remove.
+type knownPlugin struct {
+	DevPlugin
+	ID      string   `json:"id"`
+	Version string   `json:"version,omitempty"`
+	Known   bool     `json:"known"`
+	Keep    []string `json:"keep"`
+	Source  string   `json:"source,omitempty"`
+}
+
+// classify matches the device's plugin folders to the catalog and to the dropped zips. Caller holds a.mu and a.dev != nil.
+func (a *App) classify() []knownPlugin {
+	out := []knownPlugin{}
+	for _, dp := range a.dev.Info.Plugins {
+		kp := knownPlugin{DevPlugin: dp, Keep: []string{}}
+		for _, c := range a.cat {
+			if c.Skin == dp.Folder {
+				kp.ID, kp.Known, kp.Source = c.ID, true, "catalog"
+				if c.UserData != nil {
+					kp.Keep = c.UserData
+				}
+			}
+		}
+		if !kp.Known {
+			for _, p := range a.uploads {
+				for _, m := range p.Plugins {
+					if m.Skin == dp.Folder {
+						kp.ID, kp.Known, kp.Source = m.ID, true, "your zip"
+						if m.UserData != nil {
+							kp.Keep = m.UserData
+						}
+					}
+				}
+			}
+		}
+		kp.Version = a.dev.Info.Store[kp.ID]
+		out = append(out, kp)
+	}
+	return out
+}
+
+// ensureCat loads the catalog if it is not loaded yet, so plugins from it can be recognised; an offline catalog is not an error here.
+func (a *App) ensureCat() {
+	a.mu.Lock()
+	ok := a.cat != nil && time.Since(a.catAt) <= 10*time.Minute
+	a.mu.Unlock()
+	if ok {
+		return
+	}
+	if cat, err := FetchCatalog(a.catalogURL); err == nil {
+		a.mu.Lock()
+		a.cat, a.catAt = cat, time.Now()
+		a.mu.Unlock()
+	}
+}
+
+func (a *App) devicePlugins(w http.ResponseWriter, r *http.Request) {
+	a.ensureCat()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.dev == nil {
+		fail(w, 400, "connect to the device first")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"plugins": a.classify()})
+}
+
+func (a *App) remove(w http.ResponseWriter, r *http.Request) {
+	if !postOnly(w, r) {
+		return
+	}
+	var in struct {
+		Folders []string `json:"folders"`
+		Confirm bool     `json:"confirm"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil {
+		fail(w, 400, "bad request")
+		return
+	}
+	if !in.Confirm {
+		fail(w, 400, "the removal must be confirmed")
+		return
+	}
+	a.ensureCat()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.dev == nil {
+		fail(w, 400, "connect to the device first")
+		return
+	}
+	if a.job != nil {
+		if st, _, _, _ := a.job.snapshot(0); st == "running" {
+			fail(w, 409, "a job is already running")
+			return
+		}
+	}
+	byFolder := map[string]knownPlugin{}
+	for _, kp := range a.classify() {
+		byFolder[kp.Folder] = kp
+	}
+	var plans []RemovePlan
+	seen := map[string]bool{}
+	for _, f := range in.Folders { // the plan is rebuilt here from what the device and the catalog say, never from the page
+		if seen[f] {
+			continue
+		}
+		seen[f] = true
+		kp, ok := byFolder[f]
+		if !ok {
+			fail(w, 400, fmt.Sprintf("%q is not a plugin folder on the device", f))
+			return
+		}
+		if !kp.Known {
+			fail(w, 400, fmt.Sprintf("%s was not installed from the catalog, so the app cannot tell which files in it are yours. Drop its release zip above to manage it, or remove it by hand.", f))
+			return
+		}
+		plans = append(plans, RemovePlan{Folder: kp.Folder, UID: kp.UID, ID: kp.ID, Keep: kp.Keep})
+	}
+	if len(plans) == 0 {
+		fail(w, 400, "nothing selected")
+		return
+	}
+	j := &Job{ID: randHex(4), State: "running"}
+	a.job = j
+	dev := a.dev
+	go RunRemove(dev, plans, j, func() {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		if a.dev == dev {
+			dev.readInfo(dev.Info.Host, dev.Info.Fingerprint)
+		}
+	})
+	writeJSON(w, 200, map[string]string{"job": j.ID})
 }

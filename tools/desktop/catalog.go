@@ -19,17 +19,19 @@ const defaultCatalogURL = "https://sd88me.github.io/mpc-vst-plugins/catalog.json
 
 // CatPlugin is what the app offers from the catalog: the newest stable, non-yanked version of every downloadable plugin.
 type CatPlugin struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Author      string `json:"author"`
-	Kind        string `json:"kind"`
-	Summary     string `json:"summary"`
-	Version     string `json:"version"`
-	Size        int64  `json:"size"`
-	SHA256      string `json:"sha256"`
-	URL         string `json:"url"`
-	Skin        string `json:"skin"`
-	ParamCompat int    `json:"param_compat"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Author      string   `json:"author"`
+	Kind        string   `json:"kind"`
+	Summary     string   `json:"summary"`
+	Version     string   `json:"version"`
+	Size        int64    `json:"size"`
+	SHA256      string   `json:"sha256"`
+	URL         string   `json:"url"`
+	Skin        string   `json:"skin"`
+	ParamCompat int      `json:"param_compat"`
+	UID         string   `json:"uid"`
+	UserData    []string `json:"user_data"`
 }
 
 type rawCatalog struct {
@@ -51,7 +53,9 @@ type rawCatalog struct {
 			Yanked      bool   `json:"yanked"`
 			ParamCompat int    `json:"param_compat"`
 			Manifest    struct {
-				Skin string `json:"skin"`
+				Skin     string   `json:"skin"`
+				UID      string   `json:"uid"`
+				UserData []string `json:"user_data"`
 			} `json:"manifest"`
 		} `json:"versions"`
 	} `json:"plugins"`
@@ -75,7 +79,7 @@ func parseCatalog(data []byte) ([]CatPlugin, error) {
 				continue
 			}
 			out = append(out, CatPlugin{ID: p.ID, Name: p.Name, Author: p.Author, Kind: p.Kind, Summary: p.Summary, Version: v.Version,
-				Size: v.Size, SHA256: v.SHA256, URL: v.URL, Skin: v.Manifest.Skin, ParamCompat: v.ParamCompat})
+				Size: v.Size, SHA256: v.SHA256, URL: v.URL, Skin: v.Manifest.Skin, ParamCompat: v.ParamCompat, UID: v.Manifest.UID, UserData: v.Manifest.UserData})
 			break
 		}
 	}

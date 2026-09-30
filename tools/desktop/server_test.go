@@ -223,3 +223,5 @@ func TestCatalogRowsShowWhatIsOnTheDeviceAndWhatHasAnUpdate(t *testing.T) {
 		}
 	}
 }
+
+func jsonUnmarshal(b []byte, v any) { json.Unmarshal(b, v) }

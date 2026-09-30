@@ -24,6 +24,13 @@ one MPC stop and start around the whole batch when the installers allow it.
    package's `install.sh -y -n`, starts MPC once and removes the copies. An installer that predates `-n` runs first with its own
    restart. MPC is started again even if something fails, and nothing after the failing plugin is installed.
 
+4. **Remove** (step 4 on the page): lists the plugin folders on the device. A plugin the app can identify (from the catalog, or from a
+   zip you dropped in this session) can be ticked and removed: MPC is stopped once, `MPC.settings` is backed up and the plugin's entry is
+   taken out (the edit is checked before anything is deleted), then its folder is deleted **except your own files** (the manifest's
+   `user_data`: ROMs, kits, dumps), MPC is started again. A plugin it cannot identify is listed but not removable, because it cannot tell
+   which files in it are yours: drop its release zip to manage it, or remove it by hand. The plugin-list edit uses
+   `plugin_list.awk`, a copy of `tools/release/plugin_list.awk` embedded in the binary (a test fails if the two differ: copy it again).
+
 What was installed is written to `<Synths>/.mpc-store` on the device, so `mpc-store.sh update` (the on-device script) knows about it.
 
 ## Safety

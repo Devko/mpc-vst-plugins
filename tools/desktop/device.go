@@ -41,6 +41,14 @@ type DeviceInfo struct {
 	Systemctl   bool              `json:"systemctl"`
 	Installed   []string          `json:"installed"`
 	Store       map[string]string `json:"store"` // plugin id -> version recorded by this app or mpc-store.sh
+	Plugins     []DevPlugin       `json:"-"`
+}
+
+// DevPlugin is a plugin folder on the device (one with a plugin-meta.xml).
+type DevPlugin struct {
+	Folder string `json:"folder"`
+	UID    string `json:"uid"`
+	Name   string `json:"name"`
 }
 
 type Device struct {
@@ -182,6 +190,11 @@ command -v tar >/dev/null 2>&1 && echo tar=1
 command -v systemctl >/dev/null 2>&1 && echo systemctl=1
 ls -1 "$S" 2>/dev/null | grep ' - VST - ' | sed 's/^/installed=/'
 [ -f "$S/.mpc-store" ] && sed 's/^/store=/' "$S/.mpc-store"
+for d in "$S"/*/; do
+  f="${d}plugin-meta.xml"; [ -f "$f" ] || continue
+  u=$(sed -n 's/.* uid="\([^"]*\)".*/\1/p' "$f" | head -n 1); n=$(sed -n 's/.* name="\([^"]*\)".*/\1/p' "$f" | head -n 1)
+  printf 'plug=%%s\t%%s\t%%s\n' "$(basename "$d")" "$u" "$n"
+done
 true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp))
 	info := DeviceInfo{Host: host, Fingerprint: fp, Synths: d.cfg.SynthsDir, Installed: []string{}, Store: map[string]string{}}
 	var lines []string
@@ -210,6 +223,10 @@ true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp))
 			info.Systemctl = true
 		case "installed":
 			info.Installed = append(info.Installed, v)
+		case "plug":
+			if f := strings.Split(v, "\t"); len(f) >= 3 {
+				info.Plugins = append(info.Plugins, DevPlugin{Folder: f[0], UID: f[1], Name: f[2]})
+			}
 		case "store":
 			if f := strings.Split(v, "\t"); len(f) >= 2 && f[0] != "" {
 				info.Store[f[0]] = f[1]
