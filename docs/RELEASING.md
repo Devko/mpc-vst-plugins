@@ -70,6 +70,8 @@ Run on the device as root (`sh install.sh [-y]`):
 2. Stops MPC (`systemctl stop acvs`) and waits for it to exit. A trap restarts MPC on any error.
 3. Copies `portable/<skin>/` next to its target (`/sdcard/Synths`, or `-t <folder>`), carries over the files the user
    added (the manifest's `user_data`, see `--user-data`), and swaps the new folder in.
+   Then it puts back executable bits and symlinks from the package's `MODES` file (written by `release.py`): a zip unpacked
+   on Windows, or copied file by file, loses both, and an engine that bundles binaries (yt-dlp, ffmpeg, a private Python) then fails.
 4. Backs up `MPC.settings` to `MPC.settings.bak-<so>-<date>`. `plugin_list.awk` (BusyBox awk) drops any entry with
    the same `file=` or `uid` (an older install at another path) and inserts the folder's `plugin-meta.xml`, with
    `%payload-path%` replaced by the Synths folder, into `pluginList-arm`, creating the list if needed. The result is
