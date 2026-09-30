@@ -1,0 +1,67 @@
+# Tests tools/desktop on every change; "Run workflow" builds the Windows, macOS and Linux binaries into a DRAFT release
+# (desktop-v<version>). Install it on a device, try it, then publish the draft (tools/desktop/README.md).
+name: Desktop installer
+on:
+  push:
+    branches: [main]
+    paths: ['tools/desktop/**', '.github/workflows/desktop.yml']
+  pull_request:
+    paths: ['tools/desktop/**', '.github/workflows/desktop.yml']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version, e.g. 0.1.0
+        required: true
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/desktop/go.mod
+      - name: Format, vet, test (with the race detector)
+        working-directory: tools/desktop
+        run: |
+          test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+          go vet ./...
+          go test -race ./...
+  release:
+    needs: test
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/desktop/go.mod
+      - name: Build every target
+        working-directory: tools/desktop
+        env:
+          VERSION: ${{ inputs.version }}
+          CGO_ENABLED: '0'
+        run: |
+          set -e
+          echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.]+)?$' || { echo "bad version"; exit 1; }
+          mkdir -p ../../dist
+          for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            os=${t%/*}; arch=${t#*/}
+            d=$(mktemp -d); bin=mpc-installer; [ "$os" = windows ] && bin=mpc-installer.exe
+            GOOS=$os GOARCH=$arch go build -trimpath -ldflags="-s -w -X main.version=$VERSION" -o "$d/$bin" .
+            cp FIRST-RUN.txt "$d/README.txt"
+            name="mpc-installer-$VERSION-$os-$arch"
+            if [ "$os" = windows ]; then (cd "$d" && zip -q "$GITHUB_WORKSPACE/dist/$name.zip" "$bin" README.txt)
+            else tar -C "$d" -czf "../../dist/$name.tar.gz" "$bin" README.txt; fi
+          done
+          (cd ../../dist && sha256sum * > SHA256SUMS && cat SHA256SUMS)
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release create "desktop-v$VERSION" dist/* --draft --target "$GITHUB_SHA" --title "MPC plugin installer v$VERSION" \
+            --notes "The local installer app (tools/desktop/README.md). Unsigned: the first run needs the steps in README.txt inside each archive. Check the file against SHA256SUMS."

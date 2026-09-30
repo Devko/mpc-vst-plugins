@@ -181,7 +181,11 @@ Locrian's installer uses a drop-in folder in `Synths` (`docs/CATALOG_SPEC.md`, "
 - [x] (2026-09-30) Catalog page that builds the one-line command (`ssh -t root@<ip> "wget -qO /tmp/mpc-store.sh <site>/mpc-store.sh && sh /tmp/mpc-store.sh install acid jv-880"`: download, then run, not piped into `sh`, so the confirmation prompts can read the keyboard), with the script
       text and a "download and review first" version. Ticks on the cards, IP box, copy button, the review steps with the script's sha256; the
       selection lives in the link (`#sel=acid,jv-880`); `tools/catalog_site/browser_test.py` (Playwright in the html_art image) covers it.
-- [ ] Desktop helper (only if the shell script isn't enough): ships as a script first, packaged app last.
+- [x] Desktop helper (2026-09-30): `tools/desktop` (Go, one static binary per OS, one dependency): a local web page on 127.0.0.1 behind a random
+      token; connect over SSH, pick catalog plugins and/or drop release zips (build-yourself ones too), install with one MPC stop/start;
+      catalog downloads checked against the catalog's sha256; tar stream keeps modes/symlinks; older installers (no `-n`) run first
+      with their own restart. Go tests with an in-process fake SSH device (race detector) and a browser test against a stand-in device.
+      Unsigned binaries (first-run warnings documented). Release: workflow "Desktop installer" (draft release, then publish).
 - [ ] Update notices honour `param_compat` (a major bump warns that saved projects will change).
 
 ### Phase 5: Nice to have
