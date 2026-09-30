@@ -754,3 +754,6 @@ own entry, so re-running each plugin's installer is the safe recovery. The site'
 a restart" with these causes, a check that lists each registered `file=` and whether it exists, and the recovery steps (generic
 wording, no MockbaMod naming). Still unverified: that a running MPC actually overwrites an external edit, and whether a JUCE entry
 whose file is missing at startup is dropped from the saved list.
+
+### 2026-09-30: installer tests under BusyBox
+`INSTALLER_TEST_PATH` with BusyBox 1.38 (static musl build, applets symlinked, python3 added): `tools.test_catalog.InstallerTest`, 11 tests OK, including the MODES restore. The Force has BusyBox 1.36.1, so this is close to, not identical to, the device userland.

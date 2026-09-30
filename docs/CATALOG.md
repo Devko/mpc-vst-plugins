@@ -159,10 +159,12 @@ Locrian's installer uses a drop-in folder in `Synths` (`docs/CATALOG_SPEC.md`, "
 - [x] The portable folder is the only layout (2026-09-29): `install.sh` / `uninstall.sh` are the portable installers (they also move an
       old `/sdcard/vst` install and its user files over), the duplicate `payload/` and `plugin.xml` are gone, the manifest has
       `layout: "portable"`; `catalog_check.py` still accepts old-layout zips so earlier releases stay listed.
-- [ ] Monomodule: rewrite its own `release/package.sh`, `install.sh` and `uninstall.sh` for the plugin folder (two folders, One and FX;
-      the engine reads the user's OS file at run time, so both need it).
-- [ ] Re-release the current plugins in the new layout (Dexed, JV-880, Crate Digger, Acid, Euclidier, Maze Voice, Machinedrum, Monomodule)
-      and test one with big data (JV-880 ROMs) on a device.
+- [x] Monomodule (2026-09-30): `release/package.sh` builds two `release.py` packages (One and FX; both carry the user's OS file, One's
+      `monomodule/dumps` is user data) plus a top-level installer that runs both. 0.9.2 verified on a Force (sound, presets); tag v0.9.2.
+- [ ] Re-release the current plugins in the new layout and test on a device. Done and verified on a Force (2026-09-30): Dexed 1.0.1,
+      JV-880 1.0.2 (old-layout ROMs moved), Acid 1.0.1, Crate Digger 1.1.3 (engine binaries), Monomodule 0.9.2. Open: Maze Voice (skin
+      being reworked; a 1.0.1 draft exists), Euclidier (parked, 0.5.0, spawns the MockbaMod add-on binary), Machinedrum (build-yourself:
+      `release/build_release.sh` already goes through `release.py`, so the next per-user build is portable; nothing to publish).
 - [x] Guides (Install, Build, Workflow, Setup) checked against the new layout (2026-09-30): Install's manual steps use `plugin-meta.xml`,
       and it has "If a plugin disappears after a restart". Site cards carry no layout-specific text (`index.template.html`).
 - [ ] Published releases still in the old layout stay listed and drop off a list-rebuilding scanner (NOTES 2026-09-30); re-release
