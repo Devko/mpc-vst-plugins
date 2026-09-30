@@ -731,3 +731,6 @@ data, e.g. JV-880 ROMs.
 
 ### 2026-09-30: JV-880 v1.0.2 old-layout upgrade on the Force (install.sh, pre-restart checks)
 Installed the published v1.0.2 zip over an old `/sdcard/vst` install with ROMs. Result: old `jv880.so` removed, `/sdcard/vst/jv880-roms` moved into `/sdcard/Synths/sd88me - VST - JV-880/jv880-roms/roms` (all ROM files present), one `jv880` entry in MPC.settings, settings backup made. Load test in MPC: OK (plugin loads, ROMs found).
+
+### 2026-09-30: Monomodule One + FX in the portable layout (Force)
+Per-user zip 0.9.2 (package.sh -> two release.py packages) installed over an old `/sdcard/vst` install: dumps moved into One's `monomodule/dumps`, old `.so` and OS copy removed, one settings entry each. Sound works. Gotcha: a `.so` built before the plugin-dir lookup (no `/proc/self/maps` string) ignores `MODULE_SUBDIR`, looks in the removed `/sdcard/vst/monomodule` and logs `engine failed: cannot open .../Elektron_SFX6-60_OS1.32B.syx` (no presets, no sound). That happened with 0.9.1; package.sh now refuses such a `.so`. Always rebuild the port before a layout release.
