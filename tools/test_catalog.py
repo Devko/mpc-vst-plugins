@@ -729,3 +729,104 @@ class InstallerTest(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SyncTest(Base):
+    """tools/release/sync.sh: the plugin list follows the plugin folders (device checks skipped, MPC.settings is a copy)."""
+    SKIN = "Acme - VST - Test Synth"
+    ONLY_OTHER = SETTINGS_XML.replace(
+        '      <PLUGIN name="Test Synth" format="VST" manufacturer="Acme" version="1.0" file="/sdcard/vst/test_synth.so" uid="1a2b3c4d" isInstrument="1"/>\n', "")
+
+    def setUp(self):
+        super().setUp()
+        z = self.build()
+        pkg = os.path.join(self.tmp, "pkg")
+        with zipfile.ZipFile(z) as zf:
+            zf.extractall(pkg)
+        self.top = os.path.join(pkg, os.listdir(pkg)[0])
+        self.synths = os.path.join(self.tmp, "device", "Synths")
+        os.makedirs(self.synths)
+        shutil.copytree(os.path.join(self.top, "portable", self.SKIN), os.path.join(self.synths, self.SKIN))
+        self.settings_path = os.path.join(self.tmp, "MPC.settings")
+        self.log = os.path.join(self.tmp, "mpc_ctl.log")
+        self.settings(self.ONLY_OTHER)
+
+    def settings(self, text):
+        open(self.settings_path, "w").write(text)
+
+    def sync(self, *args, roots=None):
+        env = dict(os.environ, MPC_INSTALL_TEST="1", MPC_SETTINGS=self.settings_path, MPC_TEST_LOG=self.log)
+        if os.environ.get("INSTALLER_TEST_PATH"):
+            env["PATH"] = os.environ["INSTALLER_TEST_PATH"]
+        cmd = ["sh", os.path.join(HERE, "release", "sync.sh"), "-y", *args]
+        for r in (roots or [self.synths]):
+            cmd += ["-t", r]
+        return subprocess.run(cmd, env=env, capture_output=True, text=True)
+
+    def entries(self):
+        import xml.etree.ElementTree as ET
+        return {e.get("name"): e.get("file") for e in ET.parse(self.settings_path).getroot().iter("PLUGIN")}
+
+    def calls(self):
+        return open(self.log).read().split() if os.path.exists(self.log) else []
+
+    def test_registers_an_unregistered_folder_and_touches_nothing_else(self):
+        r = self.sync()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        e = self.entries()
+        self.assertEqual(e["Test Synth"], os.path.join(self.synths, self.SKIN, "test_synth.so"))
+        self.assertEqual(e["Other"], "/sdcard/vst/other.so")                     # not in a Synths folder: left alone
+        self.assertEqual(self.calls(), ["stop", "start"])
+        self.assertTrue([n for n in os.listdir(self.tmp) if n.startswith("MPC.settings.bak-sync-")])
+
+    def test_second_run_does_nothing_and_does_not_restart_mpc(self):
+        self.assertEqual(self.sync().returncode, 0)
+        before = open(self.settings_path).read()
+        os.remove(self.log)
+        r = self.sync()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("Nothing to do", r.stdout)
+        self.assertEqual(open(self.settings_path).read(), before)
+        self.assertEqual(self.calls(), [])
+
+    def test_removes_an_entry_whose_file_in_a_synths_folder_is_gone(self):
+        gone = os.path.join(self.synths, "Gone - VST - X", "x.so")
+        self.settings(self.ONLY_OTHER.replace("    </KNOWNPLUGINS>",
+            '      <PLUGIN name="Gone" format="VST" manufacturer="x" version="1.0" file="%s" uid="deadbeef" isInstrument="1"/>\n    </KNOWNPLUGINS>' % gone))
+        self.assertIn("Gone", self.entries())
+        self.assertEqual(self.sync().returncode, 0)
+        e = self.entries()
+        self.assertNotIn("Gone", e)
+        self.assertIn("Other", e)                                                # missing file, but not in a Synths folder: kept
+        self.assertIn("Test Synth", e)
+
+    def test_an_old_layout_entry_with_the_same_uid_is_replaced(self):
+        self.settings(SETTINGS_XML)                                              # Test Synth at /sdcard/vst/test_synth.so (not there)
+        self.assertEqual(self.sync().returncode, 0)
+        self.assertEqual(self.entries()["Test Synth"], os.path.join(self.synths, self.SKIN, "test_synth.so"))
+        self.assertEqual(len(self.entries()), 2)
+
+    def test_dry_run_and_deferred_mode(self):
+        before = open(self.settings_path).read()
+        r = self.sync("--dry-run")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("add", r.stdout)
+        self.assertEqual(open(self.settings_path).read(), before)
+        self.assertEqual(self.calls(), [])
+        self.assertEqual(self.sync("-n").returncode, 0)                          # -n: the caller stops and starts MPC
+        self.assertEqual(self.calls(), [])
+        self.assertIn("Test Synth", self.entries())
+
+    def test_the_same_folder_through_two_roots_is_registered_once(self):
+        alias = os.path.join(self.tmp, "device", "SynthsAlias")
+        os.symlink(self.synths, alias)
+        self.assertEqual(self.sync(roots=[self.synths, alias]).returncode, 0)
+        self.assertEqual(len([n for n in self.entries() if n == "Test Synth"]), 1)
+        self.assertEqual(self.entries()["Test Synth"], os.path.join(self.synths, self.SKIN, "test_synth.so"))   # first root wins
+
+    def test_a_broken_settings_file_is_left_unchanged_and_mpc_is_restarted(self):
+        self.settings("not xml at all\n")
+        r = self.sync()
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(open(self.settings_path).read(), "not xml at all\n")
+        self.assertEqual(self.calls(), ["stop", "start"])
