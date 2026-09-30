@@ -163,7 +163,10 @@ Locrian's installer uses a drop-in folder in `Synths` (`docs/CATALOG_SPEC.md`, "
       the engine reads the user's OS file at run time, so both need it).
 - [ ] Re-release the current plugins in the new layout (Dexed, JV-880, Crate Digger, Acid, Euclidier, Maze Voice, Machinedrum, Monomodule)
       and test one with big data (JV-880 ROMs) on a device.
-- [ ] Guides (Install, Build, Workflow, Setup) and site cards checked against the new layout.
+- [x] Guides (Install, Build, Workflow, Setup) checked against the new layout (2026-09-30): Install's manual steps use `plugin-meta.xml`,
+      and it has "If a plugin disappears after a restart". Site cards carry no layout-specific text (`index.template.html`).
+- [ ] Published releases still in the old layout stay listed and drop off a list-rebuilding scanner (NOTES 2026-09-30); re-release
+      them (item above). Acid 1.0.1 (portable) predates the `MODES` installer, so its `install.sh` differs from the template.
 
 ### Phase 4: Install and update from the device or desktop
 - [ ] Hardware check: does the device have `wget`/`curl` with modern TLS, DNS, and room to stage a zip? Record in NOTES.md.

@@ -740,3 +740,17 @@ Staging a release for the Force by unzipping with Python `extractall` and `scp -
 
 ### 2026-09-30: MockbaMod `vstscanner` / `vstmanager` (community tools, read + offline-tested; not run on a device)
 MockbaMod users may use the Force VST distribution's `vstscanner.sh`. It rebuilds the WHOLE `pluginList-arm` from `/media/*/Synths/*/plugin-meta.xml` (filling `%payload-path%` with that Synths folder; `plugin-meta.xml.disabled` = disabled by `vstmanager`), between `MPC-CUSTOM-PLUGINS BEGIN/END` markers, stops/starts `acvs` and does NOT back up `MPC.settings`. Our portable plugin folders match that rule as they are: an offline run (script copy pointed at a fake `/media/card/Synths` holding the real JV-880 and Monomodule One packages, `systemctl` stubbed) registered both with the right name/uid/`file=`, a second run changed nothing, the settings stayed valid XML. Consequences: (1) a plugin still installed the old way (`.so` in `/sdcard/vst`, no folder in a Synths dir) is dropped by the next scan; (2) `/sdcard` and `/media/az01-internal-sd` are the same mount on the Force, so the scanner writes `file=/media/az01-internal-sd/Synths/...` where our installer writes `/sdcard/Synths/...` (our uninstall/upgrade match by uid too, so both work); (3) `install.sh` swaps the whole folder, so an upgrade re-enables a plugin that `vstmanager` had disabled. Kept out of the generic docs on purpose (MockbaMod-specific).
+
+### 2026-09-30: user reports of plugins vanishing from the list after a restart (analysis, not reproduced on a device)
+Community reports: "installed third-party plugins, restarted, they aren't in the list", "a command pasted into PuTTY uninstalled all
+my plugins", "some install one way and some another, which rewrites the file that tells the MPC what's installed". The plugin list
+is the single `pluginList-arm` value in `MPC.settings`, so every install method edits the same list and one can undo another. Likely
+causes, from the facts above: (1) the file edited while `acvs` runs (the reason for the stop-first rule; MPC keeps its settings in
+memory and saves them itself; not tested separately here); (2) a list-rebuilding scanner such as MockbaMod's `vstscanner` (entry
+above), which drops every plugin that is not a Synths folder with a `plugin-meta.xml`, i.e. hand-added entries and old-layout
+(`/sdcard/vst`) installs, while the files stay on the card; (3) malformed XML, which makes MPC reset the file to defaults (empty
+list). Our current releases survive (2) because they are such folders; `install.sh` stops MPC before editing and re-adds only its
+own entry, so re-running each plugin's installer is the safe recovery. The site's Install guide now has "If a plugin disappears after
+a restart" with these causes, a check that lists each registered `file=` and whether it exists, and the recovery steps (generic
+wording, no MockbaMod naming). Still unverified: that a running MPC actually overwrites an external edit, and whether a JUCE entry
+whose file is missing at startup is dropped from the saved list.
