@@ -178,8 +178,9 @@ Locrian's installer uses a drop-in folder in `Synths` (`docs/CATALOG_SPEC.md`, "
       restarts MPC without a confirmation (`-y` to skip). `catalog.tsv` (shell-friendly index of the downloadable plugins) and the
       helpers `mpc-store.sh`, `sync.sh`, `plugin_list.awk` (hash-checked against the index) are published next to `catalog.json` by
       `tools/catalog_site.py`. Build-yourself plugins are not in it. Tested offline against a local server (BusyBox) and, dry-run, on a Force.
-- [ ] Catalog page that builds the one-line command (`ssh root@<ip> "wget -qO- <site>/mpc-store.sh | sh -s -- install acid jv-880"`), with the script
-      text and a "download and review first" version.
+- [x] (2026-09-30) Catalog page that builds the one-line command (`ssh -t root@<ip> "wget -qO /tmp/mpc-store.sh <site>/mpc-store.sh && sh /tmp/mpc-store.sh install acid jv-880"`: download, then run, not piped into `sh`, so the confirmation prompts can read the keyboard), with the script
+      text and a "download and review first" version. Ticks on the cards, IP box, copy button, the review steps with the script's sha256; the
+      selection lives in the link (`#sel=acid,jv-880`); `tools/catalog_site/browser_test.py` (Playwright in the html_art image) covers it.
 - [ ] Desktop helper (only if the shell script isn't enough): ships as a script first, packaged app last.
 - [ ] Update notices honour `param_compat` (a major bump warns that saved projects will change).
 

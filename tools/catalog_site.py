@@ -53,10 +53,11 @@ def render_page(page, pages):
     return tpl
 
 
-def render(catalog, pages=()):
+def render(catalog, pages=(), helper_hashes=None):
     """The catalog page HTML for a catalog dict. The JSON is embedded in a <script type=application/json>, so '<' is escaped."""
     data = json.dumps(catalog, separators=(",", ":"), ensure_ascii=False).replace("<", "\\u003c").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
-    tpl = read("index.template.html")
+    store = json.dumps({k: v for k, v in (helper_hashes or {}).items() if isinstance(v, str) and len(v) == 64 and all(c in "0123456789abcdef" for c in v)})
+    tpl = read("index.template.html").replace("/*STORE_JSON*/", store)
     marker = "/*CATALOG_JSON*/"
     if tpl.count(marker) != 1:
         raise SystemExit("template must contain the marker exactly once")
@@ -123,13 +124,14 @@ def main():
         raise SystemExit("unsupported catalog schema %r" % catalog.get("schema"))
     os.makedirs(a.out, exist_ok=True)
     pages = load_pages(a.pages)
-    open(os.path.join(a.out, "index.html"), "w", encoding="utf-8").write(render(catalog, pages))
+    helpers = [("mpc-store.sh", os.path.join(HERE, "mpc-store.sh")), ("sync.sh", os.path.join(HERE, "release", "sync.sh")),
+               ("plugin_list.awk", os.path.join(HERE, "release", "plugin_list.awk"))]
+    hashes = {name: hashlib.sha256(open(path, "rb").read()).hexdigest() for name, path in helpers}
+    open(os.path.join(a.out, "index.html"), "w", encoding="utf-8").write(render(catalog, pages, hashes))
     for pg in pages:
         open(os.path.join(a.out, pg["slug"] + ".html"), "w", encoding="utf-8").write(render_page(pg, pages))
     open(os.path.join(a.out, "feed.xml"), "w", encoding="utf-8").write(atom(catalog, a.base_url))
     shutil.copy(a.catalog, os.path.join(a.out, "catalog.json"))
-    helpers = [("mpc-store.sh", os.path.join(HERE, "mpc-store.sh")), ("sync.sh", os.path.join(HERE, "release", "sync.sh")),
-               ("plugin_list.awk", os.path.join(HERE, "release", "plugin_list.awk"))]
     for name, path in helpers:   # the files a device downloads next to catalog.tsv, checked against the hashes listed in it
         shutil.copy(path, os.path.join(a.out, name))
     open(os.path.join(a.out, "catalog.tsv"), "w", encoding="utf-8", newline="\n").write(tsv(catalog, helpers))
