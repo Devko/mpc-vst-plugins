@@ -757,3 +757,6 @@ whose file is missing at startup is dropped from the saved list.
 
 ### 2026-09-30: installer tests under BusyBox
 `INSTALLER_TEST_PATH` with BusyBox 1.38 (static musl build, applets symlinked, python3 added): `tools.test_catalog.InstallerTest`, 11 tests OK, including the MODES restore. The Force has BusyBox 1.36.1, so this is close to, not identical to, the device userland.
+
+### 2026-09-30: device hardware check for an on-device installer (Force, MPC OS, MockbaMod)
+`wget` (GNU 1.20.3, musl) fetched this site's `catalog.json` over HTTPS and `curl` reached github.com; `/tmp` is a 1 GB tmpfs (RAM), `/sdcard` ext4 with GBs free. Present: `python3`, `dialog`, BusyBox `unzip`/`tar`/`sha256sum`/`nc` (no BusyBox `httpd`); `python3` and `dialog` may be MockbaMod additions. MPC drops a plugin-list entry whose file is missing at startup. `tools/mpc-store.sh` `list`, `install --dry-run acid` (real download + sha256 check from GitHub, extracted, nothing installed) and `sync --dry-run` (planned 4 additions: unregistered AIRWINDOWS folders) ran on the device against a catalog served from the device itself; MPC.settings unchanged.

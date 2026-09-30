@@ -10,6 +10,7 @@ tools/catalog_md.py) and joins the menu. Standard library only. Templates and CS
 """
 import argparse
 import glob
+import hashlib
 import json
 import os
 import shutil
@@ -86,6 +87,30 @@ def atom(catalog, base=""):
     return "\n".join(out) + "\n"
 
 
+def _f(x):
+    return str(x).replace("\t", " ").replace("\n", " ").replace("\r", " ")
+
+
+def tsv(catalog, helpers):
+    """catalog.tsv for shell clients (tools/mpc-store.sh, BusyBox sh has no JSON): a header, one '#file' line per helper file
+    with its sha256, then one 'plugin' line per stable, non-yanked version of every downloadable (distribution 'release') plugin:
+    plugin id version latest kind name skin uid param_compat size sha256 url user_data   (tab separated, '-' when empty)."""
+    out = ["#mpc-catalog-tsv 1"]
+    for name, path in helpers:
+        out.append("#file\t%s\t%s" % (name, hashlib.sha256(open(path, "rb").read()).hexdigest()))
+    for p in catalog["plugins"]:
+        if p.get("distribution") != "release":
+            continue
+        for v in p.get("versions", []):
+            if v.get("yanked") or v.get("channel", "stable") != "stable" or not v.get("url"):
+                continue
+            m = v["manifest"]
+            row = ["plugin", p["id"], v["version"], "1" if v["version"] == p.get("latest") else "0", p["kind"], p["name"], m["skin"],
+                   m["uid"], v.get("param_compat", 1), v["size"], v["sha256"], v["url"], ",".join(m.get("user_data", [])) or "-"]
+            out.append("\t".join(_f(x) for x in row))
+    return "\n".join(out) + "\n"
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--catalog", default="catalog/dist/catalog.json")
@@ -103,6 +128,11 @@ def main():
         open(os.path.join(a.out, pg["slug"] + ".html"), "w", encoding="utf-8").write(render_page(pg, pages))
     open(os.path.join(a.out, "feed.xml"), "w", encoding="utf-8").write(atom(catalog, a.base_url))
     shutil.copy(a.catalog, os.path.join(a.out, "catalog.json"))
+    helpers = [("mpc-store.sh", os.path.join(HERE, "mpc-store.sh")), ("sync.sh", os.path.join(HERE, "release", "sync.sh")),
+               ("plugin_list.awk", os.path.join(HERE, "release", "plugin_list.awk"))]
+    for name, path in helpers:   # the files a device downloads next to catalog.tsv, checked against the hashes listed in it
+        shutil.copy(path, os.path.join(a.out, name))
+    open(os.path.join(a.out, "catalog.tsv"), "w", encoding="utf-8", newline="\n").write(tsv(catalog, helpers))
     open(os.path.join(a.out, ".nojekyll"), "w").close()
     print("%s (%d plugins, %d guide pages)" % (os.path.join(a.out, "index.html"), len(catalog["plugins"]), len(pages)))
 
