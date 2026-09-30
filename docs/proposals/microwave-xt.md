@@ -23,7 +23,7 @@ So there are two routes. They don't exclude each other:
 | Distribution | Normal release, user supplies the data files (JV-880 precedent) | `build-yourself` (firmware-derived), like Monomodule |
 | Gen2 note | Same | If a Gen2 MPC runs a 64-bit `MPC` (unverified: `tools/probe_device.sh`), gearmulator's aarch64 JIT becomes an option there |
 
-The rest of this document is Track A. Track B stays a time-boxed spike (section 8), because if the existing
+The rest of this document is Track A. Track B stays a time-boxed spike (section 11), because if the existing
 recompiler handles a 56300 program, the result would be exact.
 
 ## 2. The core idea: adopt the XT's own data model, don't design a "similar" synth
@@ -153,22 +153,171 @@ not at the end.
 | FigBug Wavetable | BSD-3-Clause, needs JUCE | Not usable in the C wrapper. Useful for UI and modulation ideas only. |
 | Waldorf legacy page | Waldorf's terms | Source of the manuals, OS updates and sound banks the user downloads. Could not be fetched from this environment, so its exact terms still need reading. |
 
-## 7. Data, licensing and naming
+## 7. Code layout and runtime model
 
-- **Waldorf data never goes in the repo or the release zip**: no ROM waves, wavetables or factory banks. That includes
-  the wave collections circulating online (archive.org, waveeditonline): their redistribution status is unclear.
-- The plugin loads **user-supplied files at runtime**, like the JV-880 port loads user ROMs: (a) a wave/table file
-  made by the extractor (the oracle tool from section 4, run by the user against their own OS update or ROM, or against
-  their own hardware using WAVR/WCTR requests), and (b) `.syx` banks. File picking follows PORTING.md section 1
-  (scan off the audio thread, sort, save by name). With no data present it still plays: built-in tri/square/saw and
-  generated additive tables so it isn't silent.
-- That keeps the plugin a normal published release (GPL-3.0 if any gearmulator or sst code is used), catalog-conformant,
-  with `requires` naming the user files. The extractor may embed gearmulator; it is a desktop tool, not part of the
-  plugin.
-- Name: avoid Waldorf/Microwave trademarks in the product name. Describe compatibility plainly ("loads Microwave
-  II/XT sound dumps").
+One C engine behind `wrapper/engine.h`, split so each file maps to one calibration target:
 
-## 8. Plan
+| File | Job |
+|---|---|
+| `patch.c` | The 256-byte SDATA struct, range clamping, the errata from section 2, defaults (an init sound) |
+| `syx.c` | Import: single, all-sounds, SNDP, WAVD/WCTD (spec 3.4/3.5), MW1 format later. Export: single dump |
+| `waves.c` | Wave store (ROM slots, RAM 1000-1249, the open set), the 64-slot table builder (slot interpolation), mip pyramids, algorithmic tables |
+| `import.c` | Worker-thread importer for user files (section 10), writes a cache next to the `.so` |
+| `osc.c`, `mixer.c` | Wave read, sync, FM, ring mod, noise, clipping modes |
+| `filter.c` | Filter 1's 10 types, Filter 2 |
+| `env.c`, `lfo.c`, `mod.c` | ADSRs, wave env with loops, free env, LFOs, matrix, modifiers, control-rate tick |
+| `voice.c`, `alloc.c`, `arp.c` | Voice state, poly/mono, normal/dual/unison, glide types, arpeggiator |
+| `fx.c`, `out.c` | Effects, 40 to 44.1 kHz resampler, gain staging, int16 conversion |
+| `engine.c` | `mpc_engine()`: parameter keys to SDATA fields, CC map, programs, chunk |
+
+Runtime rules:
+- **Every table is built before it is needed.** The XT's host rebuilds a table when the sound changes it. Here the
+  loader builds all 128 tables (128 x 64 slots x 256 bytes = 2 MB of int8) on a worker thread when the wave data
+  loads, and a table change on the audio thread is a pointer swap. No glitch when a Q-Link sweeps the table
+  parameter, which on the hardware stalls briefly.
+- **Program changes** swap a whole SDATA block between blocks; voices keep playing and pick up the new values at the next
+  control tick, as on the hardware.
+- **Denormals:** set FPSCR flush-to-zero on the audio thread (NEON flushes already, VFP does not). The bench's
+  release-tail stage checks it.
+- **No allocation, locks or file I/O on the audio thread.** Loads and imports report status through a display-string
+  parameter ("ORIGINAL WAVES: installed / not found / importing 40%").
+
+## 8. Output stage
+
+The signal path after the voices, in XT order:
+
+```
+voice: amp env x volume x velocity x keytrack -> pan (+ pan keytrack, + matrix) --+
+                                                                                  |
+all voices -> stereo sum (24-bit-style fixed point, XT clipping) -> effect -> chorus
+           -> 40 kHz to 44.1 kHz resampler -> output trim -> soft limit -> int16 -> wrapper
+```
+
+- **Headroom.** The wrapper takes int16 from `render()` and hard-clips (`f2s` in `wrapper/vst2_wrap.c`). A 10-voice
+  unison patch will clip if the voice sum is scaled like one voice. Sum at the XT's internal scale, then apply one
+  fixed make-up gain calibrated so an init sound at full velocity peaks where Xenia's does. After that comes an
+  **Output trim** parameter (appended after the SDATA fields) and a gentle limiter that is off by default, so
+  "authentic" and "safe for live use" are both a setting away.
+- **16-bit output.** Enough at the level MPC mixes, but the resampler and trim run in float and only the last step
+  goes to int16, with TPDF dither on quiet signals. If that ever shows up as a limit, a float `render_f32()` field can
+  be appended to `mpc_engine_t` (append-only, as the header already says) with the wrapper preferring it.
+- **Resampler.** Polyphase FIR, 160 phases (147 output samples per 160 input samples), about 32 taps, run once on the
+  stereo sum. Two settings: *Clean* (steep, no images above 20 kHz) and *Vintage* (a gentler filter that keeps some of
+  the XT's 40 kHz grit). Tune *Vintage* against recordings of real hardware, not Xenia, which has its own resampler.
+- **Main/Sub outs.** The XT's second output doesn't map to a stereo VST2 instrument. The instrument sums both; the
+  Multi `Output` field is ignored on import.
+- **Effects.** The XT has one effect per sound (types 0..35, 3 parameters, SDATA 76/81/83/86) plus chorus (82).
+  Implement chorus, flanger, delays and the other types one by one against the oracle; until a type is modelled it
+  falls back to the nearest implemented one and the readout says so.
+
+## 9. Controls and skin
+
+### Parameters
+- Around 190 non-reserved SDATA fields, in SDATA order, keyed by readable names (`osc1_oct`, `w1_start`,
+  `f1_type`, `mod3_src`, ...). Reserved bytes and the name aren't parameters; the name is a display string.
+- Appended after them: `bank` (file popup), `program` (stepper with name readout), `polyphony`, `output_trim`,
+  `resampler`, `limiter`, `mod_view`, the wave-data status readout, and the skin's `__open` popups.
+- Enums with 7 or more options (filter types, the 32 mod sources, 36 destinations, 36 effect types, 16 modifier
+  ops, arp patterns) are `popup`s; short ones are `enum_h`.
+
+### The XT's own performance controls map straight onto MPC
+- **Play Parameters #1-4** (SDATA 58-61) are the XT's per-sound "four knobs you can reach from the play screen". They
+  become the Play page's first Q-Link row, and each knob shows whatever parameter the sound assigned to it. The
+  factory sounds were voiced around those four, so a loaded preset arrives already "performance mapped".
+- **Controls W, X, Y, Z** are mod sources (list 3.12, 20-23). Expose them as four Q-Links on every page's second
+  bank, so matrix routings that sound designers put on W-Z work on MPC as they did on the XT.
+- **Mod wheel, aftertouch, poly pressure, breath, foot** come from MPC's MIDI as usual (check that MPC passes poly
+  pressure and CC 2/4 to a VST2; record in NOTES).
+
+### Pages (one per MPC tab, Q-Links follow the page)
+| Page | Contents |
+|---|---|
+| PLAY | Preset browser (bank popup, program stepper, 16-character name), Play Params 1-4, W-Z, volume, glide, allocation/assignment/detune, wave-data status |
+| OSC | Osc 1/2 octave, semitone, detune, keytrack, bend range, sync, link, Osc 1 FM amount |
+| WAVE | Wavetable (popup with names), Wave 1/2 start wave, phase, env amount, velocity, keytrack, limit, link; a picture of the current slot |
+| WAVE ENV | 8 time and 8 level sliders side by side, so the row of sliders reads as the envelope; trigger; key-on and key-off loop start/end |
+| MIX | Wave 1, Wave 2, ring mod, noise, external levels; aliasing, time quantisation, clipping, accuracy |
+| FILTER | Filter 1 cutoff, resonance, type, keytrack, env amount, velocity, special (its label follows the type: `when=f1_type:...`); Filter 2 cutoff, type, keytrack; filter ADSR + trigger |
+| AMP | Amp ADSR + trigger, volume, velocity, keytrack, pan, pan keytrack, free envelope |
+| LFO | LFO 1/2 rate (or sync division, `when=`), shape, delay, sync, symmetry, humanize, LFO 2 phase |
+| MOD | 16 slots shown 4 at a time: `mod_view` 1-4 picks which (`when=mod_view:N`), each slot source popup, amount knob, destination popup |
+| MODIFIERS | 4 modifiers (source 1, source 2, op, parameter) + modifier delay |
+| ARP / FX | Arp settings and user pattern (16 steps as toggles, packed into SDATA 102-105); effect type, 3 parameters, chorus |
+
+Limits that shape this (NOTES/ROADMAP): no native envelope or XY component for a VST2, so envelopes are slider rows;
+no live meters (the wrapper has no engine-driven update path yet), so the wave picture and readouts refresh when a
+control is touched, not while a note plays. A live oscilloscope would need that ROADMAP item first.
+
+### Look
+- The XT's feel rather than a copy of its panel: dark anodised plate, white screened labels, red accent (the XT's
+  big red encoder) for the active control, rubber-cap knobs (`knob_look=cap`), and a backlit **2x40 LCD strip** at
+  the top of every page showing the sound name and the last touched parameter as "FILTER 1 CUTOFF   64". The XT's
+  own UI is a 2x40 character LCD (DISD in the SysEx spec is 80 characters), so this is the recognisable part.
+- Built with the browser renderer (`"art": "html"`, `art_css=`) and SVG plate art we draw ourselves. No Waldorf logo,
+  photos of the panel or trade dress, and the product name doesn't use Waldorf or Microwave.
+- Wave picture: a filmstrip rendered at build time from the **open** wave set only (section 10). Imported Waldorf waves
+  don't appear in shipped images; the picture shows slot position (0-63) and the fixed tri/square/saw marks.
+- Preview every page offline (`tools/studio.py preview`) before anything goes to a device.
+
+## 10. Vendoring and the Waldorf material: how far each can go in a published zip
+
+The catalog rule (PORTING.md section 5): public repo, SPDX licence, no closed binaries or copyrighted ROMs in the repo
+or zip. Sorted by what that allows:
+
+### Ships in the zip
+| Item | Licence | Note |
+|---|---|---|
+| Our engine, skin, tools | GPL-3.0-only | Required as soon as any GPL code is vendored; matches Dexed/Acid |
+| sst-filters, sst-basic-blocks (if used) | GPL-3.0 | Vendored under `src/vendor/` with `VENDORED.md` (commit, local changes) |
+| simde | MIT | Only if sst code needs SSE on ARM |
+| Tablor pieces (voice handling, file scan) | BSD-3-Clause | Keep its licence file |
+| gearmulator snippets (ROM/OS parsing, value texts from `parameterDescriptions_xt.json`) | GPL-3.0 | Fine inside a GPL-3.0 port; credit in `VENDORED.md` |
+| **An open wave set** | CC0 or GPL-3.0, ours | Original waves and 64-slot tables we make (additive, formant, PWM, sync sweeps, vocal-ish) filling the same table numbers with similar *character*, so any sound plays and the plugin is usable out of the box |
+| **Original presets** | ours | A bank written for the open wave set. Factory XT sounds are not shipped |
+| Behaviour constants from calibration | ours | Fitted filter curves, envelope and LFO rate tables, the table interpolation method: measurements of behaviour written as our own code, not copies of firmware data |
+
+### Loaded at runtime from the user's own files (never in the zip)
+| User file | What it unlocks |
+|---|---|
+| The Microwave II/XT **OS update** (`.mid`, from Waldorf's legacy download page), or a 256 KB ROM dump | The original waves and control tables, imported on the device |
+| Factory and third-party **`.syx` sound banks** | The original presets, loaded as they are (section 2) |
+| **Wave and table `.syx` dumps** (WAVD/WCTD) | User wavetables, including third-party MW wave banks |
+| A dump from **the user's own hardware** (WAVR/WCTR requests, done by the desktop extractor) | Everything, for owners of an XT |
+
+The importer runs inside the plugin (`import.c`, worker thread). The user drops the file into the plugin's `import/`
+folder. The plugin parses it, extracts waves and control tables, builds the 128 tables with **our** interpolation and
+algorithmic-table code, and writes a cache in `cache/` (user data: `release.py --user-data`, so upgrades keep it).
+Then the wavetable popup shows the original tables and the status readout says "ORIGINAL WAVES: installed". This keeps
+the zip free of Waldorf data and still gives a one-file, on-device setup.
+
+What must be verified first, because the design depends on it:
+1. **Does the OS update contain all waves and control tables?** gearmulator merges a `.mid` update into the upper
+   128 KB of a full ROM, and the user-writable ROM waves start at `0x26501`, inside that half. Whether ROM waves 0-451
+   and the control tables are there too is not known yet. If they aren't, the importer also needs a full ROM dump or a
+   hardware dump, and the docs say so.
+2. **Factory sounds inside the OS image.** gearmulator reads ROM singles for banks A and B. If they sit in the OS
+   update, the importer can offer the factory banks from the same file.
+3. **Our interpolation vs the firmware's.** Tested with the oracle: our table builder's output against the DSP
+   wave memory dump, slot by slot. The dump itself is a test fixture on the developer's machine and is never committed.
+
+### Never in the repo or zip
+ROM or OS files; extracted or oracle-dumped waves and tables; factory `.syx` banks; recordings of factory presets
+(including golden files for tests: CI regression runs only on the open set, the full factory comparison runs locally);
+Waldorf logos, panel photos or trade dress; the words Waldorf or Microwave in the product name.
+
+### Worth asking
+Waldorf publishes the legacy OS files, manuals and sound banks for free download, but free to download isn't
+permission to redistribute. One email asking Waldorf whether an open-source project may bundle the factory sound banks,
+and possibly the ROM waves, costs nothing. A yes moves those rows into "Ships in the zip" with their notice; a no or
+no answer leaves this design as it is. (None of this is legal advice; read the legacy page's own terms, which this
+research couldn't reach.)
+
+### Catalog entry
+A normal published release (not `build-yourself`): `"license": "GPL-3.0-only"`, `release.py --repo --license`,
+`catalog_check.py --catalog` OK, and a `requires` note such as "Optional: your Microwave II/XT OS update file for the
+original wavetables; .syx banks for the original sounds".
+
+## 11. Plan
 
 | Phase | Deliverable | Gate |
 |---|---|---|
