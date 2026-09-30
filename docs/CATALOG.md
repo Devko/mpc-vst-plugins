@@ -171,9 +171,15 @@ Locrian's installer uses a drop-in folder in `Synths` (`docs/CATALOG_SPEC.md`, "
       them (item above). Acid 1.0.1 (portable) predates the `MODES` installer, so its `install.sh` differs from the template.
 
 ### Phase 4: Install and update from the device or desktop
-- [ ] Hardware check: does the device have `wget`/`curl` with modern TLS, DNS, and room to stage a zip? Record in NOTES.md.
-- [ ] `mpc-store.sh` (BusyBox `sh`): `list`, `install`, `update`, `remove`, `--check`; verifies sha256; keeps an
-      installed-versions file; uses each zip's own `install.sh`. Never restarts MPC without confirmation.
+- [x] Hardware check (2026-09-30, Force, NOTES.md): `wget` 1.20.3 and `curl` fetch HTTPS from GitHub and this site; `/tmp` is a 1 GB tmpfs.
+- [x] `tools/mpc-store.sh` (BusyBox `sh`): `list`, `install <id[@ver]>...`, `update`, `remove`, `sync`; downloads and checks every zip's sha256
+      from `catalog.tsv` before touching the device, stops MPC once, runs each zip's own `install.sh -y -n`, starts MPC once, remembers
+      what it installed in `<synths>/.mpc-store`; holds back a major (`param_compat`) update unless `--major`; `--dry-run`; never
+      restarts MPC without a confirmation (`-y` to skip). `catalog.tsv` (shell-friendly index of the downloadable plugins) and the
+      helpers `mpc-store.sh`, `sync.sh`, `plugin_list.awk` (hash-checked against the index) are published next to `catalog.json` by
+      `tools/catalog_site.py`. Build-yourself plugins are not in it. Tested offline against a local server (BusyBox) and, dry-run, on a Force.
+- [ ] Catalog page that builds the one-line command (`ssh root@<ip> "wget -qO- <site>/mpc-store.sh | sh -s -- install acid jv-880"`), with the script
+      text and a "download and review first" version.
 - [ ] Desktop helper (only if the shell script isn't enough): ships as a script first, packaged app last.
 - [ ] Update notices honour `param_compat` (a major bump warns that saved projects will change).
 

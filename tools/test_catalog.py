@@ -800,6 +800,13 @@ class SyncTest(Base):
         self.assertIn("Other", e)                                                # missing file, but not in a Synths folder: kept
         self.assertIn("Test Synth", e)
 
+    def test_a_folder_without_its_so_is_not_registered_and_its_old_entry_goes(self):
+        self.assertEqual(self.sync().returncode, 0)
+        self.assertIn("Test Synth", self.entries())
+        os.remove(os.path.join(self.synths, self.SKIN, "test_synth.so"))         # meta.xml stays, the plugin file is gone
+        self.assertEqual(self.sync().returncode, 0)
+        self.assertNotIn("Test Synth", self.entries())
+
     def test_an_old_layout_entry_with_the_same_uid_is_replaced(self):
         self.settings(SETTINGS_XML)                                              # Test Synth at /sdcard/vst/test_synth.so (not there)
         self.assertEqual(self.sync().returncode, 0)
@@ -830,3 +837,155 @@ class SyncTest(Base):
         self.assertNotEqual(r.returncode, 0)
         self.assertEqual(open(self.settings_path).read(), "not xml at all\n")
         self.assertEqual(self.calls(), ["stop", "start"])
+
+class StoreTest(Base):
+    """tools/mpc-store.sh against a local fake catalog (catalog.tsv from catalog_site.tsv) and zips served over HTTP."""
+    SKIN = "Acme - VST - Test Synth"
+
+    def setUp(self):
+        super().setUp()
+        if not (os.environ.get("INSTALLER_TEST_PATH") or shutil.which("unzip")):
+            self.skipTest("needs unzip (the device has it in BusyBox); or set INSTALLER_TEST_PATH to a folder of BusyBox applets")
+        import http.server
+        import threading
+        import hashlib
+        import catalog_site
+        self.web = os.path.join(self.tmp, "web")
+        os.makedirs(self.web)
+        self.hashlib, self.catalog_site = hashlib, catalog_site
+        self.versions = []
+        for v in ("1.2.0", "1.3.0", "2.0.0"):
+            z = self.build(version=v, extra=("--user-data", "roms"))
+            shutil.copy(z, self.web)
+            self.versions.append((v, os.path.join(self.web, os.path.basename(z))))
+        for name, path in (("sync.sh", os.path.join(HERE, "release", "sync.sh")), ("plugin_list.awk", os.path.join(HERE, "release", "plugin_list.awk"))):
+            shutil.copy(path, os.path.join(self.web, name))
+        import functools
+
+        class Quiet(http.server.SimpleHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=self.web))
+        self.port = self.httpd.server_address[1]
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        self.addCleanup(self.httpd.shutdown)
+        self.write_catalog(["1.2.0"])
+        self.synths = os.path.join(self.tmp, "device", "Synths")
+        self.settings_path = os.path.join(self.tmp, "MPC.settings")
+        open(self.settings_path, "w").write(SyncTest.ONLY_OTHER)
+        self.log = os.path.join(self.tmp, "mpc_ctl.log")
+
+    def write_catalog(self, published):
+        vs = []
+        for v, path in self.versions:
+            if v not in published:
+                continue
+            m = catalog_check.check(path, catalog=True)[2]["manifest"]
+            vs.append({"version": v, "size": os.path.getsize(path), "sha256": self.hashlib.sha256(open(path, "rb").read()).hexdigest(),
+                       "param_compat": int(v.split(".")[0]), "manifest": m, "channel": "stable", "yanked": False,
+                       "url": "http://127.0.0.1:%d/%s" % (self.port, os.path.basename(path))})
+        vs.sort(key=lambda x: [int(n) for n in x["version"].split(".")], reverse=True)
+        cat = {"schema": 1, "plugins": [{"id": "test-synth", "name": "Test Synth", "kind": "instrument", "distribution": "release",
+                                          "latest": vs[0]["version"], "versions": vs},
+                                         {"id": "byo", "name": "Build Yourself", "kind": "instrument", "distribution": "build-yourself", "versions": []}]}
+        helpers = [(n, os.path.join(self.web, n)) for n in ("sync.sh", "plugin_list.awk")]
+        open(os.path.join(self.web, "catalog.tsv"), "w").write(self.catalog_site.tsv(cat, helpers))
+
+    def store(self, *args, stdin=""):
+        env = dict(os.environ, MPC_INSTALL_TEST="1", MPC_SETTINGS=self.settings_path, MPC_TEST_LOG=self.log, MPC_STORE_TMP=self.tmp,
+                   MPC_LEGACY_ROOT=os.path.join(self.tmp, "nolegacy"))
+        if os.environ.get("INSTALLER_TEST_PATH"):
+            env["PATH"] = os.environ["INSTALLER_TEST_PATH"]
+        cmd = ["sh", os.path.join(HERE, "mpc-store.sh"), "-y", "-t", self.synths, "--url", "http://127.0.0.1:%d/catalog.tsv" % self.port, *args]
+        return subprocess.run(cmd, env=env, capture_output=True, text=True, input=stdin)
+
+    def calls(self):
+        return open(self.log).read().split() if os.path.exists(self.log) else []
+
+    def entries(self):
+        import xml.etree.ElementTree as ET
+        return {e.get("name"): e.get("file") for e in ET.parse(self.settings_path).getroot().iter("PLUGIN")}
+
+    def state(self):
+        p = os.path.join(self.synths, ".mpc-store")
+        return [l.split("\t") for l in open(p).read().splitlines()] if os.path.exists(p) else []
+
+    def test_list_shows_downloadable_plugins_only(self):
+        r = self.store("list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("test-synth", r.stdout)
+        self.assertNotIn("byo", r.stdout)
+        os.makedirs(os.path.join(self.synths, self.SKIN))                        # a folder somebody copied there by hand
+        self.assertIn("manual", self.store("list").stdout)
+
+    def test_install_verifies_installs_and_restarts_mpc_once(self):
+        r = self.store("install", "test-synth")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(os.path.exists(os.path.join(self.synths, self.SKIN, "test_synth.so")))
+        self.assertEqual(self.entries()["Test Synth"], os.path.join(self.synths, self.SKIN, "test_synth.so"))
+        self.assertIn("Other", self.entries())
+        self.assertEqual(self.calls(), ["stop", "start"])
+        self.assertEqual(self.state(), [["test-synth", "1.2.0", self.SKIN, "1"]])
+
+    def test_a_download_that_does_not_match_the_catalog_installs_nothing(self):
+        path = self.versions[0][1]
+        data = open(path, "rb").read()
+        open(path, "wb").write(data[:-1] + bytes([data[-1] ^ 1]))
+        r = self.store("install", "test-synth")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("sha256", r.stderr)
+        self.assertFalse(os.path.exists(self.synths))
+        self.assertEqual(self.calls(), [])                                       # MPC was never touched
+
+    def test_unknown_and_build_yourself_ids_are_refused(self):
+        for bad in ("nope", "byo"):
+            r = self.store("install", bad)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertEqual(self.calls(), [])
+
+    def test_update_takes_a_newer_version_and_holds_back_a_major_change(self):
+        self.assertEqual(self.store("install", "test-synth").returncode, 0)
+        os.remove(self.log)
+        self.write_catalog(["1.2.0", "1.3.0"])
+        r = self.store("update")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.state()[0][1], "1.3.0")
+        os.remove(self.log)
+        self.write_catalog(["1.2.0", "1.3.0", "2.0.0"])
+        r = self.store("update")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("major", r.stdout)
+        self.assertEqual(self.state()[0][1], "1.3.0")                            # held back
+        self.assertEqual(self.calls(), [])
+        self.assertEqual(self.store("--major", "update").returncode, 0)
+        self.assertEqual(self.state()[0][1], "2.0.0")
+
+    def test_remove_deletes_the_folder_and_entry_but_keeps_user_files(self):
+        self.assertEqual(self.store("install", "test-synth").returncode, 0)
+        rom = os.path.join(self.synths, self.SKIN, "roms", "mine.rom")
+        os.makedirs(os.path.dirname(rom))
+        open(rom, "w").write("mine")
+        os.remove(self.log)
+        r = self.store("remove", "test-synth")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.synths, self.SKIN, "test_synth.so")))
+        self.assertEqual(open(rom).read(), "mine")
+        self.assertNotIn("Test Synth", self.entries())
+        self.assertIn("Other", self.entries())
+        self.assertEqual(self.state(), [])
+        self.assertEqual(self.calls(), ["stop", "start"])
+
+    def test_sync_command_uses_hash_checked_helpers(self):
+        shutil.copytree(os.path.join(self.tmp, "web"), os.path.join(self.tmp, "keep"))
+        self.assertEqual(self.store("install", "test-synth").returncode, 0)
+        os.remove(self.log)
+        gone = os.path.join(self.synths, self.SKIN, "test_synth.so")
+        os.remove(gone)                                                          # the entry now points at a missing file
+        r = self.store("sync")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("Test Synth", self.entries())
+        open(os.path.join(self.web, "sync.sh"), "a").write("\n# tampered\n")
+        r = self.store("sync")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("hash", r.stderr)
+

@@ -6,7 +6,7 @@
 #   - adds a folder that has no entry (its plugin-meta.xml, with %payload-path% replaced by the Synths folder),
 #   - replaces an entry with the same uid whose .so is gone,
 #   - removes an entry that points into a Synths folder but whose .so is gone,
-# and leaves every other entry alone (plugins registered another way, other tools' entries). Nothing to do = no MPC restart.
+# (a folder whose .so is missing is ignored) and leaves every other entry alone (plugins registered another way, other tools' entries). Nothing to do = no MPC restart.
 # Backs up MPC.settings, checks the result, stops MPC before the edit and starts it after (-n: the caller does that, as for
 # install.sh -n). --dry-run only prints what it would do. Same folder rule as MockbaMod's vstscanner.sh (/media/*/Synths/*/
 # plugin-meta.xml), which instead rebuilds the whole list. Needs plugin_list.awk next to it.
@@ -61,6 +61,7 @@ echo "$ROOTS" | while IFS= read -r root; do
         [ -n "$line" ] || continue
         uid=$(echo "$line" | sed -n 's/.* uid="\([^"]*\)".*/\1/p'); file=$(echo "$line" | sed -n 's/.* file="\([^"]*\)".*/\1/p')
         [ -n "$uid" ] && [ -n "$file" ] || continue
+        [ -f "$file" ] || { echo "  skip   $m (its plugin file $file is missing)" >&2; continue; }
         grep -q "^$uid$TAB" "$W/want" || printf '%s\t%s\t%s\n' "$uid" "$file" "$m" >> "$W/want"
     done
 done
