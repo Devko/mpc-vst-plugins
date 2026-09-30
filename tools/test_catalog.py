@@ -346,6 +346,14 @@ class PagesTest(unittest.TestCase):
         self.assertIn("Run this on your computer (needs Docker), not on the device.", idx)
         self.assertIn('install.html#plugins-you-build-yourself', idx)
 
+    def test_install_panel_gets_only_valid_hashes_and_ids_are_not_markup(self):
+        good = "a" * 64
+        html = catalog_site.render({"schema": 1, "generated": "x", "plugins": []}, (), {"mpc-store.sh": good, "sync.sh": "</script><b>", "x": 5})
+        self.assertIn('{"mpc-store.sh": "%s"}' % good, html)
+        self.assertNotIn("</script><b>", html)
+        self.assertIn('id="inst"', html)
+        self.assertEqual(html.count("/*STORE_JSON*/"), 0)
+
     def test_repo_pages_render_with_nav(self):
         pages = catalog_site.load_pages(os.path.join(HERE, "..", "catalog", "pages"))
         self.assertGreaterEqual(len(pages), 5)

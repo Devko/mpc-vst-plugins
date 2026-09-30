@@ -14,6 +14,15 @@ Every plugin in the catalog is one zip file with an installer inside. You need a
 - Root SSH access to the device, and its IP address. The address is assigned by your router, so look it up on the device or in your router each time.
 - The plugin's release zip from the catalog. Each plugin's page lists any extra files it needs (for example, a sound engine that needs ROM files you supply yourself).
 
+## Fast option: one command for several plugins
+On the [catalog](index.html), tick **Add to install list** on each plugin you want, open the bar that appears at the bottom, type your device's IP address and copy the command. Paste it into a terminal (Terminal on a Mac, PowerShell on Windows 10 or later) and press Enter. The command logs in to your device, downloads a small script (`mpc-store.sh`) from this site and runs it. The script:
+
+- downloads every zip you picked and checks it against the checksum in the catalog, before it changes anything on the device;
+- asks you to confirm, then stops MPC **once**, runs each plugin's own installer, and starts MPC again **once**;
+- remembers what it installed, so `update` later installs newer versions (and holds back a change that would alter saved projects unless you add `--major`).
+
+Prefer to read the script before running it? The bar has a "Read the script first" section with the steps and the hash the script should have. The same command with `list`, `update`, `remove <id>` or `sync` at the end shows what is available, updates what you installed, removes a plugin (your own files in its folder are kept), or registers plugin folders you copied into `Synths` by hand. It needs the same root SSH access as the manual steps below, and plugins you build yourself are not included: they have their own steps.
+
 ## 1. Download and check the zip
 Download the zip from the plugin's card on the catalog. Every version lists a checksum (SHA-256). Compare it with your download:
 
