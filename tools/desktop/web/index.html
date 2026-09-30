@@ -44,6 +44,19 @@ dialog { border:1px solid var(--line); border-radius:8px; background:var(--panel
 dialog::backdrop { background:rgb(0 0 0/.45); }
 dialog h3 { font:700 20px var(--display); text-transform:uppercase; letter-spacing:.06em; margin:0 0 8px; }
 dialog .actions { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; }
+.tools[hidden] { display:none; }
+.tools { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin:0 0 10px; }
+.tools .wide { grid-column:1 / -1; }
+.tools select { font:400 14px var(--text); color:var(--fg); background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; width:100%; }
+.tools label.f { min-width:0; }
+.catbar { display:flex; flex-wrap:wrap; gap:6px 16px; justify-content:space-between; align-items:center; margin:2px 0 8px; font-size:13px; color:var(--muted); }
+.linkbtn { font:600 12px/1 var(--display); letter-spacing:.1em; text-transform:uppercase; color:var(--accent); background:none; border:0; padding:6px 0; cursor:pointer; }
+.tag.up { color:#8a5a00; border-color:#c58b00; }
+#selbar { position:sticky; bottom:12px; z-index:4; display:flex; gap:12px; align-items:center; justify-content:space-between; background:var(--lcd); color:var(--lcd-fg);
+  border-radius:8px; padding:10px 12px 10px 16px; box-shadow:0 6px 24px rgb(0 0 0/.25); margin-top:12px; }
+#selbar[hidden] { display:none; }
+#selbar b { font:700 15px var(--display); letter-spacing:.06em; text-transform:uppercase; }
+#selbar button.linkbtn { color:#ffb3ad; }
 footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
 </style>
 </head>
@@ -68,6 +81,14 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
 <section id="s2" class="off">
   <h2><span class="n">2</span>Choose plugins</h2>
   <p class="sub">Tick what you want from the catalog, and/or drop plugin zips you downloaded or built yourself.</p>
+  <div class="tools" id="tools" hidden>
+    <label class="f wide">Search<input id="q" type="search" placeholder="Name, developer or what it does" autocomplete="off"></label>
+    <label class="f">Kind<select id="f-kind"></select></label>
+    <label class="f">Developer<select id="f-dev"></select></label>
+    <label class="f">Show<select id="f-show"></select></label>
+    <label class="f">Sort by<select id="f-sort"></select></label>
+  </div>
+  <div class="catbar"><span id="catcount" aria-live="polite"></span><button class="linkbtn" type="button" id="resetf" hidden>Clear filters</button></div>
   <ul class="list" id="cat"><li class="small">Loading the catalog…</li></ul>
   <div class="drop" id="drop" tabindex="0" role="button" aria-label="Add plugin zip files">Drop plugin zip files here, or click to choose them
     <input id="file" type="file" accept=".zip" multiple hidden></div>
@@ -83,6 +104,8 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
   <pre class="log" id="log" hidden></pre>
 </section>
 
+<div id="selbar" hidden role="region" aria-label="Selected plugins"><span><b id="selcount"></b> <button class="linkbtn" type="button" id="selclear">Clear</button></span><button class="primary" id="go2" type="button">Install…</button></div>
+
 <footer>Community-provided software. Installing runs a script as root on your device and edits MPC's settings (a backup is made first). Downloads are checked against the catalog's checksums before anything is copied.</footer>
 </div>
 
@@ -97,7 +120,7 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
 "use strict";
 var T = new URLSearchParams(location.search).get("t") || "";
 try { history.replaceState(null, "", location.pathname); } catch (e) {}
-var S = { connected: false, problems: [], cat: [], ups: [], pickCat: {}, pickUp: {}, running: false };
+var S = { connected: false, problems: [], cat: [], ups: [], pickCat: {}, pickUp: {}, running: false, f: { q: "", kind: "", dev: "", show: "", sort: "name" } };
 function $(id) { return document.getElementById(id); }
 function text(el, s) { el.textContent = s; }
 function api(path, body, raw) {
@@ -121,21 +144,63 @@ function setConnected(c, info, problems) {
   refresh();
 }
 function loadCatalog() {
-  api("/api/catalog").then(function (j) { S.cat = j.plugins; drawCat(); }).catch(function (e) {
+  api("/api/catalog").then(function (j) { S.cat = j.plugins; buildTools(); drawCat(); }).catch(function (e) {
     S.cat = []; var ul = $("cat"); ul.textContent = ""; var li = el("li", "small", e.message); ul.appendChild(li);
   });
 }
+var SHOWS = { "": "All plugins", "new": "Not on the device yet", "on": "Already on the device", "upd": "Updates available", "sel": "Only the ones I ticked" };
+var SORTS = { name: "Name", dev: "Developer", kind: "Kind", size: "Smallest download" };
+var KINDS = { instrument: "Instruments", effect: "Effects" };
+function fill(id, opts, val) {
+  var sel = $(id); sel.textContent = "";
+  opts.forEach(function (o) { var op = document.createElement("option"); op.value = o[0]; op.textContent = o[1]; sel.appendChild(op); });
+  sel.value = val;
+}
+function buildTools() {
+  var kinds = {}, devs = {};
+  S.cat.forEach(function (p) { kinds[p.kind] = 1; devs[p.author] = 1; });
+  fill("f-kind", [["", "All kinds"]].concat(Object.keys(kinds).sort().map(function (k) { return [k, KINDS[k] || k]; })), S.f.kind);
+  fill("f-dev", [["", "All developers"]].concat(Object.keys(devs).sort().map(function (d) { return [d, d]; })), S.f.dev);
+  fill("f-show", Object.keys(SHOWS).map(function (k) { return [k, SHOWS[k]]; }), S.f.show);
+  fill("f-sort", Object.keys(SORTS).map(function (k) { return [k, SORTS[k]]; }), S.f.sort);
+  $("tools").hidden = S.cat.length === 0;
+}
+function shownCat() {
+  var f = S.f, q = f.q.trim().toLowerCase();
+  var out = S.cat.filter(function (p) {
+    if (q && [p.name, p.author, p.summary, p.id].join(" ").toLowerCase().indexOf(q) < 0) return false;
+    if (f.kind && p.kind !== f.kind) return false;
+    if (f.dev && p.author !== f.dev) return false;
+    if (f.show === "new" && p.installed) return false;
+    if (f.show === "on" && !p.installed) return false;
+    if (f.show === "upd" && !p.update) return false;
+    if (f.show === "sel" && !S.pickCat[p.id]) return false;
+    return true;
+  });
+  var cmp = { name: function (a, b) { return a.name.localeCompare(b.name); },
+              dev: function (a, b) { return a.author.localeCompare(b.author) || a.name.localeCompare(b.name); },
+              kind: function (a, b) { return a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name); },
+              size: function (a, b) { return a.size - b.size || a.name.localeCompare(b.name); } }[f.sort] || function () { return 0; };
+  return out.sort(cmp);
+}
 function drawCat() {
   var ul = $("cat"); ul.textContent = "";
-  S.cat.forEach(function (p) {
+  var rows = shownCat(), f = S.f, filtered = !!(f.q || f.kind || f.dev || f.show);
+  rows.forEach(function (p) {
     var li = el("li"), cb = document.createElement("input"); cb.type = "checkbox"; cb.id = "c_" + p.id; cb.checked = !!S.pickCat[p.id];
-    cb.addEventListener("change", function () { S.pickCat[p.id] = cb.checked; refresh(); });
-    var t = el("div", "t"), b = el("b", null, p.name); if (p.installed) b.appendChild(el("span", "tag ok", "on the device"));
+    cb.addEventListener("change", function () { S.pickCat[p.id] = cb.checked; refresh(); if (S.f.show === "sel") drawCat(); });
+    var t = el("div", "t"), b = el("b", null, p.name);
+    if (p.installed) b.appendChild(el("span", "tag ok", "on the device"));
+    if (p.update) b.appendChild(el("span", "tag up", "update: v" + p.installedVersion + " → v" + p.version));
     t.appendChild(b); t.appendChild(el("span", "d", "v" + p.version + " by " + p.author + " · " + mb(p.size) + " · " + p.summary));
     var lab = el("label"); lab.htmlFor = cb.id; lab.style.display = "contents"; lab.appendChild(t);
     li.appendChild(cb); li.appendChild(lab); ul.appendChild(li);
   });
   if (!S.cat.length) ul.appendChild(el("li", "small", "The catalog has no downloadable plugins right now."));
+  else if (!rows.length) ul.appendChild(el("li", "small", "No plugins match. Try clearing the filters."));
+  var n = Object.keys(S.pickCat).filter(function (k) { return S.pickCat[k]; }).length;
+  text($("catcount"), S.cat.length ? "Showing " + rows.length + " of " + S.cat.length + " plugin" + (S.cat.length === 1 ? "" : "s") + (n ? " · " + n + " ticked from the catalog" : "") : "");
+  $("resetf").hidden = !filtered;
 }
 function drawUps() {
   var ul = $("ups"); ul.textContent = "";
@@ -159,6 +224,8 @@ function refresh() {
   var s = selection(), n = s.catalog.length + s.uploads.length;
   text($("summary"), !S.connected ? "Connect to your device first." : n === 0 ? "Nothing selected yet." : n + " plugin" + (n === 1 ? "" : "s") + " selected.");
   $("go").disabled = !S.connected || n === 0 || S.running || S.problems.length > 0;
+  $("selbar").hidden = !(S.connected && n > 0 && !S.running && S.problems.length === 0);
+  text($("selcount"), n + " plugin" + (n === 1 ? "" : "s") + " selected");
 }
 
 $("conn").addEventListener("submit", function (e) {
@@ -185,7 +252,7 @@ $("file").addEventListener("change", function () { upload($("file").files); $("f
 ["dragleave", "drop"].forEach(function (n) { drop.addEventListener(n, function (e) { e.preventDefault(); drop.classList.remove("over"); }); });
 drop.addEventListener("drop", function (e) { upload(e.dataTransfer.files); });
 
-$("go").addEventListener("click", function () {
+function startInstall() {
   var s = selection();
   api("/api/plan", s).then(function (p) {
     var names = p.items.map(function (i) { return i.title + " " + i.version; }).join(", ");
@@ -194,6 +261,17 @@ $("go").addEventListener("click", function () {
     text($("dlgtxt"), "About to install: " + names + "." + r);
     $("dlg").showModal();
   }).catch(function (e) { msg($("result"), e.message, "err"); });
+}
+$("go").addEventListener("click", startInstall);
+$("go2").addEventListener("click", startInstall);
+$("selclear").addEventListener("click", function () {
+  S.pickCat = {}; S.ups.forEach(function (p) { S.pickUp[p.handle] = false; }); drawCat(); drawUps(); refresh();
+});
+[["q", "q", "input"], ["f-kind", "kind", "change"], ["f-dev", "dev", "change"], ["f-show", "show", "change"], ["f-sort", "sort", "change"]].forEach(function (m) {
+  $(m[0]).addEventListener(m[2], function () { S.f[m[1]] = $(m[0]).value; drawCat(); });
+});
+$("resetf").addEventListener("click", function () {
+  S.f = { q: "", kind: "", dev: "", show: "", sort: S.f.sort }; $("q").value = ""; buildTools(); drawCat();
 });
 $("no").addEventListener("click", function () { $("dlg").close(); });
 $("yes").addEventListener("click", function () {

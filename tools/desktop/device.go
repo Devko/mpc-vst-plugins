@@ -30,16 +30,17 @@ func defaultConfig() Config {
 }
 
 type DeviceInfo struct {
-	Host        string   `json:"host"`
-	Arch        string   `json:"arch"`
-	UID         string   `json:"uid"`
-	Fingerprint string   `json:"fingerprint"`
-	Synths      string   `json:"synths"`
-	Settings    string   `json:"settings"`
-	TmpFreeKB   int64    `json:"tmpFreeKB"`
-	Tar         bool     `json:"tar"`
-	Systemctl   bool     `json:"systemctl"`
-	Installed   []string `json:"installed"`
+	Host        string            `json:"host"`
+	Arch        string            `json:"arch"`
+	UID         string            `json:"uid"`
+	Fingerprint string            `json:"fingerprint"`
+	Synths      string            `json:"synths"`
+	Settings    string            `json:"settings"`
+	TmpFreeKB   int64             `json:"tmpFreeKB"`
+	Tar         bool              `json:"tar"`
+	Systemctl   bool              `json:"systemctl"`
+	Installed   []string          `json:"installed"`
+	Store       map[string]string `json:"store"` // plugin id -> version recorded by this app or mpc-store.sh
 }
 
 type Device struct {
@@ -180,8 +181,9 @@ echo "tmpfree=$(df -k %s 2>/dev/null | awk 'NR==2 {print $4}')"
 command -v tar >/dev/null 2>&1 && echo tar=1
 command -v systemctl >/dev/null 2>&1 && echo systemctl=1
 ls -1 "$S" 2>/dev/null | grep ' - VST - ' | sed 's/^/installed=/'
+[ -f "$S/.mpc-store" ] && sed 's/^/store=/' "$S/.mpc-store"
 true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp))
-	info := DeviceInfo{Host: host, Fingerprint: fp, Synths: d.cfg.SynthsDir, Installed: []string{}}
+	info := DeviceInfo{Host: host, Fingerprint: fp, Synths: d.cfg.SynthsDir, Installed: []string{}, Store: map[string]string{}}
 	var lines []string
 	var mu sync.Mutex
 	code, err := d.Run(script, nil, func(l string) { mu.Lock(); lines = append(lines, l); mu.Unlock() })
@@ -208,6 +210,10 @@ true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp))
 			info.Systemctl = true
 		case "installed":
 			info.Installed = append(info.Installed, v)
+		case "store":
+			if f := strings.Split(v, "\t"); len(f) >= 2 && f[0] != "" {
+				info.Store[f[0]] = f[1]
+			}
 		}
 	}
 	d.Info = info

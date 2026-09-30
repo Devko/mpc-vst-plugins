@@ -178,18 +178,23 @@ func (a *App) catalog(w http.ResponseWriter, r *http.Request) {
 	}
 	defer a.mu.Unlock()
 	installed := map[string]bool{}
+	var store map[string]string
 	if a.dev != nil {
 		for _, s := range a.dev.Info.Installed {
 			installed[s] = true
 		}
+		store = a.dev.Info.Store
 	}
 	type row struct {
 		CatPlugin
-		Installed bool `json:"installed"`
+		Installed        bool   `json:"installed"`
+		InstalledVersion string `json:"installedVersion,omitempty"`
+		Update           bool   `json:"update"`
 	}
 	rows := []row{}
 	for _, c := range a.cat {
-		rows = append(rows, row{c, installed[c.Skin]})
+		iv := store[c.ID]
+		rows = append(rows, row{c, installed[c.Skin], iv, iv != "" && iv != c.Version})
 	}
 	writeJSON(w, 200, map[string]any{"plugins": rows})
 }

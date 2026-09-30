@@ -186,3 +186,40 @@ func TestWholeFlowThroughTheAPI(t *testing.T) {
 		t.Errorf("unknown upload: %d", code)
 	}
 }
+
+func TestCatalogRowsShowWhatIsOnTheDeviceAndWhatHasAnUpdate(t *testing.T) {
+	h := newHarness(t)
+	syn := h.fd.cfg().SynthsDir
+	os.MkdirAll(syn+"/me - VST - Acid", 0o755)  // installed, recorded at 1.0.0
+	os.MkdirAll(syn+"/me - VST - Dexed", 0o755) // installed by hand: no recorded version
+	os.WriteFile(syn+"/.mpc-store", []byte("acid\t1.0.0\tme - VST - Acid\t1\n"), 0o644)
+	h.app.cat = []CatPlugin{
+		{ID: "acid", Name: "Acid", Version: "1.1.0", Skin: "me - VST - Acid"},
+		{ID: "dexed", Name: "Dexed", Version: "1.0.0", Skin: "me - VST - Dexed"},
+		{ID: "nam", Name: "NAM", Version: "1.0.0", Skin: "me - VST - NAM"},
+	}
+	h.app.catAt = time.Now()
+	if code, _ := h.post("/api/connect", map[string]string{"host": "127.0.0.1", "password": "secret"}); code != 200 {
+		t.Fatal("connect")
+	}
+	_, b := h.do("GET", "/api/catalog", nil, nil)
+	var out struct {
+		Plugins []struct {
+			ID               string
+			Installed        bool
+			InstalledVersion string
+			Update           bool
+		}
+	}
+	json.Unmarshal(b, &out)
+	got := map[string][3]any{}
+	for _, p := range out.Plugins {
+		got[p.ID] = [3]any{p.Installed, p.InstalledVersion, p.Update}
+	}
+	want := map[string][3]any{"acid": {true, "1.0.0", true}, "dexed": {true, "", false}, "nam": {false, "", false}}
+	for id, w := range want {
+		if got[id] != w {
+			t.Errorf("%s: got %v, want %v", id, got[id], w)
+		}
+	}
+}

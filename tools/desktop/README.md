@@ -14,7 +14,10 @@ one MPC stop and start around the whole batch when the installers allow it.
 1. **Connect:** SSH as root with your password or a key in `~/.ssh` (no passphrase). It reads the device (32-bit ARM? `tar`?
    `systemctl`? where is `MPC.settings`?) and refuses one that is not an MPC OS device. The device's key fingerprint is shown; nothing
    about the device is saved.
-2. **Choose:** the catalog's newest stable release of every downloadable plugin, plus any zips you drop in. A zip is checked before
+2. **Choose:** the catalog's newest stable release of every downloadable plugin, plus any zips you drop in. A search box, kind and
+   developer filters, a sort, and a "show" filter (not on the device, on the device, updates available, only the ones you ticked) keep a
+   long list manageable; what you ticked stays ticked while you filter, and a bar at the bottom shows the count and an Install button.
+   Versions installed by this app or `mpc-store.sh` are read from `<Synths>/.mpc-store` to flag updates. A zip is checked before
    it is accepted (one folder, the manifest, no paths that leave it, links that stay inside, no more than 2 GB unpacked).
 3. **Install:** catalog downloads are checked against the catalog's sha256 first (a mismatch installs nothing). Then, after you confirm
    (save your project: MPC restarts), it copies every package to a private folder in the device's `/tmp`, stops MPC once, runs each
