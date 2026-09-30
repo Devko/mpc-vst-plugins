@@ -96,3 +96,14 @@ twice (identical output), removing, a missing `pluginList-arm`, and a self-closi
 scripted install on a device (which restarts MPC) is step 5 of the checklist.
 
 Audience: root access is needed to edit `MPC.settings`, so releases are for modded units. Say so up front.
+
+## Keeping the plugin list in step with the folders: `tools/release/sync.sh`
+
+`sh sync.sh [-y] [-n] [--dry-run] [-t <synths-dir>]...` (BusyBox `sh`, needs `plugin_list.awk` next to it) makes MPC.settings' plugin list
+follow the plugin folders in `/sdcard/Synths` and every `/media/*/Synths` (or the `-t` folders): it registers a folder that has no entry,
+replaces an entry with the same uid whose `.so` is gone, removes an entry that points into a Synths folder whose `.so` is gone, and
+leaves every other entry alone. Nothing to do means no restart; otherwise it backs up `MPC.settings`, checks the result and stops and
+starts MPC once (`-n`: the caller does, as for `install.sh -n`). `--dry-run` prints the plan only. It uses the same folder rule as
+MockbaMod's `vstscanner.sh` (`/media/*/Synths/*/plugin-meta.xml`) but not its whole-list rebuild, so entries from other tools survive.
+It is not shipped in the release zips yet; the device-side store script (docs/CATALOG.md, Phase 4) will call it after a batch of
+`install.sh -y -n`. Only the first `<PLUGIN>` in a `plugin-meta.xml` is read (the packages `release.py` builds have one).
