@@ -45,8 +45,10 @@ Stop any separately attached audio engines first.
 - Integer DSP params: set `"display": "int"`. The wrapper then rounds, and `settle()` moves an option list or a whole-number
   param one step per data wheel click or Q-Link event (else it sticks between two values), and a drag or sweep without flicker.
   MPC sends a wheel click and a Q-Link event alike (the read-back value plus 0.01 / 1/128 of the range: docs/NOTES.md "Stepping of
-  option lists and whole numbers"), so a short range races under a Q-Link; counting several events per step is a per-param opt-in
-  where it is wanted. List-tile highlights need `<key>_on` from the DSP.
+  option lists and whole numbers"), so a short range races under a Q-Link; `"qlink_ticks": N` on a param (opt-in) counts N
+  Q-Link events per step, at the cost of N wheel clicks too (docs/PORTING.md). List-tile highlights need `<key>_on` from the DSP
+  (polled every 10 ms, so a tile can light from MIDI alone; `theme_tile_on=` fills the lit tile, `list ... order=pads`
+  numbers the rows from the bottom like a pad bank).
   The orange box on a control is the transparent-able Focus ring, not Q-Link bounds. Details: docs/NOTES.md
   "Skin design lessons from the jv880 redesign".
 - AEffect magic `'VstP'` 0x56737450 (the forum PoC's value is wrong).
