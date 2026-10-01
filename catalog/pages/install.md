@@ -13,6 +13,7 @@ The easiest way to put plugins from the catalog on your MPC or Force is the **MP
 - A first-generation MPC OS standalone device with a 32-bit ARM processor: Force, MPC Live and Live II, One, X and Key 61. The installer refuses anything else. Newer models are untested.
 - Root SSH access to the device, and its IP address. The address is assigned by your router, so look it up on the device or in your router each time.
 - A Windows, Mac or Linux computer on the same network as the device.
+- Optional: an SD card or USB drive in the device, if you want plugins on it instead of on the internal drive (see "Where it goes" under step 5).
 
 ## Check that you can reach your device
 Find the IP address in the device's network settings, or in your router's list of connected devices. It can change, so check it each time. The app tests the connection for you when you press **Connect**, but you can try it first from a terminal (Terminal on a Mac, PowerShell on Windows 10 or later):
@@ -51,7 +52,7 @@ The first time, your system warns that the program is from an unknown developer,
 - **Linux:** run `chmod +x mpc-installer` if the file does not start.
 
 ## 3. Connect to your device
-Type your device's IP address. Leave the password empty if you log in to the device with an SSH key; otherwise type the password. Press **Connect**. The page shows what it found: the device type and the plugin folders already on it. The password is used for that one connection and is not saved, and nothing about your device is stored on your computer.
+Type your device's IP address. Leave the password empty if you log in to the device with an SSH key; otherwise type the password. Press **Connect**. The page shows what it found: the device type, the plugin folders already on it, and the places plugins can go: the internal drive, and any SD card or USB drive that has a `Synths` folder, each with its free space. The password is used for that one connection and is not saved, and nothing about your device is stored on your computer.
 
 ## 4. Choose plugins
 The list shows every plugin in the catalog that has a download, with its version, size and a short description. Tick the ones you want. A plugin that is already on your device is marked **on the device**, and if the catalog has a newer version than the one you installed, it shows **update**.
@@ -106,6 +107,7 @@ grep -o 'file="[^"]*"' /media/az01-internal/Settings/*/MPC.settings | cut -d'"' 
 ```
 
 To get plugins back:
+- **Register the plugin folders** in the app (step 5, "Register plugin folders"). If the plugin's folder is still on the device or its card, this adds its line back to the list without reinstalling anything. This is the quickest fix, and the right one when a card was out when MPC started.
 - **Install the plugin again** (the current release) with the app. It adds its own line back and leaves every other plugin's line alone. This is the safest fix.
 - **Or restore a backup of the settings file.** The app and the installers leave one next to the original each time they change it, named `MPC.settings.bak-<plugin>-<date>` (or `bak-remove-…`, `bak-sync-…`). List them newest first with `ls -t /media/az01-internal/Settings/*/MPC.settings.bak-*`, then stop MPC, copy the one you want over `MPC.settings`, and start MPC. A backup also brings back the preferences you had at that time.
 

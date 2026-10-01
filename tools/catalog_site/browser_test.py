@@ -49,7 +49,7 @@ with sync_playwright() as p:
     check("review steps: download, read, hash, run", review.count("ssh") == 4 and "cat /tmp/mpc-store.sh" in review and "sha256sum" in review, review)
     check("hash line shown", len(pg.locator("#hashline").text_content()) > 60)
     more = pg.locator("#cmd-more").text_content()
-    check("other commands", "mpc-store.sh list" in more and "update" in more and "sync" in more)
+    check("other commands", "mpc-store.sh list" in more and "update" in more and "sync" in more and "prune --keep 10" in more)
     pg.screenshot(path=SHOTS + "/shot-desktop.png", full_page=False)
     pg.locator("[data-pick]").nth(0).uncheck(); pg.locator("[data-pick]").nth(0).evaluate("e => e.blur()")
     picks.nth(1).uncheck()

@@ -81,7 +81,7 @@
       </details>
       <details class="how">
         <summary>Other commands</summary>
-        <p class="also">Same first part, different last word: <code>list</code> (what is available and installed), <code>update</code> (newer versions of what you installed with this script), <code>remove &lt;id&gt;</code>, <code>sync</code> (register plugin folders you copied into Synths by hand).</p>
+        <p class="also">Same first part, different last word: <code>list</code> (what is available and installed), <code>update</code> (newer versions of what you installed with this script), <code>remove &lt;id&gt;</code>, <code>prune</code> (delete old backups of MPC's settings), <code>sync</code> (register plugin folders you copied into Synths by hand).</p>
         <pre class="cmd"><code id="cmd-more"></code></pre>
       </details>
     </div>
@@ -247,7 +247,7 @@ function panel() {
     'ssh -t root@' + t + ' "sh /tmp/mpc-store.sh install ' + state.sel.join(" ") + '"';
   $("hashline").textContent = STORE["mpc-store.sh"] ? "The hash it should print: " + STORE["mpc-store.sh"] : "";
   $("script-link").href = SITE + "mpc-store.sh";
-  $("cmd-more").textContent = ["list", "update", "sync"].map(function (a) { return withScript(a, a !== "list"); }).join("\n\n");
+  $("cmd-more").textContent = ["list", "update", "prune --keep 10", "sync"].map(function (a) { return withScript(a, a !== "list"); }).join("\n\n");
 }
 $("grid").addEventListener("change", function (e) {
   var id = e.target.getAttribute && e.target.getAttribute("data-pick"); if (!id) return;
