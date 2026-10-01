@@ -742,7 +742,10 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                                                   _action("Enter Pressed", "Show Overlay", "knob overlay")], [
                     _focus(cw, ch),
                     _sub("Knob", {"version": 5, "knobType": "FilmStrip", "filmStrip": img + ".png",
-                                  "numFrames": FRAMES - 1, "invert": False,
+                                  # a slider encodes its value as the frame's VERTICAL position, so numFrames must
+                                  # equal the exact strip length (FRAMES); FRAMES-1 (fine for rotation-based knobs)
+                                  # makes the device mis-size the frame and show a second thumb near the top.
+                                  "numFrames": FRAMES, "invert": False,
                                   "dragOrientation": "Vertical" if vert else "Horizontal",
                                   "handleName": "Data"}, _bounds((cw - sq) // 2, 0, sq, sq), "Slider"),
                     _name_label(0, name_y, cw, name_h, 17.0, INK),
