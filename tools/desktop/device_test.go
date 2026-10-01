@@ -183,3 +183,17 @@ func TestInstallScriptQuotesEverything(t *testing.T) {
 		}
 	}
 }
+
+// Hakai-enabled MPC systems have no acvs unit: MPC's service is inmusic-mpc, and the batch must stop and start that one.
+func TestInstallUsesInmusicMpcServiceOnHakai(t *testing.T) {
+	fd := newFakeDevice(t)
+	os.WriteFile(filepath.Join(fd.dir, "svc"), []byte("inmusic-mpc\n"), 0o644)
+	a := installerPkg(t, "A-1", "a-plug", "me - VST - A", fakeInstaller("A", true, 0))
+	j, err := runJob(t, fd, Item{Pkg: a})
+	if err != nil {
+		t.Fatal(err, j.Lines)
+	}
+	if got := strings.Join(fd.calls(), ","); got != "stop inmusic-mpc,start inmusic-mpc" {
+		t.Fatalf("want stop/start of inmusic-mpc, got %v", got)
+	}
+}

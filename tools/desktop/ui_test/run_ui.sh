@@ -22,7 +22,7 @@ cat > /usr/local/bin/uname <<'X'
 [ "$1" = "-m" ] && { echo armv7l; exit 0; }
 exec /usr/bin/uname "$@"
 X
-printf '#!/bin/sh\necho "$1 $2" >> /tmp/systemctl.log\n' > /usr/local/bin/systemctl
+printf '#!/bin/sh\n[ "$1" = cat ] && { [ "$2" = acvs ]; exit; }\necho "$1 $2" >> /tmp/systemctl.log\n' > /usr/local/bin/systemctl
 printf '#!/bin/sh\nexit 1\n' > /usr/local/bin/pidof
 chmod +x /usr/local/bin/uname /usr/local/bin/systemctl /usr/local/bin/pidof
 echo 'root:secret' | chpasswd

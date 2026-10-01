@@ -43,7 +43,8 @@ func newFakeDevice(t *testing.T) *fakeDevice {
 	shim("uname", "echo armv7l")
 	shim("id", "echo 0")
 	shim("pidof", "exit 1")
-	shim("systemctl", `echo "$1 $2" >> `+fd.mpcLog)
+	// `systemctl cat <unit>` succeeds only for the unit named in the file "svc" (default acvs; Hakai uses inmusic-mpc); other calls are logged
+	shim("systemctl", `if [ "$1" = cat ]; then [ "$2" = "$(cat `+filepath.Join(fd.dir, "svc")+` 2>/dev/null || echo acvs)" ]; exit; fi; echo "$1 $2" >> `+fd.mpcLog)
 
 	_, priv, _ := ed25519.GenerateKey(rand.Reader)
 	signer, _ := ssh.NewSignerFromKey(priv)

@@ -152,6 +152,7 @@ func installScript(synths, tmp string, pkgs []*Package) string {
 	var b strings.Builder
 	w := func(f string, a ...any) { fmt.Fprintf(&b, f+"\n", a...) }
 	w("T=%s; SYN=%s; STATE=\"$SYN/.mpc-store\"; rc=0", shQuote(tmp), shQuote(synths))
+	w("SVC=acvs; systemctl cat acvs >/dev/null 2>&1 || ! systemctl cat inmusic-mpc >/dev/null 2>&1 || SVC=inmusic-mpc") // acvs on stock firmware, inmusic-mpc on Hakai
 	record := func(p *Package) {
 		for _, m := range p.Plugins {
 			if m.ID == "" {
@@ -178,7 +179,7 @@ func installScript(synths, tmp string, pkgs []*Package) string {
 	}
 	if anyDefer {
 		w("if [ $rc = 0 ]; then")
-		w("  systemctl stop acvs")
+		w("  systemctl stop $SVC")
 		w("  i=0; while pidof MPC >/dev/null && [ $i -lt 30 ]; do sleep 1; i=$((i + 1)); done")
 		w(`  if pidof MPC >/dev/null; then echo "MPC did not stop: nothing was installed"; rc=3; fi`)
 		w("fi")
@@ -193,7 +194,7 @@ func installScript(synths, tmp string, pkgs []*Package) string {
 			w("  else rc=1; fi")
 			w("fi")
 		}
-		w("systemctl start acvs")
+		w("systemctl start $SVC")
 	}
 	w(`rm -rf "$T"`)
 	w("exit $rc")
