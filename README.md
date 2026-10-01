@@ -12,6 +12,12 @@ plugins for MPC OS, with each plugin's current version, license, source link and
 - **Find a plugin.** Search, filter by kind, style, developer, license or distribution, and sort by recently updated or
   most downloaded. Every version shows its date and SHA-256, and what it was tested on. There is an Atom feed
   (`feed.xml`) of new releases.
+- **Install with the installer app.** The [MPC plugin installer](https://github.com/sd88me/mpc-vst-plugins/releases/latest) is a
+  small Windows, Mac and Linux app: connect to your device, tick plugins from the catalog (or drop in zips, including
+  build-yourself ones), and it checks each download, installs the batch with one MPC restart and backs up your settings
+  first. It can also remove plugins (keeping your own files), install to an SD card or USB drive, register plugin folders
+  MPC does not know about, and clean up old settings backups. Needs root SSH access. Source in
+  [tools/desktop](tools/desktop/README.md).
 - **Guides on the site:** [install a downloaded plugin](https://sd88me.github.io/mpc-vst-plugins/install.html),
   [build a plugin](https://sd88me.github.io/mpc-vst-plugins/build.html), the
   [release workflow](https://sd88me.github.io/mpc-vst-plugins/workflow.html) and
@@ -164,6 +170,8 @@ What's next is in [docs/ROADMAP.md](docs/ROADMAP.md).
   popups, MIDI→audio, legacy `process()`, chunks), PASSED/FAILED.
 - `tools/bench.sh` + `tools/bench.c`: a CPU stress test run on the device, with a PASS/WARN/FAIL verdict for Gen1
   hardware. See [docs/BENCH.md](docs/BENCH.md).
+- `tools/desktop/`: the MPC plugin installer app (Go; a local web page that installs, updates and removes plugins over SSH).
+- `tools/mpc-store.sh`: the same install, update, remove, prune and sync from a shell on the device, for the catalog's one-line command.
 - `tools/release.py`: packages a plugin as one shareable zip with an installer, an uninstaller and generated
   INSTALL.md. See [docs/RELEASING.md](docs/RELEASING.md).
 - `tools/probe_device.sh`: a read-only device report (CPU, 32/64-bit MPC, audio threads, plugin formats: VST2 yes,
