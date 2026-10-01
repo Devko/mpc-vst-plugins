@@ -341,7 +341,7 @@ class PagesTest(unittest.TestCase):
         html = catalog_site.render_page([p for p in pages if p["slug"] == "install"][0], pages)
         self.assertIn('id="plugins-you-build-yourself"', html)   # the card links here
         self.assertIn("on <strong>your computer</strong>", html)
-        self.assertIn('id="easy-option-use-termius-instead-of-typing-commands"', html)   # linked from the Setup page
+        self.assertIn('id="with-termius-click-instead-of-type"', html)   # linked from the Setup page
         idx = catalog_site.render({"schema": 1, "generated": "x", "plugins": []}, pages)
         self.assertIn("Run this on your computer (needs Docker), not on the device.", idx)
         self.assertIn('install.html#plugins-you-build-yourself', idx)
@@ -353,6 +353,15 @@ class PagesTest(unittest.TestCase):
         self.assertNotIn("</script><b>", html)
         self.assertIn('id="inst"', html)
         self.assertEqual(html.count("/*STORE_JSON*/"), 0)
+
+    def test_collapsible_sections(self):
+        html = catalog_md.render("Intro\n\n::: details By hand <b>x</b>\nStep **one** `a<b`\n\n```\nssh root@x\n```\n:::\n\nAfter")
+        self.assertIn('<details class="fold" id="by-hand-x"><summary>By hand &lt;b&gt;x&lt;/b&gt;</summary>', html)
+        self.assertIn("<strong>one</strong>", html)
+        self.assertIn("<pre><code>ssh root@x</code></pre>", html)
+        self.assertNotIn("<b>", html)
+        self.assertTrue(html.index("</details>") < html.index("After"))
+        self.assertEqual(html.count("<details"), 1)
 
     def test_repo_pages_render_with_nav(self):
         pages = catalog_site.load_pages(os.path.join(HERE, "..", "catalog", "pages"))
