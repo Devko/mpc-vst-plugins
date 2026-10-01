@@ -6,10 +6,17 @@ apt-get update -qq >/dev/null && apt-get install -y -qq openssh-server >/dev/nul
 mkdir -p /run/sshd /media/az01-internal/Settings/MPC /sdcard/Synths
 echo '<?xml version="1.0" encoding="UTF-8"?>
 <PROPERTIES>
-  <VALUE name="SynthContentLocations" val="/sdcard/Synths"/>
+  <VALUE name="SynthContentLocations">
+    <SynthContentLocations>
+      <Location>/sdcard/Synths</Location>
+    </SynthContentLocations>
+  </VALUE>
 </PROPERTIES>' > /media/az01-internal/Settings/MPC/MPC.settings
 mkdir -p "/sdcard/Synths/other - VST - Existing"
 mkdir -p "/sdcard/Synths/mystery - VST - Thing" && echo '<PLUGIN name="Thing" file="%payload-path%/mystery - VST - Thing/thing.so" uid="77777777"/>' > "/sdcard/Synths/mystery - VST - Thing/plugin-meta.xml"
+touch "/sdcard/Synths/mystery - VST - Thing/thing.so"
+mkdir -p "/media/CARD1/Synths/card - VST - Gadget" && echo '<PLUGIN name="Gadget" format="VST" manufacturer="card" version="1.0" file="%payload-path%/card - VST - Gadget/gadget.so" uid="99887766" isInstrument="1"/>' > "/media/CARD1/Synths/card - VST - Gadget/plugin-meta.xml"
+touch "/media/CARD1/Synths/card - VST - Gadget/gadget.so"
 cat > /usr/local/bin/uname <<'X'
 #!/bin/sh
 [ "$1" = "-m" ] && { echo armv7l; exit 0; }

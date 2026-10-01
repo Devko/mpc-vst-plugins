@@ -63,7 +63,7 @@ func randHex(n int) string {
 
 // RunInstall downloads and checks what has to be downloaded, copies every package to the device, then installs them with MPC
 // stopped once and started once (packages whose installer predates -n run first, each with its own restart).
-func RunInstall(dev *Device, items []Item, workDir string, j *Job, refresh func()) (err error) {
+func RunInstall(dev *Device, root Root, items []Item, workDir string, j *Job, refresh func()) (err error) {
 	defer func() {
 		if err == nil && refresh != nil {
 			refresh() // re-read what is on the device before the page is told it is done
@@ -104,6 +104,16 @@ func RunInstall(dev *Device, items []Item, workDir string, j *Job, refresh func(
 	var need int64
 	for _, p := range pkgs {
 		need += p.Unpacked
+		if root.NoSymlinks && p.Symlinks > 0 {
+			return fmt.Errorf("%s contains %d symbolic links (for example a bundled Python), but %s is formatted %s, which cannot store them: install it on the internal drive instead", p.Title, p.Symlinks, root.Label, strings.ToUpper(root.FS))
+		}
+	}
+	if needKB := (need*11/10 + 1023) / 1024; root.FreeKB > 0 && needKB > root.FreeKB { // with a tenth to spare, rounded up
+		return fmt.Errorf("%s has %d MB free, these plugins need about %d MB", root.Label, root.FreeKB/1024, (needKB+1023)/1024)
+	}
+	j.log("Installing to %s (%s)", root.Label, root.Path)
+	if !root.InContent && root.Path != "" {
+		j.log("Note: MPC does not list %s as a content location, so a plugin's screen may not show until you add it in MPC's settings", root.Path)
 	}
 	if dev.Info.TmpFreeKB > 0 && need/1024*13/10 > dev.Info.TmpFreeKB {
 		return fmt.Errorf("the device's /tmp has %d MB free, these packages need about %d MB to unpack", dev.Info.TmpFreeKB/1024, need*13/10/(1<<20))
@@ -123,7 +133,7 @@ func RunInstall(dev *Device, items []Item, workDir string, j *Job, refresh func(
 			return fmt.Errorf("copying %s failed (status %d): %v %s", p.Title, code, rerr, strings.Join(out, " "))
 		}
 	}
-	script := installScript(dev.Info.Synths, tmp, pkgs)
+	script := installScript(root.Path, tmp, pkgs)
 	j.log("Installing (MPC is stopped once and started again at the end)")
 	code, rerr := dev.Run(script, nil, func(l string) { j.log("  %s", l) })
 	if rerr != nil {

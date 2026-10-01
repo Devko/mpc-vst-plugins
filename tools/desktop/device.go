@@ -21,31 +21,86 @@ type Config struct {
 	Port         string // ssh port, "22"
 	User         string // "root"
 	RemoteTmp    string // where packages are unpacked on the device, "/tmp"
-	SynthsDir    string // "/sdcard/Synths"
+	SynthsDir    string // "/sdcard/Synths": the internal drive, the default place to install
+	RootGlobs    string // where to look for plugin locations, shell words (globs allowed): "/sdcard/Synths /media/*/Synths"
 	SettingsGlob string // where MPC.settings is
+	MountsFile   string // the list of mounts, "/proc/mounts"
 }
 
 func defaultConfig() Config {
-	return Config{Port: "22", User: "root", RemoteTmp: "/tmp", SynthsDir: "/sdcard/Synths", SettingsGlob: "/media/az01-internal/Settings/*/MPC.settings"}
+	return Config{Port: "22", User: "root", RemoteTmp: "/tmp", SynthsDir: "/sdcard/Synths", RootGlobs: "/sdcard/Synths /media/*/Synths", MountsFile: "/proc/mounts", SettingsGlob: "/media/az01-internal/Settings/*/MPC.settings"}
 }
 
 type DeviceInfo struct {
-	Host        string            `json:"host"`
-	Arch        string            `json:"arch"`
-	UID         string            `json:"uid"`
-	Fingerprint string            `json:"fingerprint"`
-	Synths      string            `json:"synths"`
-	Settings    string            `json:"settings"`
-	TmpFreeKB   int64             `json:"tmpFreeKB"`
-	Tar         bool              `json:"tar"`
-	Systemctl   bool              `json:"systemctl"`
-	Installed   []string          `json:"installed"`
-	Store       map[string]string `json:"store"` // plugin id -> version recorded by this app or mpc-store.sh
-	Plugins     []DevPlugin       `json:"-"`
+	Host        string                       `json:"host"`
+	Arch        string                       `json:"arch"`
+	UID         string                       `json:"uid"`
+	Fingerprint string                       `json:"fingerprint"`
+	Synths      string                       `json:"synths"`
+	Settings    string                       `json:"settings"`
+	TmpFreeKB   int64                        `json:"tmpFreeKB"`
+	Tar         bool                         `json:"tar"`
+	Systemctl   bool                         `json:"systemctl"`
+	Roots       []Root                       `json:"roots"`     // the places plugins can live: the internal drive first, then cards and drives
+	Installed   []string                     `json:"installed"` // names of the plugin folders found in any of them
+	Store       map[string]string            `json:"store"`     // plugin id -> version recorded by this app or mpc-store.sh, in the internal drive
+	Plugins     []DevPlugin                  `json:"-"`
+	Stores      map[string]map[string]string `json:"-"` // root path -> plugin id -> recorded version
+}
+
+// Root is a Synths folder MPC can load plugins from. Only writable ones are listed; the same storage reached by two paths
+// (/sdcard and /media/az01-internal-sd on a Force) is listed once.
+type Root struct {
+	Path       string `json:"path"`
+	Label      string `json:"label"`
+	FS         string `json:"fs"`
+	FreeKB     int64  `json:"freeKB"`
+	Primary    bool   `json:"primary"`
+	InContent  bool   `json:"inContent"`  // MPC lists it as a content location, so a plugin's screen shows
+	NoSymlinks bool   `json:"noSymlinks"` // FAT, exFAT and NTFS cannot store symbolic links
+	ID         string `json:"-"`
+}
+
+func noSymlinkFS(fs string) bool {
+	switch strings.ToLower(fs) {
+	case "vfat", "exfat", "msdos", "ntfs", "ntfs3", "ntfs-3g", "fuseblk":
+		return true
+	}
+	return false
+}
+
+// rootLabel names a location for people: the internal drive, or "Drive <name>" after its folder under /media.
+func rootLabel(path, primary string) string {
+	if path == primary {
+		return "Internal drive"
+	}
+	if parts := strings.Split(strings.Trim(path, "/"), "/"); len(parts) >= 2 {
+		return "Drive " + parts[len(parts)-2]
+	}
+	return path
+}
+
+func (i DeviceInfo) root(path string) (Root, bool) {
+	for _, r := range i.Roots {
+		if r.Path == path {
+			return r, true
+		}
+	}
+	return Root{}, false
+}
+
+func (i DeviceInfo) primaryRoot() Root {
+	for _, r := range i.Roots {
+		if r.Primary {
+			return r
+		}
+	}
+	return Root{Path: i.Synths, Label: "Internal drive", Primary: true}
 }
 
 // DevPlugin is a plugin folder on the device (one with a plugin-meta.xml).
 type DevPlugin struct {
+	Root   string `json:"root"`
 	Folder string `json:"folder"`
 	UID    string `json:"uid"`
 	Name   string `json:"name"`
@@ -183,31 +238,45 @@ func (d *Device) Run(cmd string, stdin io.Reader, onLine func(string)) (int, err
 
 func (d *Device) readInfo(host, fp string) error {
 	script := fmt.Sprintf(`S=%s
+TAB=$(printf '\t')
 echo "arch=$(uname -m)"; echo "uid=$(id -u)"; echo "synths=$S"
 echo "settings=$(ls %s 2>/dev/null | head -n 1)"
 echo "tmpfree=$(df -k %s 2>/dev/null | awk 'NR==2 {print $4}')"
 command -v tar >/dev/null 2>&1 && echo tar=1
 command -v systemctl >/dev/null 2>&1 && echo systemctl=1
-ls -1 "$S" 2>/dev/null | grep ' - VST - ' | sed 's/^/installed=/'
-[ -f "$S/.mpc-store" ] && sed 's/^/store=/' "$S/.mpc-store"
-for d in "$S"/*/; do
-  f="${d}plugin-meta.xml"; [ -f "$f" ] || continue
-  u=$(sed -n 's/.* uid="\([^"]*\)".*/\1/p' "$f" | head -n 1); n=$(sed -n 's/.* name="\([^"]*\)".*/\1/p' "$f" | head -n 1)
-  printf 'plug=%%s\t%%s\t%%s\n' "$(basename "$d")" "$u" "$n"
+for r in %s; do
+  [ -d "$r" ] && [ -w "$r" ] || continue
+  rid=$(stat -L -c '%%d:%%i' "$r" 2>/dev/null)
+  set -- $(df -k "$r" 2>/dev/null | awk 'NR==2 {print $4, $NF}'); free=${1:-0}; mp=${2:-/}
+  set -- $(awk -v m="$mp" '$2 == m {t = $3; o = $4} END {print t, o}' %s 2>/dev/null); fs=${1:-}; opts=${2:-}
+  case ",$opts," in *,ro,*) continue ;; esac   # a read-only mount (MPC's own content folder) cannot take plugins, even though root may "write" to it
+  printf 'root=%%s\t%%s\t%%s\t%%s\n' "$r" "$rid" "$free" "$fs"
+  if [ -f "$r/.mpc-store" ]; then sed "s|^|store=$r$TAB|" "$r/.mpc-store"; fi
+  for d in "$r"/*/; do
+    f="${d}plugin-meta.xml"; [ -f "$f" ] || continue
+    u=$(sed -n 's/.* uid="\([^"]*\)".*/\1/p' "$f" | head -n 1); n=$(sed -n 's/.* name="\([^"]*\)".*/\1/p' "$f" | head -n 1)
+    printf 'plug=%%s\t%%s\t%%s\t%%s\n' "$r" "$(basename "$d")" "$u" "$n"
+  done
 done
-true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp))
-	info := DeviceInfo{Host: host, Fingerprint: fp, Synths: d.cfg.SynthsDir, Installed: []string{}, Store: map[string]string{}}
+SET=$(ls %s 2>/dev/null | head -n 1)
+if [ -n "$SET" ]; then sed -n 's/.*<Location>\(.*\)<\/Location>.*/loc=\1/p' "$SET"; fi
+true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp), d.cfg.RootGlobs, shQuote(d.cfg.MountsFile), d.cfg.SettingsGlob)
+	info := DeviceInfo{Host: host, Fingerprint: fp, Synths: d.cfg.SynthsDir, Installed: []string{}, Store: map[string]string{}, Stores: map[string]map[string]string{}}
 	var lines []string
 	var mu sync.Mutex
 	code, err := d.Run(script, nil, func(l string) { mu.Lock(); lines = append(lines, l); mu.Unlock() })
 	if err != nil || code != 0 {
 		return fmt.Errorf("the device did not answer a basic command (%v, status %d)", err, code)
 	}
+	var cands []Root
+	var plugs []DevPlugin
+	var locs []string
 	for _, l := range lines {
 		k, v, ok := strings.Cut(l, "=")
 		if !ok {
 			continue
 		}
+		f := strings.Split(v, "\t")
 		switch k {
 		case "arch":
 			info.Arch = v
@@ -221,17 +290,70 @@ true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp))
 			info.Tar = true
 		case "systemctl":
 			info.Systemctl = true
-		case "installed":
-			info.Installed = append(info.Installed, v)
+		case "loc":
+			locs = append(locs, strings.TrimRight(v, "/"))
+		case "root":
+			if len(f) >= 4 {
+				free, _ := strconv.ParseInt(strings.TrimSpace(f[2]), 10, 64)
+				cands = append(cands, Root{Path: f[0], ID: f[1], FreeKB: free, FS: f[3]})
+			}
 		case "plug":
-			if f := strings.Split(v, "\t"); len(f) >= 3 {
-				info.Plugins = append(info.Plugins, DevPlugin{Folder: f[0], UID: f[1], Name: f[2]})
+			if len(f) >= 4 {
+				plugs = append(plugs, DevPlugin{Root: f[0], Folder: f[1], UID: f[2], Name: f[3]})
 			}
 		case "store":
-			if f := strings.Split(v, "\t"); len(f) >= 2 && f[0] != "" {
-				info.Store[f[0]] = f[1]
+			if len(f) >= 3 && f[1] != "" {
+				if info.Stores[f[0]] == nil {
+					info.Stores[f[0]] = map[string]string{}
+				}
+				info.Stores[f[0]][f[1]] = f[2]
 			}
 		}
+	}
+	// the same storage through two paths is one location; the first path wins (the internal drive is listed first)
+	seen := map[string]bool{}
+	keep := map[string]bool{}
+	for _, r := range cands {
+		if r.ID != "" && seen[r.ID] {
+			continue
+		}
+		seen[r.ID] = true
+		r.Primary = r.Path == d.cfg.SynthsDir
+		r.Label = rootLabel(r.Path, d.cfg.SynthsDir)
+		r.NoSymlinks = noSymlinkFS(r.FS)
+		for _, loc := range locs {
+			if loc == r.Path {
+				r.InContent = true
+			}
+		}
+		info.Roots = append(info.Roots, r)
+		keep[r.Path] = true
+	}
+	if len(info.Roots) > 0 && !info.Roots[0].Primary { // the internal drive first, whatever order the shell listed them in
+		for i, r := range info.Roots {
+			if r.Primary {
+				info.Roots = append([]Root{r}, append(info.Roots[:i:i], info.Roots[i+1:]...)...)
+				break
+			}
+		}
+	}
+	names := map[string]bool{}
+	for _, p := range plugs {
+		if keep[p.Root] {
+			info.Plugins = append(info.Plugins, p)
+			if !names[p.Folder] {
+				names[p.Folder] = true
+				info.Installed = append(info.Installed, p.Folder)
+			}
+		}
+	}
+	for root := range info.Stores {
+		if !keep[root] {
+			delete(info.Stores, root)
+		}
+	}
+	if st, ok := info.Stores[d.cfg.SynthsDir]; ok {
+		info.Store = st
 	}
 	d.Info = info
 	return nil

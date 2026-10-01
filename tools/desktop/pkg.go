@@ -54,6 +54,7 @@ type Package struct {
 	Plugins  []Manifest `json:"plugins"`
 	Bundle   bool       `json:"bundle"`
 	Defer    bool       `json:"defer"`    // every installer in it understands -n (MPC is stopped and started by the caller)
+	Symlinks int        `json:"symlinks"` // links inside it (an engine's bundled Python): a FAT/exFAT drive cannot hold them
 	Size     int64      `json:"size"`     // the zip
 	Unpacked int64      `json:"unpacked"` // what it takes on the device
 	SHA256   string     `json:"sha256"`
@@ -100,6 +101,7 @@ func OpenPackage(zipPath, source string) (*Package, error) {
 	}
 	var top string
 	var total uint64
+	links := 0
 	names := map[string]*zip.File{}
 	for _, f := range zr.File {
 		n, err := cleanName(f.Name)
@@ -117,6 +119,7 @@ func OpenPackage(zipPath, source string) (*Package, error) {
 			return nil, errors.New("the zip unpacks to more than 2 GB: refusing")
 		}
 		if f.Mode()&fs.ModeSymlink != 0 {
+			links++
 			rc, err := f.Open()
 			if err != nil {
 				return nil, err
@@ -178,7 +181,7 @@ func OpenPackage(zipPath, source string) (*Package, error) {
 		b, _ := io.ReadAll(io.LimitReader(rc, 1<<20))
 		return string(b)
 	}
-	p := &Package{Path: zipPath, Top: top, Source: source, Size: st.Size(), Unpacked: int64(total)}
+	p := &Package{Path: zipPath, Top: top, Source: source, Size: st.Size(), Unpacked: int64(total), Symlinks: links}
 	if _, ok := names[top+"/mpc-plugin.json"]; ok {
 		m, err := readManifest(top)
 		if err != nil {

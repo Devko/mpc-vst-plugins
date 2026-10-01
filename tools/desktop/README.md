@@ -14,6 +14,10 @@ one MPC stop and start around the whole batch when the installers allow it.
 1. **Connect:** SSH as root with your password or a key in `~/.ssh` (no passphrase). It reads the device (32-bit ARM? `tar`?
    `systemctl`? where is `MPC.settings`?) and refuses one that is not an MPC OS device. The device's key fingerprint is shown; nothing
    about the device is saved.
+   The device scan lists every writable `Synths` location (the internal drive, and `/media/*/Synths` for cards and drives; read-only mounts such as
+   MPC's own content folder are skipped, and the same storage reached by two paths is listed once). Step 3 lets you pick where to install, the
+   internal drive by default, and warns when MPC does not list the folder as a content location. A drive that cannot store symbolic links
+   (FAT, exFAT, NTFS) is refused for a package that needs them, and so is a drive without room.
 2. **Choose:** the catalog's newest stable release of every downloadable plugin, plus any zips you drop in. A search box, kind and
    developer filters, a sort, and a "show" filter (not on the device, on the device, updates available, only the ones you ticked) keep a
    long list manageable; what you ticked stays ticked while you filter, and a bar at the bottom shows the count and an Install button.
@@ -31,7 +35,10 @@ one MPC stop and start around the whole batch when the installers allow it.
    which files in it are yours: drop its release zip to manage it, or remove it by hand. The plugin-list edit uses
    `plugin_list.awk`, a copy of `tools/release/plugin_list.awk` embedded in the binary (a test fails if the two differ: copy it again).
 
-5. **Clean up old backups** (step 5 on the page, collapsed): every install, removal and sync leaves a copy of `MPC.settings` named
+5. **Register plugin folders** (step 5, collapsed, with a count when something is waiting): the plugin folders in any location that are not in MPC's
+   plugin list (copied in by hand, or dropped by MPC because a card was out at startup), and entries whose plugin file is gone. It runs the
+   embedded `sync.sh` (a test keeps it identical to `tools/release/sync.sh`) between one MPC stop and start; everything else in the list stays.
+6. **Clean up old backups** (step 6, collapsed): every install, removal and sync leaves a copy of `MPC.settings` named
    `MPC.settings.bak-<what>-<date>` that nothing deletes. The page counts them and deletes all but the newest N (default 10, at least 1:
    the newest is never deleted, and only files named like that are touched). MPC is not stopped. `mpc-store.sh prune [--keep N]` does the
    same on the device.

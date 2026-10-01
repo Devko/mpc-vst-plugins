@@ -190,8 +190,11 @@ func TestWholeFlowThroughTheAPI(t *testing.T) {
 func TestCatalogRowsShowWhatIsOnTheDeviceAndWhatHasAnUpdate(t *testing.T) {
 	h := newHarness(t)
 	syn := h.fd.cfg().SynthsDir
-	os.MkdirAll(syn+"/me - VST - Acid", 0o755)  // installed, recorded at 1.0.0
-	os.MkdirAll(syn+"/me - VST - Dexed", 0o755) // installed by hand: no recorded version
+	for _, f := range []string{"me - VST - Acid", "me - VST - Dexed"} { // plugin folders (a plugin-meta.xml makes it one)
+		os.MkdirAll(syn+"/"+f, 0o755)
+		os.WriteFile(syn+"/"+f+"/plugin-meta.xml", []byte(`<PLUGIN name="x" file="%payload-path%/`+f+`/x.so" uid="0000000`+f[len(f)-1:]+`"/>`), 0o644)
+	}
+	// Acid is recorded at 1.0.0; Dexed was installed by hand: no recorded version
 	os.WriteFile(syn+"/.mpc-store", []byte("acid\t1.0.0\tme - VST - Acid\t1\n"), 0o644)
 	h.app.cat = []CatPlugin{
 		{ID: "acid", Name: "Acid", Version: "1.1.0", Skin: "me - VST - Acid"},

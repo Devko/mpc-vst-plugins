@@ -54,6 +54,8 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/install", a.install)
 	mux.HandleFunc("/api/device", a.devicePlugins)
 	mux.HandleFunc("/api/remove", a.remove)
+	mux.HandleFunc("/api/unregistered", a.unregistered)
+	mux.HandleFunc("/api/register", a.register)
 	mux.HandleFunc("/api/backups", a.backups)
 	mux.HandleFunc("/api/prune", a.prune)
 	mux.HandleFunc("/api/job", a.jobStatus)
@@ -181,24 +183,32 @@ func (a *App) catalog(w http.ResponseWriter, r *http.Request) {
 		a.cat, a.catAt = cat, time.Now()
 	}
 	defer a.mu.Unlock()
-	installed := map[string]bool{}
-	var store map[string]string
+	where := map[string]DevPlugin{} // plugin folder -> where it is (the internal drive wins)
 	if a.dev != nil {
-		for _, s := range a.dev.Info.Installed {
-			installed[s] = true
+		for _, dp := range a.dev.Info.Plugins {
+			if _, ok := where[dp.Folder]; !ok {
+				where[dp.Folder] = dp
+			}
 		}
-		store = a.dev.Info.Store
 	}
 	type row struct {
 		CatPlugin
 		Installed        bool   `json:"installed"`
+		InstalledAt      string `json:"installedAt,omitempty"` // the place, when it is not the internal drive
 		InstalledVersion string `json:"installedVersion,omitempty"`
 		Update           bool   `json:"update"`
 	}
 	rows := []row{}
 	for _, c := range a.cat {
-		iv := store[c.ID]
-		rows = append(rows, row{c, installed[c.Skin], iv, iv != "" && iv != c.Version})
+		dp, ok := where[c.Skin]
+		iv, at := "", ""
+		if ok {
+			iv = a.dev.Info.Stores[dp.Root][c.ID]
+			if rt, found := a.dev.Info.root(dp.Root); found && !rt.Primary {
+				at = rt.Label
+			}
+		}
+		rows = append(rows, row{c, ok, at, iv, iv != "" && iv != c.Version})
 	}
 	writeJSON(w, 200, map[string]any{"plugins": rows})
 }
@@ -282,6 +292,7 @@ func (a *App) discard(w http.ResponseWriter, r *http.Request) {
 type selection struct {
 	Catalog []string `json:"catalog"`
 	Uploads []string `json:"uploads"`
+	Root    string   `json:"root"` // the Synths folder to install into ("" = the internal drive)
 	Confirm bool     `json:"confirm"`
 }
 
@@ -404,10 +415,18 @@ func (a *App) install(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err.Error())
 		return
 	}
+	root := a.dev.Info.primaryRoot()
+	if s.Root != "" {
+		var ok bool
+		if root, ok = a.dev.Info.root(s.Root); !ok {
+			fail(w, 400, "that is not a plugin location on the device")
+			return
+		}
+	}
 	j := &Job{ID: randHex(4), State: "running"}
 	a.job = j
 	dev := a.dev
-	go RunInstall(dev, items, a.work, j, func() {
+	go RunInstall(dev, root, items, a.work, j, func() {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.dev == dev {
@@ -435,11 +454,12 @@ func (a *App) jobStatus(w http.ResponseWriter, r *http.Request) {
 // plugins from the catalog and for zips dropped into this session, so those are the ones it will remove.
 type knownPlugin struct {
 	DevPlugin
-	ID      string   `json:"id"`
-	Version string   `json:"version,omitempty"`
-	Known   bool     `json:"known"`
-	Keep    []string `json:"keep"`
-	Source  string   `json:"source,omitempty"`
+	ID        string   `json:"id"`
+	Version   string   `json:"version,omitempty"`
+	RootLabel string   `json:"rootLabel"`
+	Known     bool     `json:"known"`
+	Keep      []string `json:"keep"`
+	Source    string   `json:"source,omitempty"`
 }
 
 // classify matches the device's plugin folders to the catalog and to the dropped zips. Caller holds a.mu and a.dev != nil.
@@ -467,7 +487,10 @@ func (a *App) classify() []knownPlugin {
 				}
 			}
 		}
-		kp.Version = a.dev.Info.Store[kp.ID]
+		kp.Version = a.dev.Info.Stores[dp.Root][kp.ID]
+		if rt, ok := a.dev.Info.root(dp.Root); ok {
+			kp.RootLabel = rt.Label
+		}
 		out = append(out, kp)
 	}
 	return out
@@ -496,7 +519,7 @@ func (a *App) devicePlugins(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "connect to the device first")
 		return
 	}
-	writeJSON(w, 200, map[string]any{"plugins": a.classify()})
+	writeJSON(w, 200, map[string]any{"plugins": a.classify(), "roots": a.dev.Info.Roots})
 }
 
 func (a *App) remove(w http.ResponseWriter, r *http.Request) {
@@ -504,8 +527,11 @@ func (a *App) remove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Folders []string `json:"folders"`
-		Confirm bool     `json:"confirm"`
+		Items []struct {
+			Root   string `json:"root"`
+			Folder string `json:"folder"`
+		} `json:"items"`
+		Confirm bool `json:"confirm"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil {
 		fail(w, 400, "bad request")
@@ -528,27 +554,28 @@ func (a *App) remove(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	byFolder := map[string]knownPlugin{}
+	byKey := map[string]knownPlugin{}
 	for _, kp := range a.classify() {
-		byFolder[kp.Folder] = kp
+		byKey[kp.Root+"\x00"+kp.Folder] = kp
 	}
 	var plans []RemovePlan
 	seen := map[string]bool{}
-	for _, f := range in.Folders { // the plan is rebuilt here from what the device and the catalog say, never from the page
-		if seen[f] {
+	for _, it := range in.Items { // the plan is rebuilt here from what the device and the catalog say, never from the page
+		key := it.Root + "\x00" + it.Folder
+		if seen[key] {
 			continue
 		}
-		seen[f] = true
-		kp, ok := byFolder[f]
+		seen[key] = true
+		kp, ok := byKey[key]
 		if !ok {
-			fail(w, 400, fmt.Sprintf("%q is not a plugin folder on the device", f))
+			fail(w, 400, fmt.Sprintf("%q is not a plugin folder on the device", it.Folder))
 			return
 		}
 		if !kp.Known {
-			fail(w, 400, fmt.Sprintf("%s was not installed from the catalog, so the app cannot tell which files in it are yours. Drop its release zip above to manage it, or remove it by hand.", f))
+			fail(w, 400, fmt.Sprintf("%s was not installed from the catalog, so the app cannot tell which files in it are yours. Drop its release zip above to manage it, or remove it by hand.", it.Folder))
 			return
 		}
-		plans = append(plans, RemovePlan{Folder: kp.Folder, UID: kp.UID, ID: kp.ID, Keep: kp.Keep})
+		plans = append(plans, RemovePlan{Root: kp.Root, Folder: kp.Folder, UID: kp.UID, ID: kp.ID, Keep: kp.Keep})
 	}
 	if len(plans) == 0 {
 		fail(w, 400, "nothing selected")
@@ -558,6 +585,71 @@ func (a *App) remove(w http.ResponseWriter, r *http.Request) {
 	a.job = j
 	dev := a.dev
 	go RunRemove(dev, plans, j, func() {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		if a.dev == dev {
+			dev.readInfo(dev.Info.Host, dev.Info.Fingerprint)
+		}
+	})
+	writeJSON(w, 200, map[string]string{"job": j.ID})
+}
+
+// unregistered says which plugin folders MPC does not know yet (what registering would add), without changing anything.
+func (a *App) unregistered(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	dev := a.dev
+	a.mu.Unlock()
+	if dev == nil {
+		fail(w, 400, "connect to the device first")
+		return
+	}
+	plan, err := dev.SyncPlan()
+	if err != nil {
+		fail(w, 502, err.Error())
+		return
+	}
+	labels := map[string]string{}
+	for _, rt := range dev.Info.Roots {
+		labels[rt.Path] = rt.Label
+	}
+	type item struct {
+		SyncItem
+		RootLabel string `json:"rootLabel"`
+	}
+	add := []item{}
+	for _, it := range plan.Add {
+		add = append(add, item{it, labels[it.Root]})
+	}
+	writeJSON(w, 200, map[string]any{"add": add, "remove": plan.Remove, "skipped": plan.Skipped})
+}
+
+func (a *App) register(w http.ResponseWriter, r *http.Request) {
+	if !postOnly(w, r) {
+		return
+	}
+	var in struct {
+		Confirm bool `json:"confirm"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&in); err != nil || !in.Confirm {
+		fail(w, 400, "registering must be confirmed")
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.dev == nil {
+		fail(w, 400, "connect to the device first")
+		return
+	}
+	if a.job != nil {
+		if st, _, _, _ := a.job.snapshot(0); st == "running" {
+			fail(w, 409, "a job is already running")
+			return
+		}
+	}
+	j := &Job{ID: randHex(4), State: "running"}
+	a.job = j
+	dev := a.dev
+	go RunRegister(dev, j, func() {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.dev == dev {
