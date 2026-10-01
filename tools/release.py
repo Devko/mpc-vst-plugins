@@ -143,7 +143,7 @@ restarts MPC). Projects that use the plugin will load without it. Files you adde
 
 1. Copy `portable/{skin}/` to `/sdcard/Synths/{skin}/`. It holds `{so}`, `plugin-meta.xml`, `version.xml`, `Plugin Skins/`
    and the data:
-{extra_md}2. Stop MPC: `systemctl stop acvs`
+{extra_md}2. Stop MPC: `systemctl stop acvs` (`systemctl stop inmusic-mpc` on a Hakai-enabled system)
 3. Back up the settings file, `MPC.settings` (on a Force: `/media/az01-internal/Settings/MPC/MPC.settings`).
 4. In `MPC.settings`, inside `<VALUE name="pluginList-arm"><KNOWNPLUGINS>`, add the line from `plugin-meta.xml` with
    `%payload-path%` replaced by `/sdcard/Synths`. If there is no `pluginList-arm` value yet, add one just before `</PROPERTIES>`:
@@ -154,7 +154,7 @@ restarts MPC). Projects that use the plugin will load without it. Files you adde
      </KNOWNPLUGINS>
    </VALUE>
    ```
-5. Start MPC: `systemctl start acvs`. If MPC shows default settings, restore your backup (the XML was malformed).
+5. Start MPC: `systemctl start acvs` (`inmusic-mpc` on Hakai). If MPC shows default settings, restore your backup (the XML was malformed).
 
 Edit `MPC.settings` only while MPC is stopped: MPC can save its own copy over a change made while it runs. Tools that
 rebuild the whole plugin list from the plugin folders in `Synths` keep this plugin, because it is such a folder.
