@@ -53,7 +53,7 @@ jobs:
       about: One line about the plugin.
       dry_run: ${{ inputs.dry_run }}   # optional: zip and previews as run artifacts only
 ```
-Optional inputs: `extra` (release.py `--extra` specs) and `zig` (a zig version to install). The run's artifacts hold the zip and one PNG per skin page, and its summary lists what is left
+Optional inputs: `extra` (release.py `--extra` specs), `user_data` (release.py `--user-data` folders, space-separated: the user's ROMs/banks, kept across upgrades and moved in from an old install) and `zig` (a zig version to install). The run's artifacts hold the zip and one PNG per skin page, and its summary lists what is left
 to do. CPU (step 4) comes from `<vst_dir>/bench.txt` when the port commits the `-j` output of `tools/bench.sh`;
 without it INSTALL.md has no CPU section. Re-running with the same version replaces the draft's zip. It refuses a
 version that is already published. Publishing the draft creates the tag.
