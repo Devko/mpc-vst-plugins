@@ -18,6 +18,7 @@ var uidRe = regexp.MustCompile(`^[0-9a-fA-F]{1,16}$`)
 
 // RemovePlan is one plugin to remove. Keep lists the folders inside it that hold the user's own files (ROMs, kits, dumps): they stay.
 type RemovePlan struct {
+	Root   string // the Synths folder the plugin folder is in
 	Folder string
 	UID    string
 	ID     string // the catalog id, to forget the version recorded for it ("" when unknown)
@@ -39,6 +40,9 @@ func safeRel(p string) bool {
 }
 
 func (p RemovePlan) check() error {
+	if !strings.HasPrefix(p.Root, "/") || strings.ContainsAny(p.Root, "\\\x00\n\r'\"$`") || strings.Contains(p.Root, "..") {
+		return fmt.Errorf("unsafe location %q", p.Root)
+	}
 	if p.Folder == "" || p.Folder == "." || p.Folder == ".." || strings.ContainsAny(p.Folder, "/\\\x00\n") {
 		return fmt.Errorf("unsafe folder name %q", p.Folder)
 	}
@@ -55,10 +59,10 @@ func (p RemovePlan) check() error {
 
 // removeScript runs on the device: stop MPC, back up MPC.settings, take every plugin's entry out, check the result, and only then
 // delete the folders (your own files inside them are kept). MPC is started again whatever happens.
-func removeScript(synths, tmp, settings string, plans []RemovePlan) string {
+func removeScript(tmp, settings string, plans []RemovePlan) string {
 	var b strings.Builder
 	w := func(f string, a ...any) { fmt.Fprintf(&b, f+"\n", a...) }
-	w("T=%s; SYN=%s; SET=%s; STATE=\"$SYN/.mpc-store\"; rc=0", shQuote(tmp), shQuote(synths), shQuote(settings))
+	w("T=%s; SET=%s; rc=0", shQuote(tmp), shQuote(settings))
 	w("systemctl stop acvs")
 	w("i=0; while pidof MPC >/dev/null && [ $i -lt 30 ]; do sleep 1; i=$((i + 1)); done")
 	w(`if pidof MPC >/dev/null; then echo "MPC did not stop: nothing was removed"; rc=3; fi`)
@@ -69,7 +73,7 @@ func removeScript(synths, tmp, settings string, plans []RemovePlan) string {
 	for _, p := range plans {
 		w(`if [ $rc = 0 ]; then`)
 		w(`  if awk -v mode=remove -v file=%s -v uid=%s -f "$T/plugin_list.awk" "$T/cur" > "$T/next" && mv "$T/next" "$T/cur"; then :; else echo "cannot edit the plugin list"; rc=5; fi`,
-			shQuote(synths+"/"+p.Folder+"/.none"), shQuote(p.UID))
+			shQuote(p.Root+"/"+p.Folder+"/.none"), shQuote(p.UID))
 		w(`fi`)
 	}
 	w(`if [ $rc = 0 ]; then`)
@@ -88,7 +92,7 @@ func removeScript(synths, tmp, settings string, plans []RemovePlan) string {
 	w(`  if cp "$T/cur" "$SET.new" && mv "$SET.new" "$SET"; then sync; else echo "cannot write MPC.settings"; rc=9; fi`)
 	w(`fi`)
 	for i, p := range plans {
-		dir := shQuote(synths + "/" + p.Folder)
+		dir := shQuote(p.Root + "/" + p.Folder)
 		w(`if [ $rc = 0 ]; then`)
 		w(`  D=%s; K="$T/keep%d"; mkdir -p "$K"`, dir, i)
 		for _, k := range p.Keep {
@@ -98,6 +102,7 @@ func removeScript(synths, tmp, settings string, plans []RemovePlan) string {
 		w(`  if [ -n "$(ls -A "$K" 2>/dev/null)" ]; then mkdir -p "$D"; cp -a "$K/." "$D/"; echo "kept your own files in $D"; fi`)
 		w(`  echo %s`, shQuote("Removed "+p.Folder))
 		if p.ID != "" {
+			w(`  STATE=%s`, shQuote(p.Root+"/.mpc-store"))
 			w(`  if [ -f "$STATE" ]; then awk -F'\t' -v id=%s '$1 != id' "$STATE" > "$STATE.new" && mv "$STATE.new" "$STATE"; fi`, shQuote(p.ID))
 		}
 		w(`fi`)
@@ -134,7 +139,7 @@ func RunRemove(dev *Device, plans []RemovePlan, j *Job, refresh func()) (err err
 		return fmt.Errorf("cannot prepare the device (status %d): %v %s", code, rerr, strings.Join(out, " "))
 	}
 	j.log("Removing %d plugin(s) (MPC is stopped once and started again at the end)", len(plans))
-	code, rerr = dev.Run(removeScript(dev.Info.Synths, tmp, dev.Info.Settings, plans), nil, func(l string) { j.log("  %s", l) })
+	code, rerr = dev.Run(removeScript(tmp, dev.Info.Settings, plans), nil, func(l string) { j.log("  %s", l) })
 	if rerr != nil {
 		dev.Run("rm -rf "+shQuote(tmp), nil, nil)
 		return rerr

@@ -72,10 +72,29 @@ func newFakeDevice(t *testing.T) *fakeDevice {
 	return fd
 }
 
+// addCard makes a second plugin location, like an SD card or USB drive (a "Drive CARD1" in the app), and returns its Synths folder.
+func (fd *fakeDevice) addCard(name string) string {
+	p := filepath.Join(fd.dir, "Drives", name, "Synths")
+	os.MkdirAll(p, 0o755)
+	return p
+}
+
+// addAlias makes the internal Synths folder reachable by a second path, like /sdcard and /media/az01-internal-sd on a Force.
+func (fd *fakeDevice) addAlias() string {
+	p := filepath.Join(fd.dir, "Aliases", "internal-again", "Synths")
+	os.MkdirAll(filepath.Dir(p), 0o755)
+	os.Symlink(filepath.Join(fd.dir, "Synths"), p)
+	return p
+}
+
 func (fd *fakeDevice) cfg() Config {
 	_, port, _ := net.SplitHostPort(fd.addr)
+	roots := []string{filepath.Join(fd.dir, "Synths")}
+	cards, _ := filepath.Glob(filepath.Join(fd.dir, "Drives", "*", "Synths"))
+	aliases, _ := filepath.Glob(filepath.Join(fd.dir, "Aliases", "*", "Synths"))
+	roots = append(append(roots, aliases...), cards...)
 	return Config{Port: port, User: "root", RemoteTmp: filepath.Join(fd.dir, "tmp"), SynthsDir: filepath.Join(fd.dir, "Synths"),
-		SettingsGlob: filepath.Join(fd.dir, "Settings", "*", "MPC.settings")}
+		RootGlobs: strings.Join(roots, " "), MountsFile: "/proc/mounts", SettingsGlob: filepath.Join(fd.dir, "Settings", "*", "MPC.settings")}
 }
 
 func (fd *fakeDevice) calls() []string {

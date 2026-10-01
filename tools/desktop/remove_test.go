@@ -69,7 +69,7 @@ func TestInfoListsPluginFolders(t *testing.T) {
 func TestRemoveDeletesTheFolderButKeepsYourFilesAndTouchesNothingElse(t *testing.T) {
 	fd := newFakeDevice(t)
 	syn, settings := seed(t, fd)
-	j, err := runRemove(t, fd, RemovePlan{Folder: "me - VST - A", UID: "aaaa0001", ID: "a", Keep: []string{"roms"}})
+	j, err := runRemove(t, fd, RemovePlan{Root: syn, Folder: "me - VST - A", UID: "aaaa0001", ID: "a", Keep: []string{"roms"}})
 	if err != nil {
 		t.Fatal(err, j.Lines)
 	}
@@ -109,7 +109,7 @@ func TestRemoveDeletesTheFolderButKeepsYourFilesAndTouchesNothingElse(t *testing
 func TestRemoveWithNothingToKeepDeletesTheWholeFolder(t *testing.T) {
 	fd := newFakeDevice(t)
 	syn, _ := seed(t, fd)
-	if _, err := runRemove(t, fd, RemovePlan{Folder: "me - VST - A", UID: "aaaa0001", ID: "a"}, RemovePlan{Folder: "me - VST - B", UID: "bbbb0002", ID: "b"}); err != nil {
+	if _, err := runRemove(t, fd, RemovePlan{Root: syn, Folder: "me - VST - A", UID: "aaaa0001", ID: "a"}, RemovePlan{Root: syn, Folder: "me - VST - B", UID: "bbbb0002", ID: "b"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, f := range []string{"me - VST - A", "me - VST - B"} {
@@ -127,7 +127,7 @@ func TestABrokenSettingsFileChangesNothingAndMPCStarts(t *testing.T) {
 	syn, settings := seed(t, fd)
 	bad := strings.Replace(strings.ReplaceAll(settingsWith, "%[1]s", syn), "</PROPERTIES>\n", "", 1) // no closing root element
 	os.WriteFile(settings, []byte(bad), 0o644)
-	_, err := runRemove(t, fd, RemovePlan{Folder: "me - VST - A", UID: "aaaa0001", ID: "a", Keep: []string{"roms"}})
+	_, err := runRemove(t, fd, RemovePlan{Root: syn, Folder: "me - VST - A", UID: "aaaa0001", ID: "a", Keep: []string{"roms"}})
 	if err == nil {
 		t.Fatal("expected a failure")
 	}
@@ -147,12 +147,17 @@ func TestRemovePlansAreChecked(t *testing.T) {
 		{Folder: "../x", UID: "aaaa0001"}, {Folder: "a/b", UID: "aaaa0001"}, {Folder: "..", UID: "aaaa0001"}, {Folder: "", UID: "aaaa0001"},
 		{Folder: "ok", UID: ""}, {Folder: "ok", UID: "zz; rm -rf /"}, {Folder: "ok", UID: "aaaa0001", Keep: []string{"../etc"}},
 		{Folder: "ok", UID: "aaaa0001", Keep: []string{"a b"}}, {Folder: "ok", UID: "aaaa0001", Keep: []string{"$(x)"}},
+		{Root: "relative/path", Folder: "ok", UID: "aaaa0001"}, {Root: "/sdcard/Synths/../..", Folder: "ok", UID: "aaaa0001"},
+		{Root: "/sd card/$(x)", Folder: "ok", UID: "aaaa0001"},
 	} {
+		if p.Root == "" {
+			p.Root = "/sdcard/Synths"
+		}
 		if p.check() == nil {
 			t.Errorf("%+v must be refused", p)
 		}
 	}
-	if (RemovePlan{Folder: "me - VST - A", UID: "aaaa0001", Keep: []string{"roms", "jv880-roms/roms"}}).check() != nil {
+	if (RemovePlan{Root: "/sdcard/Synths", Folder: "me - VST - A", UID: "aaaa0001", Keep: []string{"roms", "jv880-roms/roms"}}).check() != nil {
 		t.Error("a normal plan is fine")
 	}
 }
@@ -176,20 +181,20 @@ func TestServerRemovesKnownPluginsAndRefusesUnknownOnes(t *testing.T) {
 	if code, _ := h.post("/api/connect", map[string]string{"host": "127.0.0.1", "password": "secret"}); code != 200 {
 		t.Fatal("connect")
 	}
-	_, list := h.post("/api/remove", map[string]any{"folders": []string{"me - VST - A"}}) // no confirm
+	_, list := h.post("/api/remove", map[string]any{"items": []map[string]string{{"root": syn, "folder": "me - VST - A"}}}) // no confirm
 	if list["error"] == nil {
 		t.Error("needs confirmation")
 	}
-	if code, m := h.post("/api/remove", map[string]any{"folders": []string{"me - VST - B"}, "confirm": true}); code != 400 || !strings.Contains(m["error"].(string), "cannot tell which files") {
+	if code, m := h.post("/api/remove", map[string]any{"items": []map[string]string{{"root": syn, "folder": "me - VST - B"}}, "confirm": true}); code != 400 || !strings.Contains(m["error"].(string), "cannot tell which files") {
 		t.Errorf("an unknown plugin is refused with a reason: %d %v", code, m)
 	}
-	if code, _ := h.post("/api/remove", map[string]any{"folders": []string{"../../etc"}, "confirm": true}); code != 400 {
+	if code, _ := h.post("/api/remove", map[string]any{"items": []map[string]string{{"root": syn, "folder": "../../etc"}}, "confirm": true}); code != 400 {
 		t.Errorf("a path is not a plugin folder: %d", code)
 	}
 	if _, err := os.Stat(filepath.Join(syn, "me - VST - B", "b.so")); err != nil {
 		t.Fatal("the refused plugin must be untouched")
 	}
-	if code, m := h.post("/api/remove", map[string]any{"folders": []string{"me - VST - A"}, "confirm": true}); code != 200 {
+	if code, m := h.post("/api/remove", map[string]any{"items": []map[string]string{{"root": syn, "folder": "me - VST - A"}}, "confirm": true}); code != 200 {
 		t.Fatalf("remove: %d %v", code, m)
 	}
 	var st map[string]any

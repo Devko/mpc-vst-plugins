@@ -74,7 +74,7 @@ func runJob(t *testing.T, fd *fakeDevice, items ...Item) (*Job, error) {
 	}
 	defer d.Close()
 	j := &Job{ID: "x", State: "running"}
-	err = RunInstall(d, items, t.TempDir(), j, nil)
+	err = RunInstall(d, d.Info.primaryRoot(), items, t.TempDir(), j, nil)
 	return j, err
 }
 

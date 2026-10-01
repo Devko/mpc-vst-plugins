@@ -67,6 +67,8 @@ Press **Install…** and read the question. **Save your project on the device fi
 - copies the plugins to the device, stops MPC once, runs each plugin's own installer, and starts MPC again;
 - makes a backup of MPC's settings file first, and starts MPC again even if something fails.
 
+**Where it goes.** If your device has an SD card or a USB drive with a `Synths` folder as well as its internal drive, an **Install to** choice appears above the Install button. The internal drive is the default. A card or drive works too, with three things to know: MPC must list its `Synths` folder as a content location, or a plugin's screen may not show (the page tells you if it does not); a drive that is formatted exFAT or FAT cannot store the symbolic links some plugins need (Crate Digger's bundled Python), so the app refuses those installs and tells you to use the internal drive; and if the drive is not in when MPC starts, its plugins drop out of MPC's plugin list until you register them again (see "Register plugin folders").
+
 Some older releases have an installer that restarts MPC by itself, so MPC may restart more than once; the page says so before you confirm and the log shows it. Newer releases are installed in one go.
 
 ## 6. Use it
@@ -78,12 +80,15 @@ Start the app, connect, and tick the plugin that shows **update**, then install 
 The catalog shows a **Compat** number for each version. If it goes up, the parameters changed, and projects saved with an older version will sound different. Read the release notes before updating a plugin you use in finished songs. If MPC still runs the old version afterwards, remove every copy of the plugin from your project and insert it again.
 
 ## Remove a plugin
-In the app, open **Remove plugins** (step 4 on the page; click **Show**), tick the plugin and press **Remove…**. MPC is stopped once, MPC's settings are backed up and the plugin is taken out of the plugin list, then its folder is deleted **except your own files** (ROMs, kits and dumps are kept), and MPC is started again. Projects that used the plugin still open, without it.
+In the app, open **Remove plugins** (step 4 on the page; click **Show**; plugins are grouped by the drive they are on), tick the plugin and press **Remove…**. MPC is stopped once, MPC's settings are backed up and the plugin is taken out of the plugin list, then its folder is deleted **except your own files** (ROMs, kits and dumps are kept), and MPC is started again. Projects that used the plugin still open, without it.
 
 The app only removes plugins it can identify: ones from the catalog, or ones whose zip you have dropped into the page. For any other plugin it cannot tell which files in the folder are yours, so it lists the plugin but does not offer to remove it. Drop that plugin's zip to manage it, or remove it by hand.
 
+## Register plugin folders
+A plugin only shows up in MPC once it is in MPC's plugin list. Folders you copied into a `Synths` folder yourself, plugins from other collections, or plugins MPC forgot (for example because a card was out when MPC started) are not in the list. In the app, open **Register plugin folders** (step 5 on the page; click **Show**). If something is waiting, a count appears next to the title and the list shows each folder and where it is. Press **Register…**: MPC is stopped once, its settings are backed up and the folders are added to the plugin list (entries whose plugin file is gone are dropped), and MPC is started again. Everything else in the list stays as it is.
+
 ## Clean up old backups
-Every install, removal and sync makes a copy of MPC's settings file on the device, and nothing deletes them, so they pile up (they are small). In the app, open **Clean up old backups** (step 5 on the page; click **Show**), choose how many of the newest to keep (10 is a good number) and press **Delete older backups…**. The newest backup is never deleted, MPC is not restarted, and nothing but the backups is touched.
+Every install, removal and sync makes a copy of MPC's settings file on the device, and nothing deletes them, so they pile up (they are small). In the app, open **Clean up old backups** (step 6 on the page; click **Show**), choose how many of the newest to keep (10 is a good number) and press **Delete older backups…**. The newest backup is never deleted, MPC is not restarted, and nothing but the backups is touched.
 
 ## If a plugin disappears after a restart
 MPC keeps its whole plugin list in one place: the `pluginList-arm` list in its settings file, `MPC.settings`. Every way of installing plugins edits that same list, so one method can undo another. The plugin's files usually are still on the card; only its line in the list is gone. The usual causes:
