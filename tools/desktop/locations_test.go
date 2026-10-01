@@ -302,6 +302,16 @@ func TestServerLocationsAndRegister(t *testing.T) {
 	if code, m := h.post("/api/register", map[string]any{"confirm": true}); code != 200 {
 		t.Fatalf("register: %d %v", code, m)
 	}
+	for i := 0; i < 200; i++ { // let the job finish: it writes into the test's folders
+		_, b := h.do("GET", "/api/job?since=0", nil, nil)
+		if !strings.Contains(string(b), `"state":"running"`) {
+			if !strings.Contains(string(b), `"state":"done"`) {
+				t.Errorf("register job: %s", b)
+			}
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 func TestEmbeddedSyncIsTheCanonicalOne(t *testing.T) {
