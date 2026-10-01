@@ -57,6 +57,13 @@ dialog .actions { display:flex; gap:10px; justify-content:flex-end; margin-top:1
 #selbar[hidden] { display:none; }
 #selbar b { font:700 15px var(--display); letter-spacing:.06em; text-transform:uppercase; }
 #selbar button.linkbtn { color:#ffb3ad; }
+#d4 > summary { cursor:pointer; list-style:none; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+#d4 > summary::-webkit-details-marker { display:none; }
+#d4 > summary h2 { margin:0; }
+#d4 > summary .hint { font:600 12px/1 var(--display); letter-spacing:.1em; text-transform:uppercase; color:var(--accent); }
+#d4[open] > summary .hint { font-size:0; }
+#d4[open] > summary .hint::after { content:"Hide"; font-size:12px; }
+#d4[open] > summary { margin-bottom:6px; }
 footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
 </style>
 </head>
@@ -105,12 +112,14 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
 </section>
 
 <section id="s4" class="off">
-  <h2><span class="n">4</span>Remove plugins</h2>
+<details id="d4">
+  <summary><h2><span class="n">4</span>Remove plugins</h2><span class="hint">Show</span></summary>
   <p class="sub">The plugins on your device. Removing deletes the plugin's folder and its entry in MPC's plugin list (MPC's settings are backed up first). Your own files inside it, such as ROMs, kits and dumps, are kept.</p>
   <ul class="list" id="dev"><li class="small">Connect to see what is on the device.</li></ul>
   <button id="rm" disabled>Remove…</button>
   <p class="msg" id="rmresult" role="status" aria-live="polite"></p>
   <pre class="log" id="rmlog" hidden></pre>
+</details>
 </section>
 
 <div id="selbar" hidden role="region" aria-label="Selected plugins"><span><b id="selcount"></b> <button class="linkbtn" type="button" id="selclear">Clear</button></span><button class="primary" id="go2" type="button">Install…</button></div>

@@ -68,6 +68,11 @@ try:
         check("Acid now shows as on the device", "on the device" in pg.locator("#cat li").filter(has_text="Acid").first.text_content())
 
         # --- removal
+        check("the remove section starts collapsed", pg.locator("#d4").get_attribute("open") is None and pg.locator("#dev").is_hidden())
+        pg.locator("#s4").screenshot(path="/out/ui-9-s4-collapsed.png")
+        pg.click("#d4 > summary")
+        pg.locator("#s4").screenshot(path="/out/ui-10-s4-open.png")
+        check("it opens on click", pg.locator("#d4").get_attribute("open") is not None and pg.locator("#dev").is_visible())
         pg.wait_for_selector("#dev li input", timeout=20000)
         devtxt = pg.locator("#dev").text_content()
         check("device list shows the plugins", "Acid" in devtxt and "Test Synth" in devtxt, devtxt)
@@ -95,6 +100,7 @@ try:
         check("the recorded version is forgotten", "test-synth" not in open("/sdcard/Synths/.mpc-store").read())
         check("a settings backup was made", len([f for f in os.listdir("/media/az01-internal/Settings/MPC") if f.startswith("MPC.settings.bak-remove-")]) == 1)
         pg.wait_for_function("document.querySelectorAll('#dev li').length >= 2")
+        check("the section stays open after a removal", pg.locator("#d4").get_attribute("open") is not None)
         check("the list refreshes", "Test Synth" not in pg.locator("#dev").text_content())
         check("no page errors", not errs, errs)
         b.close()
