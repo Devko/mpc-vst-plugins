@@ -114,6 +114,17 @@ def tsv(catalog, helpers):
     return "\n".join(out) + "\n"
 
 
+# pages that no longer exist and where their content went (setup.html was merged into build.html on 2026-10-01)
+MOVED_PAGES = {"setup.html": "build.html"}
+
+
+def redirect_page(target):
+    t = html_escape(target, quote=True)
+    return ('<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><title>Moved</title>'
+            '<meta http-equiv="refresh" content="0; url=%s"><link rel="canonical" href="%s"></head>'
+            '<body><p>This page moved to <a href="%s">%s</a>.</p></body></html>\n' % (t, t, t, t))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--catalog", default="catalog/dist/catalog.json")
@@ -137,6 +148,8 @@ def main():
     for name, path in helpers:   # the files a device downloads next to catalog.tsv, checked against the hashes listed in it
         shutil.copy(path, os.path.join(a.out, name))
     open(os.path.join(a.out, "catalog.tsv"), "w", encoding="utf-8", newline="\n").write(tsv(catalog, helpers))
+    for old, new in MOVED_PAGES.items():   # links to pages that were merged into another still work
+        open(os.path.join(a.out, old), "w", encoding="utf-8").write(redirect_page(new))
     open(os.path.join(a.out, ".nojekyll"), "w").close()
     print("%s (%d plugins, %d guide pages)" % (os.path.join(a.out, "index.html"), len(catalog["plugins"]), len(pages)))
 

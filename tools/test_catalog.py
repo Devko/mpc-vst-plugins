@@ -344,15 +344,32 @@ class PagesTest(unittest.TestCase):
         self.assertIn("<th>h1</th>", html)
         self.assertNotIn("<b>", html)
 
-    def test_install_page_explains_where_to_build(self):
+    def test_install_page_is_for_installing_and_the_build_page_for_building(self):
         pages = catalog_site.load_pages(os.path.join(HERE, "..", "catalog", "pages"))
-        html = catalog_site.render_page([p for p in pages if p["slug"] == "install"][0], pages)
-        self.assertIn('id="plugins-you-build-yourself"', html)   # the card links here
-        self.assertIn("on <strong>your computer</strong>", html)
-        self.assertIn('id="with-termius-click-instead-of-type"', html)   # linked from the Setup page
+        by = {p["slug"]: p for p in pages}
+        inst = catalog_site.render_page(by["install"], pages)
+        build = catalog_site.render_page(by["build"], pages)
+        # building (Docker, git, WSL, the build-yourself steps) lives on the Build page only
+        self.assertIn('id="plugins-you-build-yourself"', build)
+        self.assertIn("on <strong>your computer</strong>", build)
+        for needle in ("Install Docker", "Install git and Python 3", "docker run --rm hello-world"):
+            self.assertIn(needle, build)
+            self.assertNotIn(needle, inst)
+        self.assertNotIn('id="plugins-you-build-yourself"', inst)
+        self.assertIn('href="build.html#plugins-you-build-yourself"', inst)   # a pointer, not the steps
+        self.assertIn('id="with-termius-click-instead-of-type"', inst)
+        self.assertIn('id="check-that-you-can-reach-your-device"', inst)
+        self.assertNotIn("setup.html", inst + build)
         idx = catalog_site.render({"schema": 1, "generated": "x", "plugins": []}, pages)
         self.assertIn("Run this on your computer (needs Docker), not on the device.", idx)
-        self.assertIn('install.html#plugins-you-build-yourself', idx)
+        self.assertIn('build.html#plugins-you-build-yourself', idx)
+        self.assertNotIn("setup.html", idx)
+
+    def test_old_page_addresses_redirect(self):
+        self.assertEqual(catalog_site.MOVED_PAGES["setup.html"], "build.html")
+        html = catalog_site.redirect_page("build.html")
+        self.assertIn('http-equiv="refresh" content="0; url=build.html"', html)
+        self.assertIn('<a href="build.html">build.html</a>', html)
 
     def test_install_panel_gets_only_valid_hashes_and_ids_are_not_markup(self):
         good = "a" * 64
@@ -373,8 +390,8 @@ class PagesTest(unittest.TestCase):
 
     def test_repo_pages_render_with_nav(self):
         pages = catalog_site.load_pages(os.path.join(HERE, "..", "catalog", "pages"))
-        self.assertGreaterEqual(len(pages), 5)
-        self.assertEqual([p["slug"] for p in pages], ["setup", "install", "build", "workflow", "add"])
+        self.assertGreaterEqual(len(pages), 4)
+        self.assertEqual([p["slug"] for p in pages], ["install", "build", "workflow", "add"])
         for p in pages:
             html = catalog_site.render_page(p, pages)
             self.assertIn('aria-current="page"', html)
