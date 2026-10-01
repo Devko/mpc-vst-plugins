@@ -50,10 +50,16 @@ jobs:
           mkdir -p ../../dist
           for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
             os=${t%/*}; arch=${t#*/}
+            # plain names for people who do not know their processor: Windows, Mac with an Apple chip, Mac with an Intel chip, Linux
+            case "$os/$arch" in
+              windows/amd64) label=windows ;;       windows/arm64) label=windows-arm64 ;;
+              darwin/arm64)  label=mac-apple-silicon ;; darwin/amd64) label=mac-intel ;;
+              linux/amd64)   label=linux ;;         linux/arm64)   label=linux-arm64 ;;
+            esac
             d=$(mktemp -d); bin=mpc-installer; [ "$os" = windows ] && bin=mpc-installer.exe
             GOOS=$os GOARCH=$arch go build -trimpath -ldflags="-s -w -X main.version=$VERSION" -o "$d/$bin" .
             cp FIRST-RUN.txt "$d/README.txt"
-            name="mpc-installer-$VERSION-$os-$arch"
+            name="mpc-installer-$VERSION-$label"
             if [ "$os" = windows ]; then (cd "$d" && zip -q "$GITHUB_WORKSPACE/dist/$name.zip" "$bin" README.txt)
             else tar -C "$d" -czf "../../dist/$name.tar.gz" "$bin" README.txt; fi
           done
@@ -63,5 +69,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
         run: |
-          gh release create "desktop-v$VERSION" dist/* --draft --target "$GITHUB_SHA" --title "MPC plugin installer v$VERSION" \
-            --notes "The local installer app (tools/desktop/README.md). Unsigned: the first run needs the steps in README.txt inside each archive. Check the file against SHA256SUMS."
+          cat > notes.md <<EOF
+          The MPC plugin installer: a small app that installs, updates and removes plugins on a modded MPC or Force from your computer. Guide: https://sd88me.github.io/mpc-vst-plugins/install.html
+
+          ## Which file do I need?
+
+          | Your computer | Download |
+          |---|---|
+          | **Windows** (almost every PC) | \`mpc-installer-$VERSION-windows.zip\` |
+          | Windows on an ARM chip (rare) | \`mpc-installer-$VERSION-windows-arm64.zip\` |
+          | **Mac with an Apple chip** (M1, M2, M3, M4 or later: any Mac from late 2020 on) | \`mpc-installer-$VERSION-mac-apple-silicon.tar.gz\` |
+          | **Mac with an Intel chip** (older Macs: Apple menu > About This Mac says "Intel") | \`mpc-installer-$VERSION-mac-intel.tar.gz\` |
+          | Linux | \`mpc-installer-$VERSION-linux.tar.gz\` (on an ARM chip: \`-linux-arm64.tar.gz\`) |
+
+          Unpack it and start \`mpc-installer\`. It is not signed, so your system warns the first time (Windows: *More info*, then *Run anyway*; Mac: right-click the file, *Open*, then *Open*). \`README.txt\` in the archive has the steps. Check a download against \`SHA256SUMS\`.
+          EOF
+          gh release create "desktop-v$VERSION" dist/* --draft --target "$GITHUB_SHA" --title "MPC plugin installer v$VERSION" --notes-file notes.md

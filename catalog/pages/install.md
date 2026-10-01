@@ -31,12 +31,13 @@ Answer `yes` to the fingerprint question. You should get a shell prompt on the d
 ## 1. Download the app
 Open [the latest release](https://github.com/sd88me/mpc-vst-plugins/releases/latest) and download the file for your computer from **Assets**:
 
-| Your computer | File that ends with |
+| Your computer | Download the file that ends with |
 |---|---|
-| Windows | `-windows-amd64.zip` (a Windows PC on an ARM chip: `-windows-arm64.zip`) |
-| Mac with Apple silicon (M1 or later) | `-darwin-arm64.tar.gz` |
-| Mac with an Intel chip | `-darwin-amd64.tar.gz` |
-| Linux | `-linux-amd64.tar.gz` (on an ARM chip: `-linux-arm64.tar.gz`) |
+| **Windows** (almost every PC) | `-windows.zip` |
+| **Mac with an Apple chip** (M1, M2, M3, M4 or later: any Mac from late 2020 on) | `-mac-apple-silicon.tar.gz` |
+| **Mac with an Intel chip** (older Macs: Apple menu, About This Mac, says "Intel") | `-mac-intel.tar.gz` |
+| Linux | `-linux.tar.gz` |
+| Windows or Linux on an ARM chip (rare) | `-windows-arm64.zip` or `-linux-arm64.tar.gz` |
 
 Unpack it. You get one program, `mpc-installer`, and a short `README.txt`. The release also has a `SHA256SUMS` file if you want to check your download.
 
