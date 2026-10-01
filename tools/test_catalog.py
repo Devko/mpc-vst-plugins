@@ -365,6 +365,12 @@ class PagesTest(unittest.TestCase):
         self.assertIn('build.html#plugins-you-build-yourself', idx)
         self.assertNotIn("setup.html", idx)
 
+    def test_old_page_addresses_redirect(self):
+        self.assertEqual(catalog_site.MOVED_PAGES["setup.html"], "build.html")
+        html = catalog_site.redirect_page("build.html")
+        self.assertIn('http-equiv="refresh" content="0; url=build.html"', html)
+        self.assertIn('<a href="build.html">build.html</a>', html)
+
     def test_install_panel_gets_only_valid_hashes_and_ids_are_not_markup(self):
         good = "a" * 64
         html = catalog_site.render({"schema": 1, "generated": "x", "plugins": []}, (), {"mpc-store.sh": good, "sync.sh": "</script><b>", "x": 5})
