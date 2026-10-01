@@ -31,6 +31,15 @@ one MPC stop and start around the whole batch when the installers allow it.
    which files in it are yours: drop its release zip to manage it, or remove it by hand. The plugin-list edit uses
    `plugin_list.awk`, a copy of `tools/release/plugin_list.awk` embedded in the binary (a test fails if the two differ: copy it again).
 
+5. **Clean up old backups** (step 5 on the page, collapsed): every install, removal and sync leaves a copy of `MPC.settings` named
+   `MPC.settings.bak-<what>-<date>` that nothing deletes. The page counts them and deletes all but the newest N (default 10, at least 1:
+   the newest is never deleted, and only files named like that are touched). MPC is not stopped. `mpc-store.sh prune [--keep N]` does the
+   same on the device.
+
+The catalog says, for every version, whether its installer understands `-n` (`defer` in `catalog.json`, the last column of `catalog.tsv`).
+The page uses that to state the exact number of MPC restarts before you confirm, and marks releases whose older installer restarts MPC by
+itself. A zip you drop in is inspected directly.
+
 What was installed is written to `<Synths>/.mpc-store` on the device, so `mpc-store.sh update` (the on-device script) knows about it.
 
 ## Safety

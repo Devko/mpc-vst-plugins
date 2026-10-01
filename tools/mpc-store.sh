@@ -3,9 +3,11 @@
 # Run on the device as root:
 #   sh mpc-store.sh [-y] [-t <synths-dir>] [--url <catalog.tsv url>] [--dry-run] <command> [args]
 #     list                       the catalog's plugins, what is installed ("manual" = a folder that was not put there by this script), what is newer
-#     install <id[@version]>...  download, verify (sha256 from the catalog), then stop MPC once, run each zip's own install.sh, start MPC
+#     install <id[@version]>...  download, verify (sha256 from the catalog), then run each zip's own install.sh with MPC stopped once and started once
+#                                (an older installer without -n runs first and restarts MPC by itself)
 #     update [id...]             install the newest version of what is installed (a major version change needs --major)
 #     remove <id>...             delete the plugin folder (your own files in it are kept) and its plugin-list entry
+#     prune [--keep N]           delete the older MPC.settings.bak-* backups (each install, removal and sync leaves one), keeping the newest N (default 10)
 #     sync                       register plugin folders that have no entry and drop entries whose file is gone (sync.sh)
 # Nothing on the device changes until every download has been verified and you confirmed (-y skips the question). MPC is stopped
 # once and started once, and is started again if something fails. What was installed is remembered in <synths-dir>/.mpc-store.
@@ -27,7 +29,7 @@ while [ $# -gt 0 ]; do
         *) break ;;
     esac
 done
-CMD="${1:-}"; [ -n "$CMD" ] || die "usage: sh mpc-store.sh [-y] [-t <synths-dir>] [--url <url>] [--dry-run] list|install|update|remove|sync [ids]"
+CMD="${1:-}"; [ -n "$CMD" ] || die "usage: sh mpc-store.sh [-y] [-t <synths-dir>] [--url <url>] [--dry-run] list|install|update|remove|prune|sync [ids]"
 shift
 case "$SYNTHS" in /*) ;; *) die "-t must be an absolute path" ;; esac
 case "$SYNTHS" in *"&"*|*"|"*|*"\\"*) die "the Synths path may not contain & | or backslash" ;; esac
@@ -112,21 +114,34 @@ do_install_rows() {
         rm -f "$W/$id.zip"
         dir=$(ls -d "$W/x/$id"/*/ 2>/dev/null | head -n 1); dir="${dir%/}"
         [ -f "$dir/install.sh" ] || die "$id $ver has no install.sh"
+        # an installer without -n restarts MPC by itself and must run on its own; the rest run between one stop and one start
+        if grep -q 'DEFER=' "$dir/install.sh"; then echo 1 > "$W/defer.$id"; else echo 0 > "$W/defer.$id"; fi
         printf '%s\n' "$r" >> "$W/todo"; n=$((n + 1))
     done
     [ $n -gt 0 ] || { echo "Nothing to install."; return 0; }
     echo "Verified. About to install:"; awk -F'\t' '{ print "  " $2 " " $3 " (" $6 ")" }' "$W/todo"
     [ $DRY = 1 ] && { echo "Dry run: nothing changed."; return 0; }
-    confirm "MPC will be stopped once and restarted at the end. Save your project first. Continue?"
-    stop_mpc
-    ok=0
-    while IFS=$TAB read -r kind id ver latest k name skin uid compat size sha url ud; do
+    confirm "MPC will be stopped and restarted. Save your project first. Continue?"
+    ok=0; failed=0
+    while IFS=$TAB read -r kind id ver latest k name skin uid compat size sha url ud; do   # older installers first, each restarts MPC itself
+        [ "$(cat "$W/defer.$id")" = 0 ] || continue
         dir=$(ls -d "$W/x/$id"/*/ | head -n 1); dir="${dir%/}"
-        echo "Installing $name $ver"
-        if sh "$dir/install.sh" -y -n -t "$SYNTHS"; then record "$id" "$ver" "$skin" "$compat"; ok=$((ok + 1))
-        else echo "error: $name failed; continuing would leave a mixed state, so stopping here" >&2; break; fi
+        echo "Installing $name $ver (its installer restarts MPC by itself)"
+        if sh "$dir/install.sh" -y -t "$SYNTHS"; then record "$id" "$ver" "$skin" "$compat"; ok=$((ok + 1))
+        else echo "error: $name failed; continuing would leave a mixed state, so stopping here" >&2; failed=1; break; fi
     done < "$W/todo"
-    echo "Installed $ok of $n. MPC is being started."
+    batch=0; for f in "$W"/defer.*; do if [ "$(cat "$f")" = 1 ]; then batch=1; fi; done
+    if [ $failed = 0 ] && [ $batch = 1 ]; then
+        stop_mpc   # one stop here, one start when the script ends (also after a failure)
+        while IFS=$TAB read -r kind id ver latest k name skin uid compat size sha url ud; do
+            [ "$(cat "$W/defer.$id")" = 1 ] || continue
+            dir=$(ls -d "$W/x/$id"/*/ | head -n 1); dir="${dir%/}"
+            echo "Installing $name $ver"
+            if sh "$dir/install.sh" -y -n -t "$SYNTHS"; then record "$id" "$ver" "$skin" "$compat"; ok=$((ok + 1))
+            else echo "error: $name failed; continuing would leave a mixed state, so stopping here" >&2; break; fi
+        done < "$W/todo"
+    fi
+    echo "Installed $ok of $n."
     [ $ok = $n ] || return 1
 }
 
@@ -198,6 +213,29 @@ do_remove() {
     echo "Done. Settings backup: $BAK. MPC is being started."
 }
 
+do_prune() {
+    keep=10
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --keep) [ -n "${2:-}" ] || die "--keep needs a number"; keep="$2"; shift 2 ;;
+            *) die "usage: prune [--keep N]" ;;
+        esac
+    done
+    case "$keep" in ""|*[!0-9]*) die "--keep needs a whole number" ;; esac
+    [ "$keep" -ge 1 ] || die "--keep must be at least 1: the newest backup is never deleted"
+    [ -n "$SETTINGS" ] && [ -f "$SETTINGS" ] || die "MPC.settings not found"
+    ls -t "$SETTINGS".bak-* 2>/dev/null > "$W/baks" || true   # newest first; only files named like the ones this tooling makes
+    total=$(wc -l < "$W/baks" | tr -d ' ')
+    if [ "$total" -le "$keep" ]; then echo "$total backup(s) of MPC.settings: nothing to delete (keeping the newest $keep)."; return 0; fi
+    del=$((total - keep))
+    tail -n +$((keep + 1)) "$W/baks" > "$W/old"
+    echo "$total backups of MPC.settings: keeping the newest $keep, deleting the $del older ones."
+    [ $DRY = 1 ] && { echo "Dry run: nothing deleted."; return 0; }
+    confirm "Delete $del older backup(s)? MPC is not touched."
+    while IFS= read -r f; do rm -f -- "$f"; done < "$W/old"
+    echo "Deleted $del."
+}
+
 do_sync() {
     helper sync.sh; helper plugin_list.awk
     args=""; [ $YES = 1 ] && args="-y"; [ $DRY = 1 ] && args="$args --dry-run"
@@ -210,6 +248,7 @@ case "$CMD" in
     install) do_install "$@" ;;
     update) do_update "$@" ;;
     remove) do_remove "$@" ;;
+    prune) do_prune "$@" ;;
     sync) do_sync ;;
-    *) die "unknown command $CMD (list, install, update, remove, sync)" ;;
+    *) die "unknown command $CMD (list, install, update, remove, prune, sync)" ;;
 esac

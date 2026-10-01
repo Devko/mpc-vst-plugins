@@ -95,7 +95,8 @@ def _f(x):
 def tsv(catalog, helpers):
     """catalog.tsv for shell clients (tools/mpc-store.sh, BusyBox sh has no JSON): a header, one '#file' line per helper file
     with its sha256, then one 'plugin' line per stable, non-yanked version of every downloadable (distribution 'release') plugin:
-    plugin id version latest kind name skin uid param_compat size sha256 url user_data   (tab separated, '-' when empty)."""
+    plugin id version latest kind name skin uid param_compat size sha256 url user_data defer   (tab separated, '-' when empty; defer is 1
+    when the zip's installer understands -n, 0 when it restarts MPC by itself)."""
     out = ["#mpc-catalog-tsv 1"]
     for name, path in helpers:
         out.append("#file\t%s\t%s" % (name, hashlib.sha256(open(path, "rb").read()).hexdigest()))
@@ -107,7 +108,8 @@ def tsv(catalog, helpers):
                 continue
             m = v["manifest"]
             row = ["plugin", p["id"], v["version"], "1" if v["version"] == p.get("latest") else "0", p["kind"], p["name"], m["skin"],
-                   m["uid"], v.get("param_compat", 1), v["size"], v["sha256"], v["url"], ",".join(m.get("user_data", [])) or "-"]
+                   m["uid"], v.get("param_compat", 1), v["size"], v["sha256"], v["url"], ",".join(m.get("user_data", [])) or "-",
+                   "1" if v.get("defer") else "0"]
             out.append("\t".join(_f(x) for x in row))
     return "\n".join(out) + "\n"
 

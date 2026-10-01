@@ -9,10 +9,10 @@ for i in range(40):
     plugins.append({"id": "plug-%02d" % i, "name": "Plug %02d %s" % (i, words[i % 8].title()), "author": devs[i % 5], "kind": kind,
         "summary": "A %s %s number %d" % (words[i % 8], "effect" if kind == "effect" else "synth", i), "distribution": "release", "latest": "1.0.0",
         "versions": [{"version": "1.0.0", "size": 100000 + i * 37000, "sha256": "%064x" % i, "url": "https://example.com/p%d.zip" % i, "channel": "stable",
-                      "yanked": False, "param_compat": 1, "manifest": {"skin": "%s - VST - Plug %02d" % (devs[i % 5], i)}}]})
+                      "yanked": False, "defer": True, "param_compat": 1, "manifest": {"skin": "%s - VST - Plug %02d" % (devs[i % 5], i)}}]})
 plugins.append({"id": "acid", "name": "Acid", "author": "sd88me", "kind": "instrument", "summary": "TB-303-style acid bassline sequencer", "distribution": "release",
     "latest": "1.2.0", "versions": [{"version": "1.2.0", "size": 2000000, "sha256": "%064x" % 999, "url": "https://example.com/acid.zip", "channel": "stable",
-    "yanked": False, "param_compat": 1, "manifest": {"skin": "sd88me - VST - Acid"}}]})
+    "yanked": False, "defer": False, "param_compat": 1, "manifest": {"skin": "sd88me - VST - Acid"}}]})
 os.makedirs("/tmp/bigcat", exist_ok=True)
 json.dump({"schema": 1, "plugins": plugins}, open("/tmp/bigcat/catalog.json", "w"))
 web = subprocess.Popen(["python3", "-m", "http.server", "8800", "--bind", "127.0.0.1", "--directory", "/tmp/bigcat"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -56,7 +56,7 @@ try:
         check("clear filters resets", rows() == 41 and pg.locator("#resetf").is_hidden() and pg.input_value("#q") == "")
         pg.select_option("#f-show", "upd")
         t = pg.locator("#cat li").all_text_contents()
-        check("updates view: only Acid, with the versions", len(t) == 1 and "Acid" in t[0] and "v1.0.1" in t[0] and "v1.2.0" in t[0], t)
+        check("updates view: only Acid, with the versions", len(t) == 1 and "Acid" in t[0] and "v1.0.2" in t[0] and "v1.2.0" in t[0], t)
         pg.select_option("#f-show", "on")
         check("on the device view", rows() >= 1 and "Acid" in pg.locator("#cat li").first.text_content())
         pg.select_option("#f-show", "new")
@@ -81,6 +81,12 @@ try:
         pg.select_option("#f-show", label="All plugins")
         pg.evaluate("window.scrollTo(0, 0)")
         check("the bar is on screen without scrolling", pg.locator("#selbar").is_visible() and pg.locator("#selbar").bounding_box()["y"] < 900)
+        check("a release with an older installer is marked", "restarts MPC itself" in pg.locator("#cat li").first.text_content() and pg.locator("#cat li", has_text="restarts MPC itself").count() == 1)
+        pg.check("#c_acid")
+        pg.click("#go2"); pg.wait_for_selector("#dlg[open]")
+        dtx = pg.locator("#dlgtxt").text_content()
+        check("the dialog gives the exact restart count from the catalog flags", "restart 2 times" in dtx and "at least" not in dtx, dtx)
+        pg.click("#no"); pg.uncheck("#c_acid")
         pg.click("#go2"); pg.wait_for_selector("#dlg[open]")
         check("the bar's Install opens the confirmation", "Plug 03" in pg.locator("#dlgtxt").text_content() or "plug-03" in pg.locator("#dlgtxt").text_content().lower() or "About to install" in pg.locator("#dlgtxt").text_content())
         pg.click("#no")

@@ -115,8 +115,10 @@ no valid tag, script missing at the newest tag, and (loudly, `LICENCE RISK`) a G
 `{"schema": 1, "generated": <ISO time>, "plugins": [ <registry fields> + "versions": [ <record>, ... ], "latest",
 "latest_beta", "downloads", "updated" ]}`, versions
 newest first. A record is what `catalog_check.py --json` prints (`version`, `size`, `sha256` of the zip,
-`param_compat`, `max_glibc`, `cpu`, `manifest`) plus `url`, `date`, `channel` (`stable`|`beta`), `notes`, `yanked`
+`param_compat`, `max_glibc`, `cpu`, `defer`, `manifest`) plus `url`, `date`, `channel` (`stable`|`beta`), `notes`, `yanked`
 and `tested` (`[{device, firmware, date}]`), added by the builder.
+`defer` is true when the zip's `install.sh` understands `-n` (the caller stops and starts MPC), false for an older installer that restarts MPC by
+itself; batch installers (the desktop app, `mpc-store.sh`) run such a zip separately and use the flag to say how often MPC will restart.
 
 Every plugin also has `distribution`. For `build-yourself` plugins the record carries the entry's `requires_user_files`,
 `build` and `components`, and each version is `{version, tag, date, channel: "stable", source_url, yanked, downloads: 0,
