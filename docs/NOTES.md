@@ -1041,3 +1041,6 @@ whole number of 1/128 of the range, exact to float precision; a slow turn sends 
   ends, but a selection on a step must clear the stored drag position or the next wheel click does nothing.
 Not tried: what MPC does with a read-back on a multiple of 1/128 for a whole number, and how the stock plugins handle the same Q-Link
 (ROADMAP). Per-param counting stays an opt-in in #90 (`qlink_ticks`) with this caveat.
+
+## 2026-10-01: MIDI-generator and control-surface facts from Chordsmith on an MPC Key 37
+- **Q-Links** are relative encoders on the control surface (CC 0x10-0x13 on ch1, 01 = +1, 7f = -1, accelerated up to about ±4; CC 0x64 is the jog wheel). MPC turns them into small setParameter deltas from the getParameter value. Stepping one option per event raced through option lists and flipped switches on a wobble; a param can now opt in to counting events (`qlink_ticks` per option or integer step, for option lists and short integer ranges; a move of half a step or more is a direct set). Everything else steps on every event, as `settle()` does. Not yet tried with a hand on a real Q-Link.
