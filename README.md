@@ -185,3 +185,6 @@ Credits also to the MockbaMod community for assistance in development, especiall
 VST2 is a deprecated Steinberg format; this project uses a hand-written ABI
 header and is for personal, non-commercial experimentation on hardware you own.
 No Akai content is redistributed. Editing `MPC.settings` is at your own risk; back it up first.
+
+The original code in this repo (wrapper, tools, docs) is under the [MIT licence](LICENSE). Vendored upstream
+engines (e.g. under `tools/vendor`) keep their own licences and `LICENSE` files.

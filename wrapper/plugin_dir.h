@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 /* Where is this plugin? The directory its own .so was loaded from, so an engine can find presets, banks, ROMs and
  * other files shipped next to it wherever it was installed (/sdcard/Synths/<folder>, /media/<card>/Synths/<folder>,
  * or the old /sdcard/vst): no hardcoded /sdcard, and no need to parse MPC.settings. dladdr() reports the path the host passed to dlopen(), which is the

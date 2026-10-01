@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 /* Popup "open" flags for any wrapper (wrapper/vst2_wrap.c, or a port's own hand-written one).
  * A layout `popup` widget needs a hidden "<key>__open" param (params.h: popup_of = the enum it opens).
  * The flag lives in the wrapper only: never sent to the engine, never saved in the chunk.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 /* The engine interface vst2_wrap.c drives: any synth/effect core that provides mpc_engine().
  * Contract: 44100 Hz, interleaved int16 stereo, rendered in 128-frame blocks. Parameters are
  * string key/value pairs; the keys and their ranges come from the port's generated params.h.

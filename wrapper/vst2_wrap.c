@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 /* =============================================================================
  * vst2_wrap.c — expose an engine (wrapper/engine.h) as a Linux VST2 plugin so
  * the built-in plugin host (JUCE) of MPC OS standalone devices can load it as a native track
