@@ -32,6 +32,7 @@ type CatPlugin struct {
 	ParamCompat int      `json:"param_compat"`
 	UID         string   `json:"uid"`
 	UserData    []string `json:"user_data"`
+	Defer       *bool    `json:"defer"` // true: the installer understands -n (one MPC restart for a batch); false: it restarts MPC itself; null: the catalog does not say
 }
 
 type rawCatalog struct {
@@ -51,6 +52,7 @@ type rawCatalog struct {
 			URL         string `json:"url"`
 			Channel     string `json:"channel"`
 			Yanked      bool   `json:"yanked"`
+			Defer       *bool  `json:"defer"`
 			ParamCompat int    `json:"param_compat"`
 			Manifest    struct {
 				Skin     string   `json:"skin"`
@@ -79,7 +81,7 @@ func parseCatalog(data []byte) ([]CatPlugin, error) {
 				continue
 			}
 			out = append(out, CatPlugin{ID: p.ID, Name: p.Name, Author: p.Author, Kind: p.Kind, Summary: p.Summary, Version: v.Version,
-				Size: v.Size, SHA256: v.SHA256, URL: v.URL, Skin: v.Manifest.Skin, ParamCompat: v.ParamCompat, UID: v.Manifest.UID, UserData: v.Manifest.UserData})
+				Size: v.Size, SHA256: v.SHA256, URL: v.URL, Skin: v.Manifest.Skin, ParamCompat: v.ParamCompat, UID: v.Manifest.UID, UserData: v.Manifest.UserData, Defer: v.Defer})
 			break
 		}
 	}

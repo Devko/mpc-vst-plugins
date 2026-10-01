@@ -54,6 +54,8 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/install", a.install)
 	mux.HandleFunc("/api/device", a.devicePlugins)
 	mux.HandleFunc("/api/remove", a.remove)
+	mux.HandleFunc("/api/backups", a.backups)
+	mux.HandleFunc("/api/prune", a.prune)
 	mux.HandleFunc("/api/job", a.jobStatus)
 	return a.guard(mux)
 }
@@ -349,7 +351,14 @@ func (a *App) plan(w http.ResponseWriter, r *http.Request) {
 	for _, it := range items {
 		if it.Catalog != nil {
 			lines = append(lines, line{it.Catalog.Name, it.Catalog.Version, "catalog", it.Catalog.Size >> 20})
-			anyDefer, fromCatalog = true, true // a catalog zip's installer is only known once it is downloaded
+			switch {
+			case it.Catalog.Defer == nil:
+				anyDefer, fromCatalog = true, true // an older catalog does not say: only known once the zip is downloaded
+			case *it.Catalog.Defer:
+				anyDefer = true
+			default:
+				restarts++ // its installer restarts MPC by itself
+			}
 		} else {
 			lines = append(lines, line{it.Pkg.Title, it.Pkg.Version, "your zip", it.Pkg.Size >> 20})
 			if it.Pkg.Defer {
@@ -556,4 +565,66 @@ func (a *App) remove(w http.ResponseWriter, r *http.Request) {
 		}
 	})
 	writeJSON(w, 200, map[string]string{"job": j.ID})
+}
+
+func (a *App) backups(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	dev := a.dev
+	a.mu.Unlock()
+	if dev == nil {
+		fail(w, 400, "connect to the device first")
+		return
+	}
+	bi, err := dev.Backups()
+	if err != nil {
+		fail(w, 502, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"backups": bi, "keepDefault": 10, "keepMin": minKeep, "keepMax": maxKeep})
+}
+
+func (a *App) prune(w http.ResponseWriter, r *http.Request) {
+	if !postOnly(w, r) {
+		return
+	}
+	var in struct {
+		Keep    int  `json:"keep"`
+		Confirm bool `json:"confirm"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&in); err != nil {
+		fail(w, 400, "bad request")
+		return
+	}
+	if !in.Confirm {
+		fail(w, 400, "the cleanup must be confirmed")
+		return
+	}
+	if in.Keep < minKeep || in.Keep > maxKeep {
+		fail(w, 400, fmt.Sprintf("keep between %d and %d backups: the newest one is never deleted", minKeep, maxKeep))
+		return
+	}
+	a.mu.Lock()
+	dev := a.dev
+	busy := false
+	if a.job != nil {
+		if st, _, _, _ := a.job.snapshot(0); st == "running" {
+			busy = true
+		}
+	}
+	a.mu.Unlock()
+	if dev == nil {
+		fail(w, 400, "connect to the device first")
+		return
+	}
+	if busy {
+		fail(w, 409, "an install or removal is running: wait for it to finish")
+		return
+	}
+	n, err := dev.PruneBackups(in.Keep, nil)
+	if err != nil {
+		fail(w, 502, err.Error())
+		return
+	}
+	bi, _ := dev.Backups()
+	writeJSON(w, 200, map[string]any{"deleted": n, "backups": bi})
 }

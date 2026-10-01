@@ -30,6 +30,25 @@ class Base(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp)
 
+    def resum(self, zpath, suffix, fn):
+        """Modify one member and fix SHA256SUMS, so only the check under test can object."""
+        import hashlib
+        out = zpath + ".r.zip"
+        with zipfile.ZipFile(zpath) as zin:
+            data = {i.filename: zin.read(i.filename) for i in zin.infolist()}
+            infos = list(zin.infolist())
+        for n in data:
+            if n.endswith(suffix):
+                data[n] = fn(data[n])
+        top = infos[0].filename.split("/")[0]
+        sums = "\n".join("%s  %s" % (hashlib.sha256(d).hexdigest(), n[len(top) + 1:]) for n, d in sorted(data.items())
+                         if not n.endswith("/") and not n.endswith("SHA256SUMS")) + "\n"
+        data[top + "/SHA256SUMS"] = sums.encode()
+        with zipfile.ZipFile(out, "w") as zout:
+            for i in infos:
+                zout.writestr(i, data[i.filename])
+        return out
+
     def build(self, version="1.2.0", machine=40, glibc=b"GLIBC_2.30", extra=()):
         t = self.tmp
         fake_so(os.path.join(t, "test_synth.so"), machine, glibc)
@@ -65,25 +84,14 @@ class CatalogTest(Base):
         m = rec["manifest"]
         self.assertEqual((m["id"], m["arch"], m["max_glibc"], m["param_compat"]), ("test-synth", "armv7", "2.30", 1))
         self.assertEqual(len(rec["sha256"]), 64)
+        self.assertIs(rec["defer"], True)   # the current installer understands -n
 
-    def resum(self, zpath, suffix, fn):
-        """Modify one member and fix SHA256SUMS, so only the check under test can object."""
-        import hashlib
-        out = zpath + ".r.zip"
-        with zipfile.ZipFile(zpath) as zin:
-            data = {i.filename: zin.read(i.filename) for i in zin.infolist()}
-            infos = list(zin.infolist())
-        for n in data:
-            if n.endswith(suffix):
-                data[n] = fn(data[n])
-        top = infos[0].filename.split("/")[0]
-        sums = "\n".join("%s  %s" % (hashlib.sha256(d).hexdigest(), n[len(top) + 1:]) for n, d in sorted(data.items())
-                         if not n.endswith("/") and not n.endswith("SHA256SUMS")) + "\n"
-        data[top + "/SHA256SUMS"] = sums.encode()
-        with zipfile.ZipFile(out, "w") as zout:
-            for i in infos:
-                zout.writestr(i, data[i.filename])
-        return out
+    def test_an_installer_without_defer_is_flagged(self):
+        z = self.resum(self.build(), "install.sh", lambda d: d.replace(b"DEFER=", b"OLD="))
+        errors, warnings, rec = catalog_check.check(z, catalog=True)
+        self.assertEqual(errors, [])
+        self.assertIs(rec["defer"], False)
+        self.assertTrue([w for w in warnings if "install.sh differs" in w])
 
     def test_plugin_folder_layout(self):
         eng = os.path.join(self.tmp, "engine")
@@ -943,6 +951,48 @@ class StoreTest(Base):
         self.assertIn("Other", self.entries())
         self.assertEqual(self.calls(), ["stop", "start"])
         self.assertEqual(self.state(), [["test-synth", "1.2.0", self.SKIN, "1"]])
+
+    def test_an_old_installer_is_not_given_n_and_restarts_mpc_by_itself(self):
+        import re
+        v, path = self.versions[0]
+
+        def old(data):   # what Dexed 1.0.1 and the other early releases look like: no -n option, no DEFER
+            data = re.sub(rb"\n\s*-n\) DEFER=1;[^\n]*", b"", data)
+            return data.replace(b"DEFER", b"XFER")
+        new = self.resum(path, "install.sh", old)
+        shutil.copy(new, path)
+        self.write_catalog([v])
+        r = self.store("install", "test-synth")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("restarts MPC by itself", r.stdout)
+        self.assertEqual(self.entries()["Test Synth"], os.path.join(self.synths, self.SKIN, "test_synth.so"))
+        self.assertEqual(self.calls(), ["stop", "start"])    # its own stop and start; the store adds none
+        self.assertEqual(self.state()[0][:2], ["test-synth", v])
+
+    def test_prune_keeps_the_newest_backups_and_touches_nothing_else(self):
+        base = self.settings_path
+        for i in range(12):   # bak-...-01 is the oldest, -12 the newest
+            f = "%s.bak-acid-20260101-%06d" % (base, i)
+            open(f, "w").write("backup %d" % i)
+            os.utime(f, (1_700_000_000 + i * 100, 1_700_000_000 + i * 100))
+        other = base + ".keep-me"
+        open(other, "w").write("not a backup")
+        before = open(base).read()
+        left = lambda: sorted(n for n in os.listdir(self.tmp) if ".bak-" in n)
+        self.assertEqual(self.store("prune", "--keep", "0").returncode, 1)               # the newest is never deleted
+        self.assertEqual(self.store("prune", "--keep", "x").returncode, 1)
+        self.assertEqual(len(left()), 12)
+        r = self.store("--dry-run", "prune", "--keep", "5")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("deleting the 7 older ones", r.stdout)
+        self.assertEqual(len(left()), 12)                                                  # a dry run deletes nothing
+        r = self.store("prune", "--keep", "5")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(left(), ["MPC.settings.bak-acid-20260101-%06d" % i for i in range(7, 12)])   # the five newest
+        self.assertEqual(open(other).read(), "not a backup")
+        self.assertEqual(open(base).read(), before)
+        self.assertEqual(self.calls(), [])                                                 # MPC is never touched
+        self.assertIn("nothing to delete", self.store("prune", "--keep", "5").stdout)
 
     def test_a_download_that_does_not_match_the_catalog_installs_nothing(self):
         path = self.versions[0][1]

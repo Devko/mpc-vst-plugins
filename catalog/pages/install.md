@@ -79,6 +79,9 @@ A plugin with the **Build it yourself** badge has no download: its build embeds 
 
 The exact command, and any extra tools it needs, are on the plugin's card and in its README.
 
+## Clean up old backups
+Every install, removal and sync makes a copy of MPC's settings file on the device, and nothing deletes them, so they pile up (they are small). In the app, open **Clean up old backups** (step 5 on the page; click **Show**), choose how many of the newest to keep (10 is a good number) and press **Delete older backups…**. The newest backup is never deleted, MPC is not restarted, and nothing but the backups is touched.
+
 ## If a plugin disappears after a restart
 MPC keeps its whole plugin list in one place: the `pluginList-arm` list in its settings file, `MPC.settings`. Every way of installing plugins edits that same list, so one method can undo another. The plugin's files usually are still on the card; only its line in the list is gone. The usual causes:
 
@@ -120,7 +123,7 @@ On the [catalog](index.html), tick **Add to install list** on each plugin you wa
 - asks you to confirm, then stops MPC **once**, runs each plugin's own installer, and starts MPC again **once**;
 - remembers what it installed, so `update` later installs newer versions (and holds back a change that would alter saved projects unless you add `--major`).
 
-Prefer to read the script before running it? The bar has a "Read the script first" section with the steps and the hash the script should have. The same command with `list`, `update`, `remove <id>` or `sync` at the end shows what is available, updates what you installed, removes a plugin (your own files in its folder are kept), or registers plugin folders you copied into `Synths` by hand. It needs the same root SSH access, and the device needs internet access. Plugins you build yourself are not included.
+Prefer to read the script before running it? The bar has a "Read the script first" section with the steps and the hash the script should have. The same command with `list`, `update`, `remove <id>`, `prune` or `sync` at the end shows what is available, updates what you installed, removes a plugin (your own files in its folder are kept), deletes old backups of MPC's settings (`prune --keep 10`), or registers plugin folders you copied into `Synths` by hand. It needs the same root SSH access, and the device needs internet access. Plugins you build yourself are not included.
 :::
 
 ::: details By hand with ssh and scp (download, copy, run)
