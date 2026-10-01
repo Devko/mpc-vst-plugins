@@ -175,7 +175,7 @@ function card(p) {
     return head +
       '<p class="needline"><strong>You need:</strong> ' + names + '</p>' +
       '<pre class="cmd"><code>' + esc(b.command) + '</code></pre>' +
-      '<p class="line">Run this on your computer (needs Docker), not on the device. <a href="install.html#plugins-you-build-yourself">Step by step</a></p>' +
+      '<p class="line">Run this on your computer (needs Docker), not on the device. <a href="build.html#plugins-you-build-yourself">Step by step</a></p>' +
       (hasMore ? '<details class="how"><summary>Details and other requirements</summary><ul>' + p.requires_user_files.map(function (f) { return '<li><strong>' + esc(f.name) + '</strong>: ' + esc(f.description) + '</li>'; }).join("") + '</ul>' +
         ((b.needs || []).length ? '<p class="also">Also needs: ' + b.needs.map(esc).join(", ") + '.</p>' : '') +
         (comps ? '<p class="also">Installs: ' + p.components.map(function (c) { return esc(c.name + " (" + c.kind + ")"); }).join(", ") + '.</p>' : '') + '</details>' : '') +

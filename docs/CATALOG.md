@@ -165,7 +165,7 @@ Locrian's installer uses a drop-in folder in `Synths` (`docs/CATALOG_SPEC.md`, "
       JV-880 1.0.2 (old-layout ROMs moved), Acid 1.0.1, Crate Digger 1.1.3 (engine binaries), Monomodule 0.9.2. Open: Maze Voice (skin
       being reworked; a 1.0.1 draft exists), Euclidier (parked, 0.5.0, spawns the MockbaMod add-on binary), Machinedrum (build-yourself:
       `release/build_release.sh` already goes through `release.py`, so the next per-user build is portable; nothing to publish).
-- [x] Guides (Install, Build, Workflow, Setup) checked against the new layout (2026-09-30): Install's manual steps use `plugin-meta.xml`,
+- [x] Guides (Install, Build, Workflow; Setup was merged into Build on 2026-10-01) checked against the new layout (2026-09-30): Install's manual steps use `plugin-meta.xml`,
       and it has "If a plugin disappears after a restart". Site cards carry no layout-specific text (`index.template.html`).
 - [ ] Published releases still in the old layout stay listed and drop off a list-rebuilding scanner (NOTES 2026-09-30); re-release
       them (item above). Acid 1.0.1 (portable) predates the `MODES` installer, so its `install.sh` differs from the template.

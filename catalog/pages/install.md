@@ -14,6 +14,20 @@ The easiest way to put plugins from the catalog on your MPC or Force is the **MP
 - Root SSH access to the device, and its IP address. The address is assigned by your router, so look it up on the device or in your router each time.
 - A Windows, Mac or Linux computer on the same network as the device.
 
+## Check that you can reach your device
+Find the IP address in the device's network settings, or in your router's list of connected devices. It can change, so check it each time. The app tests the connection for you when you press **Connect**, but you can try it first from a terminal (Terminal on a Mac, PowerShell on Windows 10 or later):
+
+```
+ssh root@<device-ip>
+```
+
+Answer `yes` to the fingerprint question. You should get a shell prompt on the device; type `exit` to leave. If this does not work, fix it first, because every way of installing uses it. In an SSH app such as [Termius](https://termius.com/), the same test is adding a host with the IP and the username `root`, then connecting.
+
+| You see | Usually means |
+|---|---|
+| `ssh: connect to host ... timed out` | Wrong IP, the device is asleep, or it is on a different network. |
+| `Permission denied` | Root SSH is not enabled on this unit, or the password is wrong. |
+
 ## 1. Download the app
 Open [the latest release](https://github.com/sd88me/mpc-vst-plugins/releases/latest) and download the file for your computer from **Assets**:
 
@@ -43,7 +57,7 @@ The list shows every plugin in the catalog that has a download, with its version
 
 With many plugins, use the search box, the filters (kind, developer, whether it is already on the device or has an update) and the sort. What you tick stays ticked while you filter, and a bar at the bottom shows how many you have picked.
 
-You can also **drop zip files** into the box under the list: plugins you downloaded yourself, or the ones you built (see "Plugins you build yourself" below). The page checks each zip before it accepts it and tells you if something is wrong with it.
+You can also **drop zip files** into the box under the list: plugins you downloaded yourself, or ones you built. A plugin marked **Build it yourself** in the catalog has no download, because it contains data from your own firmware; the [Build](build.html#plugins-you-build-yourself) page shows how to make the zip. The page checks each zip before it accepts it and tells you if something is wrong with it.
 
 ## 5. Install
 Press **Install…** and read the question. **Save your project on the device first**: MPC is stopped and started again. Confirm, and watch the log. The app:
@@ -66,18 +80,6 @@ The catalog shows a **Compat** number for each version. If it goes up, the param
 In the app, open **Remove plugins** (step 4 on the page; click **Show**), tick the plugin and press **Remove…**. MPC is stopped once, MPC's settings are backed up and the plugin is taken out of the plugin list, then its folder is deleted **except your own files** (ROMs, kits and dumps are kept), and MPC is started again. Projects that used the plugin still open, without it.
 
 The app only removes plugins it can identify: ones from the catalog, or ones whose zip you have dropped into the page. For any other plugin it cannot tell which files in the folder are yours, so it lists the plugin but does not offer to remove it. Drop that plugin's zip to manage it, or remove it by hand.
-
-## Plugins you build yourself
-A plugin with the **Build it yourself** badge has no download: its build embeds your own firmware, so nobody can publish the result. You build it once, on **your computer**, then install it on your device. The device itself does not build anything.
-
-1. **Get your own files.** The plugin's card lists them under "You need" (for example an Elektron OS `.syx` file). Keep them somewhere you can find.
-2. **Set up your computer.** You need Docker, git and Python 3, and a Linux-style shell: macOS, Ubuntu, or Ubuntu in WSL on Windows. The [Get set up](setup.html) page walks through it, with a check after each step.
-3. **Get the plugin's source on your computer.** This is the `git clone` step in the plugin's README: run `git clone --recursive https://github.com/<owner>/<plugin-repo>.git`, then `cd <plugin-repo>`. The card's Source link shows the repo.
-4. **Run the build command** from the plugin's card, with the path to your own file. It builds inside Docker and takes a few minutes; the first run also downloads what it needs. It stops with an error if its self-check fails rather than giving you a build that is not verified.
-5. **Install it.** The build leaves a zip in the plugin's `dist/` folder. Start the installer app, connect, and drop that zip into the box in step 2 of the page, then press Install. (If the build command has a `-d <device-ip>` option, adding it installs straight onto the device instead.)
-6. **Keep the result to yourself.** It contains data derived from your firmware. Install it on your own devices only and never share or upload it.
-
-The exact command, and any extra tools it needs, are on the plugin's card and in its README.
 
 ## Clean up old backups
 Every install, removal and sync makes a copy of MPC's settings file on the device, and nothing deletes them, so they pile up (they are small). In the app, open **Clean up old backups** (step 5 on the page; click **Show**), choose how many of the newest to keep (10 is a good number) and press **Delete older backups…**. The newest backup is never deleted, MPC is not restarted, and nothing but the backups is touched.
