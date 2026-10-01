@@ -178,6 +178,12 @@ What's next is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 The route was first described on the MPC-Forums thread
 "Proof of Concept: Custom Standalone Plugins" (Sep 2026) by NoQuestion and dustyslices.
+[Schwung](https://github.com/charlesvestal/schwung) by @charlesvestal, the open module platform for Ableton Move,
+inspired a good part of how this project is built: the small engine interface that our wrapper and the
+`adapters/schwung` adapter follow, the build, test and release workflow for modules, and the catalog model (a registry
+of plugins, releases found on GitHub, a static catalog site, and installer apps that fetch from it). We looked at how
+Schwung does these things and made our own versions for MPC OS; thank you for building it in the open.
+
 Credits also to the MockbaMod community for assistance in development, especially @Locrian.
 
 ## Legal
