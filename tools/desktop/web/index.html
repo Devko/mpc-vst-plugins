@@ -57,6 +57,13 @@ dialog .actions { display:flex; gap:10px; justify-content:flex-end; margin-top:1
 #selbar[hidden] { display:none; }
 #selbar b { font:700 15px var(--display); letter-spacing:.06em; text-transform:uppercase; }
 #selbar button.linkbtn { color:#ffb3ad; }
+#d4 > summary { cursor:pointer; list-style:none; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+#d4 > summary::-webkit-details-marker { display:none; }
+#d4 > summary h2 { margin:0; }
+#d4 > summary .hint { font:600 12px/1 var(--display); letter-spacing:.1em; text-transform:uppercase; color:var(--accent); }
+#d4[open] > summary .hint { font-size:0; }
+#d4[open] > summary .hint::after { content:"Hide"; font-size:12px; }
+#d4[open] > summary { margin-bottom:6px; }
 footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
 </style>
 </head>
@@ -104,13 +111,24 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
   <pre class="log" id="log" hidden></pre>
 </section>
 
+<section id="s4" class="off">
+<details id="d4">
+  <summary><h2><span class="n">4</span>Remove plugins</h2><span class="hint">Show</span></summary>
+  <p class="sub">The plugins on your device. Removing deletes the plugin's folder and its entry in MPC's plugin list (MPC's settings are backed up first). Your own files inside it, such as ROMs, kits and dumps, are kept.</p>
+  <ul class="list" id="dev"><li class="small">Connect to see what is on the device.</li></ul>
+  <button id="rm" disabled>Remove…</button>
+  <p class="msg" id="rmresult" role="status" aria-live="polite"></p>
+  <pre class="log" id="rmlog" hidden></pre>
+</details>
+</section>
+
 <div id="selbar" hidden role="region" aria-label="Selected plugins"><span><b id="selcount"></b> <button class="linkbtn" type="button" id="selclear">Clear</button></span><button class="primary" id="go2" type="button">Install…</button></div>
 
 <footer>Community-provided software. Installing runs a script as root on your device and edits MPC's settings (a backup is made first). Downloads are checked against the catalog's checksums before anything is copied.</footer>
 </div>
 
 <dialog id="dlg">
-  <h3>Install on your device?</h3>
+  <h3 id="dlgtitle">Install on your device?</h3>
   <p id="dlgtxt"></p>
   <p><b>Save your project first.</b> MPC will be stopped and started again, and anything unsaved is lost.</p>
   <div class="actions"><button id="no">Cancel</button><button class="primary" id="yes">Install</button></div>
@@ -120,7 +138,7 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
 "use strict";
 var T = new URLSearchParams(location.search).get("t") || "";
 try { history.replaceState(null, "", location.pathname); } catch (e) {}
-var S = { connected: false, problems: [], cat: [], ups: [], pickCat: {}, pickUp: {}, running: false, f: { q: "", kind: "", dev: "", show: "", sort: "name" } };
+var S = { connected: false, problems: [], cat: [], ups: [], pickCat: {}, pickUp: {}, running: false, dev: [], pickDev: {}, mode: "install", f: { q: "", kind: "", dev: "", show: "", sort: "name" } };
 function $(id) { return document.getElementById(id); }
 function text(el, s) { el.textContent = s; }
 function api(path, body, raw) {
@@ -134,12 +152,12 @@ function el(tag, cls, t) { var e = document.createElement(tag); if (cls) e.class
 
 function setConnected(c, info, problems) {
   S.connected = c; S.problems = problems || [];
-  $("s2").classList.toggle("off", !c); $("s3").classList.toggle("off", !c);
+  $("s2").classList.toggle("off", !c); $("s3").classList.toggle("off", !c); $("s4").classList.toggle("off", !c);
   if (c) {
     var n = (info.installed || []).length;
     var m = "Connected to " + info.host + " (" + (info.arch || "?") + "). " + n + " plugin folder" + (n === 1 ? "" : "s") + " found in " + info.synths + ". Device key " + info.fingerprint + ".";
     if (S.problems.length) msg($("connmsg"), m + " Cannot install here: " + S.problems.join("; ") + ".", "err"); else msg($("connmsg"), m, "ok");
-    loadCatalog();
+    loadCatalog(); loadDevice();
   }
   refresh();
 }
@@ -202,6 +220,24 @@ function drawCat() {
   text($("catcount"), S.cat.length ? "Showing " + rows.length + " of " + S.cat.length + " plugin" + (S.cat.length === 1 ? "" : "s") + (n ? " · " + n + " ticked from the catalog" : "") : "");
   $("resetf").hidden = !filtered;
 }
+function loadDevice() {
+  return api("/api/device").then(function (j) { S.dev = j.plugins; drawDev(); refresh(); }).catch(function (e) { S.dev = []; drawDev(); msg($("rmresult"), e.message, "err"); });
+}
+function drawDev() {
+  var ul = $("dev"); ul.textContent = "";
+  S.dev.forEach(function (p) {
+    var li = el("li"), cb = document.createElement("input"); cb.type = "checkbox"; cb.id = "d_" + p.folder; cb.disabled = !p.known; cb.checked = !!S.pickDev[p.folder] && p.known;
+    cb.addEventListener("change", function () { S.pickDev[p.folder] = cb.checked; refresh(); });
+    var t = el("div", "t"), b = el("b", null, p.name || p.folder);
+    if (p.version) b.appendChild(el("span", "tag", "v" + p.version));
+    t.appendChild(b);
+    t.appendChild(el("span", "d", p.known ? p.folder + (p.keep.length ? " · your files kept: " + p.keep.join(", ") : " · nothing in it is kept") + " · " + (p.source === "catalog" ? "from the catalog" : "from a zip you added")
+      : p.folder + " · not from the catalog, so the app can't tell which files in it are yours. Drop its release zip above to manage it here, or remove it by hand."));
+    var lab = el("label"); lab.htmlFor = cb.id; lab.style.display = "contents"; lab.appendChild(t);
+    li.appendChild(cb); li.appendChild(lab); ul.appendChild(li);
+  });
+  if (!S.dev.length) ul.appendChild(el("li", "small", "No plugin folders found on the device."));
+}
 function drawUps() {
   var ul = $("ups"); ul.textContent = "";
   S.ups.forEach(function (p) {
@@ -211,7 +247,7 @@ function drawUps() {
     var t = el("div", "t"), b = el("b", null, p.title); b.appendChild(el("span", "tag", "your zip"));
     t.appendChild(b); t.appendChild(el("span", "d", "v" + p.version + " · " + mb(p.size) + (p.defer ? "" : " · older installer: MPC restarts for this one on its own")));
     var rm = el("button", null, "Remove"); rm.type = "button";
-    rm.addEventListener("click", function () { api("/api/discard", { handle: p.handle }).then(function () { S.ups = S.ups.filter(function (x) { return x.handle !== p.handle; }); drawUps(); refresh(); }); });
+    rm.addEventListener("click", function () { api("/api/discard", { handle: p.handle }).then(function () { S.ups = S.ups.filter(function (x) { return x.handle !== p.handle; }); drawUps(); refresh(); if (S.connected) loadDevice(); }); });
     var lab = el("label"); lab.htmlFor = cb.id; lab.style.display = "contents"; lab.appendChild(t);
     li.appendChild(cb); li.appendChild(lab); li.appendChild(rm); ul.appendChild(li);
   });
@@ -224,6 +260,7 @@ function refresh() {
   var s = selection(), n = s.catalog.length + s.uploads.length;
   text($("summary"), !S.connected ? "Connect to your device first." : n === 0 ? "Nothing selected yet." : n + " plugin" + (n === 1 ? "" : "s") + " selected.");
   $("go").disabled = !S.connected || n === 0 || S.running || S.problems.length > 0;
+  $("rm").disabled = !S.connected || S.running || S.problems.length > 0 || !S.dev.some(function (p) { return S.pickDev[p.folder] && p.known; });
   $("selbar").hidden = !(S.connected && n > 0 && !S.running && S.problems.length === 0);
   text($("selcount"), n + " plugin" + (n === 1 ? "" : "s") + " selected");
 }
@@ -241,7 +278,7 @@ function upload(files) {
   api("/api/upload", fd, true).then(function (j) {
     var bad = [];
     j.results.forEach(function (r) { if (r.package) S.ups.push(r.package); else bad.push(r.name + ": " + r.error); });
-    drawUps(); refresh(); msg($("upmsg"), bad.join("\n"), bad.length ? "err" : "");
+    drawUps(); refresh(); msg($("upmsg"), bad.join("\n"), bad.length ? "err" : ""); if (S.connected) loadDevice();
   }).catch(function (e) { msg($("upmsg"), e.message, "err"); });
 }
 var drop = $("drop");
@@ -258,6 +295,7 @@ function startInstall() {
     var names = p.items.map(function (i) { return i.title + " " + i.version; }).join(", ");
     var r = p.maybeMore ? " MPC will restart at least once, and once more for each plugin with an older installer that restarts MPC by itself (the log shows which)."
           : p.restarts > 1 ? " MPC will restart " + p.restarts + " times, because some of the installers restart it themselves." : " MPC will restart once.";
+    S.mode = "install"; text($("dlgtitle"), "Install on your device?"); text($("yes"), "Install");
     text($("dlgtxt"), "About to install: " + names + "." + r);
     $("dlg").showModal();
   }).catch(function (e) { msg($("result"), e.message, "err"); });
@@ -274,19 +312,35 @@ $("resetf").addEventListener("click", function () {
   S.f = { q: "", kind: "", dev: "", show: "", sort: S.f.sort }; $("q").value = ""; buildTools(); drawCat();
 });
 $("no").addEventListener("click", function () { $("dlg").close(); });
-$("yes").addEventListener("click", function () {
-  $("dlg").close(); var s = selection(); s.confirm = true;
-  S.running = true; refresh(); msg($("result"), "Working…"); var log = $("log"); log.hidden = false; log.textContent = "";
-  api("/api/install", s).then(function () { poll(0); }).catch(function (e) { S.running = false; refresh(); msg($("result"), e.message, "err"); });
+function chosenDev() { return S.dev.filter(function (p) { return S.pickDev[p.folder] && p.known; }); }
+$("rm").addEventListener("click", function () {
+  var ch = chosenDev(); S.mode = "remove";
+  text($("dlgtitle"), "Remove from your device?"); text($("yes"), "Remove");
+  text($("dlgtxt"), "About to remove: " + ch.map(function (p) { return p.name || p.folder; }).join(", ") + ". Each plugin's folder and its entry in MPC's plugin list are deleted (a backup of MPC's settings is made first)." +
+    (ch.some(function (p) { return p.keep.length; }) ? " Your own files are kept: " + ch.filter(function (p) { return p.keep.length; }).map(function (p) { return (p.name || p.folder) + " (" + p.keep.join(", ") + ")"; }).join("; ") + "." : " Nothing inside is kept.") + " MPC restarts once.");
+  $("dlg").showModal();
 });
-function poll(since) {
+$("yes").addEventListener("click", function () {
+  $("dlg").close();
+  if (S.mode === "remove") {
+    var folders = chosenDev().map(function (p) { return p.folder; });
+    S.running = true; refresh(); msg($("rmresult"), "Working…"); var rl = $("rmlog"); rl.hidden = false; rl.textContent = "";
+    api("/api/remove", { folders: folders, confirm: true }).then(function () { poll(0, $("rmlog"), $("rmresult"), "Done. MPC is starting again: the plugins are gone from its list."); })
+      .catch(function (e) { S.running = false; refresh(); msg($("rmresult"), e.message, "err"); });
+    return;
+  }
+  var s = selection(); s.confirm = true;
+  S.running = true; refresh(); msg($("result"), "Working…"); var log = $("log"); log.hidden = false; log.textContent = "";
+  api("/api/install", s).then(function () { poll(0, $("log"), $("result"), "Done. MPC is starting again: the new plugins are in the plugin list."); }).catch(function (e) { S.running = false; refresh(); msg($("result"), e.message, "err"); });
+});
+function poll(since, log, resultEl, doneText) {
   api("/api/job?since=" + since).then(function (j) {
-    var log = $("log"); if (j.lines.length) { log.textContent += j.lines.join("\n") + "\n"; log.scrollTop = log.scrollHeight; }
-    if (j.state === "running") { setTimeout(function () { poll(j.next); }, 600); return; }
-    S.running = false; msg($("result"), j.state === "done" ? "Done. MPC is starting again: the new plugins are in the plugin list." : j.result, j.state === "done" ? "ok" : "err");
-    if (j.state === "done") { api("/api/state").then(function (st) { if (st.device) { S.problems = st.problems || []; loadCatalog(); } }); }
+    if (j.lines.length) { log.textContent += j.lines.join("\n") + "\n"; log.scrollTop = log.scrollHeight; }
+    if (j.state === "running") { setTimeout(function () { poll(j.next, log, resultEl, doneText); }, 600); return; }
+    S.running = false; msg(resultEl, j.state === "done" ? doneText : j.result, j.state === "done" ? "ok" : "err");
+    api("/api/state").then(function (st) { if (st.device) { S.problems = st.problems || []; S.pickDev = {}; loadCatalog(); loadDevice(); } });
     refresh();
-  }).catch(function (e) { setTimeout(function () { poll(since); }, 1500); });
+  }).catch(function (e) { setTimeout(function () { poll(since, log, resultEl, doneText); }, 1500); });
 }
 
 api("/api/state").then(function (st) {

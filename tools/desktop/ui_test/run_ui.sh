@@ -9,6 +9,7 @@ echo '<?xml version="1.0" encoding="UTF-8"?>
   <VALUE name="SynthContentLocations" val="/sdcard/Synths"/>
 </PROPERTIES>' > /media/az01-internal/Settings/MPC/MPC.settings
 mkdir -p "/sdcard/Synths/other - VST - Existing"
+mkdir -p "/sdcard/Synths/mystery - VST - Thing" && echo '<PLUGIN name="Thing" file="%payload-path%/mystery - VST - Thing/thing.so" uid="77777777"/>' > "/sdcard/Synths/mystery - VST - Thing/plugin-meta.xml"
 cat > /usr/local/bin/uname <<'X'
 #!/bin/sh
 [ "$1" = "-m" ] && { echo armv7l; exit 0; }

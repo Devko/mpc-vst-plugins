@@ -32,17 +32,19 @@ var (
 )
 
 type Manifest struct {
-	Schema      int    `json:"schema"`
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Version     string `json:"version"`
-	Kind        string `json:"kind"`
-	Layout      string `json:"layout"`
-	Skin        string `json:"skin"`
-	Arch        string `json:"arch"`
-	ParamCompat int    `json:"param_compat"`
-	About       string `json:"about"`
-	Requires    string `json:"requires"`
+	Schema      int      `json:"schema"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Version     string   `json:"version"`
+	Kind        string   `json:"kind"`
+	Layout      string   `json:"layout"`
+	Skin        string   `json:"skin"`
+	Arch        string   `json:"arch"`
+	ParamCompat int      `json:"param_compat"`
+	About       string   `json:"about"`
+	Requires    string   `json:"requires"`
+	UID         string   `json:"uid"`
+	UserData    []string `json:"user_data"`
 }
 
 type Package struct {

@@ -186,6 +186,7 @@ Locrian's installer uses a drop-in folder in `Synths` (`docs/CATALOG_SPEC.md`, "
       catalog downloads checked against the catalog's sha256; tar stream keeps modes/symlinks; older installers (no `-n`) run first
       with their own restart. Go tests with an in-process fake SSH device (race detector) and a browser test against a stand-in device.
       Unsigned binaries (first-run warnings documented). Release: workflow "Desktop installer" (draft release, then publish).
+      Also removes plugins it can identify (catalog or a dropped zip), keeping the manifest's `user_data` (step 4 on the page).
 - [ ] Update notices honour `param_compat` (a major bump warns that saved projects will change).
 
 ### Phase 5: Nice to have
