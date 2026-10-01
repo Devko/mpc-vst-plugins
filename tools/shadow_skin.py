@@ -285,7 +285,7 @@ def qlink_for_slot(slot):
 def seg_rects(w):
     n = len(w["options"])
     if w["kind"] == "enum_v":
-        sw, sh, gap = 135, 30, 2
+        sw, sh, gap = w.get("sw") or 135, 30, 2   # respect the layout's sw= (like enum_h), else 135
         y0 = w["cy"] - (n * (sh + gap)) // 2
         return [(w["cx"] - sw // 2, y0 + i * (sh + gap), sw, sh) for i in range(n)]
     sw, sh, gap = w.get("sw") or 117, 33, 2
