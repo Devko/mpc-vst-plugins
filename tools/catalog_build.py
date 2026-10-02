@@ -299,6 +299,7 @@ def build(entries, src, cache, yanked, keep=10, now=None):
         versions = []
         build_yourself = e.get("distribution", "release") == "build-yourself"
         releases = []
+        all_time = 0   # every published release asset ever, whether or not it is listed (invalid, yanked or past --keep)
         if not build_yourself:
             try:
                 releases = src.list_releases(e["repo"])
@@ -317,6 +318,7 @@ def build(entries, src, cache, yanked, keep=10, now=None):
                 continue
             tag = rel.get("tag_name")
             assets = [a for a in rel.get("assets", []) if fnmatch.fnmatch(a["name"], e.get("asset_pattern", "*-mpc-armv7.zip"))]
+            all_time += sum(a.get("download_count", 0) for a in assets)
             if not assets and "asset_pattern" in e:
                 continue   # another plugin's release in a shared repo
             if len(assets) != 1:
@@ -367,7 +369,7 @@ def build(entries, src, cache, yanked, keep=10, now=None):
         item["versions"] = versions
         item["latest"] = next((v["version"] for v in versions if v["channel"] == "stable" and not v["yanked"]), None)
         item["latest_beta"] = next((v["version"] for v in versions if v["channel"] == "beta" and not v["yanked"]), None)
-        item["downloads"] = sum(v["downloads"] for v in versions)
+        item["downloads"] = all_time
         item["updated"] = max((v["date"] for v in versions if not v["yanked"]), default="")
         plugins.append(item)
     plugins.sort(key=lambda p: p["name"].lower())
