@@ -87,7 +87,9 @@ int main(void) {
     void *ch = 0; intptr_t n = a->d(a, 23, 0, 0, &ch, 0);
     if (n > 0) {
         b->d(b, 24, 0, n, ch, 0);
-        if (cont >= 0) CHECK(fabsf(b->getP(b, cont) - a->getP(a, cont)) < 1e-3f, "chunk (%ld bytes) restores %s on instance b", (long)n, PARAMS[cont].key);
+        // int params: a keeps the unrounded knob position, b restores the rounded value, so allow half a step
+        float ctol = cont >= 0 && PARAMS[cont].int_display ? 0.5f / (PARAMS[cont].max - PARAMS[cont].min) + 1e-3f : 1e-3f;
+        if (cont >= 0) CHECK(fabsf(b->getP(b, cont) - a->getP(a, cont)) <= ctol, "chunk (%ld bytes) restores %s on instance b", (long)n, PARAMS[cont].key);
         if (pop >= 0) CHECK(!strstr((char *)ch, PARAMS[pop].key), "popup flag not saved in the chunk");
     } else printf("warn no chunk (engine has no \"state\" param)\n");
 
