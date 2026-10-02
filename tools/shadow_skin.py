@@ -19,7 +19,7 @@ Layout file:
     toggle  cx= cy= label="..." key=<param>
     button  cx= cy= label="..." key=<param>          (trigger)
     enum_h  cx= cy= label="..." key=<param> [options="A,B,.."] [sw=<px>] [rows=<n>]
-    enum_v  cx= cy= label="..." key=<param> [options="A,B,.."]   (options default to the param's)
+    enum_v  cx= cy= label="..." key=<param> [options="A,B,.."] [sw=<px>]   (options default to the param's)
     slider_v cx= cy= w= h= label="..." key=<param>     (vertical slider; value text below)
     slider_h cx= cy= w= h= label="..." key=<param>     (horizontal slider; value text below)
     readout cx= cy= w= h= label="..." key=<param> [label_align=center]   (live value text;
@@ -80,7 +80,11 @@ LCD, LINE, BTN_BG, BTN_TEXT, BOX = "1a120d", "2a2823", "", "fdf3ea", "1f1f1f"
 DISPLAY_INK = "cdeb63"   # theme_display_ink: live-text colour over a dotreadout/dotstepper (see readout/stepper below)
 TD3 = False   # style=td3: frames are filled boxes, so widget crops sit on BOX, not the page bg
 LABEL_SCALE = 1.0   # label_scale=<n>: scales knob/toggle/pill name+value live-text size and their boxes
-FRAMES = 128               # filmstrip frames (stock strips: 128, numFrames 127)
+FRAMES = 128               # filmstrip frames emitted by (l)sstrip / (l)strip
+ROT_FRAMES = FRAMES - 1     # rotary knob FilmStrip: a rotation reads one fewer than the strip length
+STRIP_FRAMES = FRAMES       # vertical slider / meter FilmStrip: value is the frame's vertical position, so
+                            # numFrames must equal the exact strip length; FRAMES-1 mis-sizes the frame and
+                            # shows a second thumb near the top (device-confirmed, MPC One)
 KNOB_QLINKS = [13, 9, 5, 1, 14, 10, 6, 2]
 CONTROL_KINDS = ("knob", "slider_v", "slider_h", "toggle", "button", "enum_h", "enum_v", "readout", "stepper", "list", "menu",
                  "popup", "meter")
@@ -285,7 +289,7 @@ def qlink_for_slot(slot):
 def seg_rects(w):
     n = len(w["options"])
     if w["kind"] == "enum_v":
-        sw, sh, gap = 135, 30, 2
+        sw, sh, gap = w.get("sw") or 135, 30, 2   # respect the layout's sw= (like enum_h), else 135
         y0 = w["cy"] - (n * (sh + gap)) // 2
         return [(w["cx"] - sw // 2, y0 + i * (sh + gap), sw, sh) for i in range(n)]
     sw, sh, gap = w.get("sw") or 117, 33, 2
@@ -673,7 +677,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                                                   _action("Enter Pressed", "Show Overlay", "knob overlay")], [
                     _focus(cw, ch),
                     _sub("Knob", {"version": 5, "knobType": "FilmStrip", "filmStrip": "sh_knob_r%d%s.png" % (r, sfx),
-                                  "numFrames": FRAMES - 1, "invert": False, "dragOrientation": "Vertical",
+                                  "numFrames": ROT_FRAMES, "invert": False, "dragOrientation": "Vertical",
                                   "handleName": "Data"}, _bounds((cw - s) // 2, 0, s, s), "Knob"),
                     _name_label(0, name_y, cw, name_h, 17.0 * LABEL_SCALE, INK),
                     _sub("Label", {"version": 1, "textStyle": {"version": 1, "font": {"version": 1, "name": "Titillium Web",
@@ -742,7 +746,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                                                   _action("Enter Pressed", "Show Overlay", "knob overlay")], [
                     _focus(cw, ch),
                     _sub("Knob", {"version": 5, "knobType": "FilmStrip", "filmStrip": img + ".png",
-                                  "numFrames": FRAMES - 1, "invert": False,
+                                  "numFrames": STRIP_FRAMES, "invert": False,
                                   "dragOrientation": "Vertical" if vert else "Horizontal",
                                   "handleName": "Data"}, _bounds((cw - sq) // 2, 0, sq, sq), "Slider"),
                     _name_label(0, name_y, cw, name_h, 17.0, INK),
@@ -777,7 +781,8 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 sq = max(mw, mh)
                 key = "shMeter_%dx%d%s" % (mw, mh, sfx)
                 defs.setdefault(key, _local(key, [], [
-                    _sub("Knob", {"version": 5, "knobType": "FilmStrip", "filmStrip": img + ".png", "numFrames": FRAMES - 1,
+                    # same vertical filmstrip as a slider (sliders.add above), so it uses STRIP_FRAMES too
+                    _sub("Knob", {"version": 5, "knobType": "FilmStrip", "filmStrip": img + ".png", "numFrames": STRIP_FRAMES,
                                   "invert": False, "dragOrientation": "Vertical", "handleName": "Data"},
                          _bounds(0, 0, sq, sq), "Meter")]))
                 kids.append(_placed(key, name, i, w["cx"] - sq // 2, w["cy"] - sq // 2, sq, sq, focus="No"))
