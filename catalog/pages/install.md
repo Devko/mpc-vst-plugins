@@ -11,6 +11,7 @@ The easiest way to put plugins from the catalog on your MPC or Force is the **MP
 
 ## What you need
 - A first-generation MPC OS standalone device with a 32-bit ARM processor: Force, MPC Live and Live II, One, X and Key 61. The installer refuses anything else. Newer models are untested.
+- MPC OS 2.x (for example 2.15) ships an older system library (glibc, about 2.32) than MPC OS 3.x and the Force (2.39 where checked). Every plugin in this catalog is built to need no newer than glibc 2.32, and the catalog checks this. A plugin from elsewhere, or an old build, may be listed by MPC and still not load.
 - Root SSH access to the device, and its IP address. The address is assigned by your router, so look it up on the device or in your router each time.
 - A Windows, Mac or Linux computer on the same network as the device.
 - Optional: an SD card or USB drive in the device, if you want plugins on it instead of on the internal drive (see "Where it goes" under step 5).
@@ -118,6 +119,7 @@ Before you paste a command you found online into the device's shell, copy the se
 - **The app says it cannot install on this device.** It only installs to a 32-bit ARM MPC OS device where you are logged in as root.
 - **MPC shows default settings after the restart.** The edited settings file was not accepted. Restore the backup the installer made, next to `MPC.settings` (see above).
 - **The plugin is not in the list.** MPC reads its plugin list at startup. Check that the app's log ended with "Done", then see "If a plugin disappears after a restart" above.
+- **The plugin is in the list but only "Load Plugin" shows.** MPC could not load the library. The usual cause is a build that needs a newer glibc than your MPC OS has (a copy installed by hand, or a version older than the catalog's current one). Install the newest version from the app. If it still fails, send the `journalctl -u acvs` lines (or `journalctl -u inmusic-mpc` where there is no acvs) from the moment you add the plugin to a track, plus the output of `ls -l /lib/libc.so.6`.
 - **The plugin loads but has no screen.** The skin goes in a `/sdcard/Synths` folder, and MPC must have that folder in its content locations. The installer warns if it does not.
 - **Silence, or default sounds.** Some plugins need files you provide, such as ROMs or banks. Check the plugin's own page.
 
