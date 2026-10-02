@@ -54,9 +54,8 @@ authors, listed in the catalog, and installed by people on their own units.
 - **Runs on MPC OS 2.x and 3.x.** Plugins are built against glibc 2.31, so they load on older firmware (glibc 2.32,
   e.g. MPC OS 2.15) as well as current (2.39). The catalog refuses anything that needs more than 2.32.
 - **Tested on a Force** (MPC OS 3.9.1) as the reference device. Other Gen1 MPC OS devices (Live and Live II, One, X,
-  Key 61) run the same `MPC` program. A user's MPC One on MPC OS 2.15 is what led to the glibc 2.31 builds; reports from other models
-  are welcome. Gen2
-  devices (e.g. Live III) are reported to be more locked down.
+  Key 61) run the same `MPC` program. A user's MPC One on MPC OS 2.15 is what led to the glibc 2.31 builds; reports
+  from other models are welcome. Gen2 devices (e.g. Live III) are reported to be more locked down.
 
 What the plugins can do:
 - **Instruments and effects** that play from pads, keys and MIDI clips, with Q-Links, automation, and settings saved
