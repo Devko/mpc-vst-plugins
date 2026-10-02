@@ -94,7 +94,7 @@ Every install, removal and sync makes a copy of MPC's settings file on the devic
 ## If a plugin disappears after a restart
 MPC keeps its whole plugin list in one place: the `pluginList-arm` list in its settings file, `MPC.settings`. Every way of installing plugins edits that same list, so one method can undo another. The plugin's files usually are still on the card; only its line in the list is gone. The usual causes:
 
-- **The settings file was edited while MPC was running.** MPC holds its settings in memory while it runs and saves them itself, so a change made underneath it can be overwritten. Stop MPC first (`systemctl stop acvs`; the service is `inmusic-mpc` on Hakai-enabled systems), edit, then start it (`systemctl start acvs`). The app and the installers do this for you.
+- **The settings file was edited while MPC was running.** MPC holds its settings in memory while it runs and saves them itself, so a change made underneath it can be overwritten. Stop MPC first (`systemctl stop acvs`; if `systemctl cat acvs` finds no such service, as on some MPC OS 2.x versions and on Hakai-enabled systems, the service is `inmusic-mpc`), edit, then start it (`systemctl start acvs`). The app and the installers do this for you.
 - **Another tool rebuilt the whole list.** Some community installers and scan scripts do not add one line: they write a new list from the plugin folders they find in the `Synths` folders (each folder with a `plugin-meta.xml` inside). A plugin that is not such a folder, for example one added by hand or installed by an older release with its `.so` in `/sdcard/vst`, drops off the list at the next scan. A release is such a folder if its zip has a `portable/` folder inside, and a scan keeps it. Reinstall anything older with a release that has one.
 - **The settings file became invalid.** After a broken edit MPC resets `MPC.settings` to its defaults, which empties the plugin list along with your other preferences. Restore a backup (below).
 - **The line points to a file that is not there**: a plugin folder was moved or renamed, or the card it is on is not inserted.
@@ -175,7 +175,7 @@ The app's buttons and plans change over time, so check Termius's own help if a s
 :::
 
 ::: details Fully by hand (without the installer script)
-Each zip's `INSTALL.md` lists the manual steps: copy the plugin folder (`portable/<Vendor> - VST - <Name>/` in the zip) to `/sdcard/Synths/`, stop MPC (`systemctl stop acvs`), back up `MPC.settings`, add the line from that folder's `plugin-meta.xml` to the plugin list with `%payload-path%` replaced by `/sdcard/Synths`, and start MPC (`systemctl start acvs`). Edit the settings file only while MPC is stopped (see "If a plugin disappears after a restart" above).
+Each zip's `INSTALL.md` lists the manual steps: copy the plugin folder (`portable/<Vendor> - VST - <Name>/` in the zip) to `/sdcard/Synths/`, stop MPC (`systemctl stop acvs`), back up `MPC.settings`, add the line from that folder's `plugin-meta.xml` to the plugin list with `%payload-path%` replaced by `/sdcard/Synths`, and start MPC (`systemctl start acvs`, or `inmusic-mpc` if that is the service you stopped). Edit the settings file only while MPC is stopped (see "If a plugin disappears after a restart" above).
 
 If you use a community tool that scans `Synths` folders for plugins, the same plugin folder works there: copy it into `Synths` and run the scan. Such a scan rebuilds the whole plugin list from the folders it finds, so it drops any plugin that is not such a folder, and it does not back up your settings first.
 :::
