@@ -6,7 +6,7 @@ the plugin as one folder (`portable/<skin>/`: the `.so`, the skin, its data and 
 the only layout: it can be dropped into any `Synths` folder by other installers too (`docs/CATALOG_SPEC.md`, "Plugin folder").
 
 ## Checklist
-1. **Build** with the port's `build.sh` (armhf, `arm32v7/gcc:12`; highest GLIBC symbol ≤ 2.36).
+1. **Build** with the port's `build.sh` (armhf, `arm32v7/gcc:11-bullseye`; highest GLIBC symbol ≤ 2.32).
 2. **Host test** (x86, ASan): `tools/test_port.sh <port>/vst.json` (must print PASSED), or the port's own test for a
    hand-written wrapper. It must be clean.
 3. **Skin preview**: `tools/studio.py preview "<skin>/Plugin Skins" -o page_%d.png`, and look at every page.
@@ -69,7 +69,7 @@ version that is already published. Publishing the draft creates the tag.
 ## What the installer does
 Run on the device as root (`sh install.sh [-y] [-n] [-t <synths-dir>]`):
 1. Checks root, armv7, that `MPC.settings` exists and `SHA256SUMS`, and asks for confirmation.
-2. Stops MPC (`systemctl stop acvs`) and waits for it to exit. A trap restarts MPC on any error.
+2. Stops MPC (`systemctl stop acvs`, or `inmusic-mpc` when the device has no `acvs` service, as on some MPC OS 2.x versions and on Hakai-enabled systems) and waits for it to exit. A trap restarts MPC on any error.
    `-n` (also on `uninstall.sh`) defers this to the caller: the script neither stops nor starts MPC and refuses to run while MPC is
    running. A batch installer stops MPC once, runs every plugin's `install.sh -y -n`, then starts MPC once. The caller must
    start MPC again even if one install fails.

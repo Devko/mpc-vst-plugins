@@ -75,9 +75,15 @@ helper() {   # helper <file>: download a helper listed in the catalog and check 
     fetch "$BASE/$1" "$W/h/$1" || die "cannot download $1"
     [ "$(sha_of "$W/h/$1")" = "$want" ] || die "$1 does not match the hash in the catalog: not using it"
 }
+# MPC's service is acvs on stock firmware, inmusic-mpc on Hakai-enabled systems; use whichever exists (acvs if neither is found).
+mpc_service() {
+    if systemctl cat acvs >/dev/null 2>&1; then echo acvs
+    elif systemctl cat inmusic-mpc >/dev/null 2>&1; then echo inmusic-mpc
+    else echo acvs; fi
+}
 mpc_ctl() {   # stop | start; a test run logs the call to $MPC_TEST_LOG instead of touching MPC
     if [ -n "$MPC_INSTALL_TEST" ]; then [ -z "$MPC_TEST_LOG" ] || echo "$1" >> "$MPC_TEST_LOG"; return 0; fi
-    systemctl "$1" acvs
+    systemctl "$1" "$(mpc_service)"
 }
 stop_mpc() {
     mpc_ctl stop

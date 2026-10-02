@@ -63,7 +63,8 @@ func removeScript(tmp, settings string, plans []RemovePlan) string {
 	var b strings.Builder
 	w := func(f string, a ...any) { fmt.Fprintf(&b, f+"\n", a...) }
 	w("T=%s; SET=%s; rc=0", shQuote(tmp), shQuote(settings))
-	w("systemctl stop acvs")
+	w("SVC=acvs; systemctl cat acvs >/dev/null 2>&1 || ! systemctl cat inmusic-mpc >/dev/null 2>&1 || SVC=inmusic-mpc") // acvs on stock firmware, inmusic-mpc on Hakai
+	w("systemctl stop $SVC")
 	w("i=0; while pidof MPC >/dev/null && [ $i -lt 30 ]; do sleep 1; i=$((i + 1)); done")
 	w(`if pidof MPC >/dev/null; then echo "MPC did not stop: nothing was removed"; rc=3; fi`)
 	w(`if [ $rc = 0 ]; then`)
@@ -107,7 +108,7 @@ func removeScript(tmp, settings string, plans []RemovePlan) string {
 		}
 		w(`fi`)
 	}
-	w("systemctl start acvs")
+	w("systemctl start $SVC")
 	w(`rm -rf "$T"`)
 	w("exit $rc")
 	return b.String()

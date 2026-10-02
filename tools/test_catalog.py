@@ -262,7 +262,7 @@ class BuildTest(Base):
         self.assertEqual([v["version"] for v in p["versions"]], ["1.1.0", "1.0.0"])
         self.assertEqual(p["latest"], "1.1.0")
         self.assertTrue(p["versions"][1]["yanked"])
-        self.assertEqual(p["downloads"], 6)
+        self.assertEqual(p["downloads"], 9)   # all time: every published zip, including the yanked 1.0.0 and the invalid 1.2.0
         self.assertEqual(sorted((x["tag"] for x in problems)), ["v1.2.0", "v1.3.0-b"])
 
     def test_tested_json_attaches_to_matching_version(self):
