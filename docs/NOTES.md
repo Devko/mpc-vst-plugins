@@ -807,3 +807,13 @@ Issues sd88me/mpc-vst-plugins#88 and sd88me/mpc-vst-dx7#6 (user report, MPC OS 2
 ## 2026-10-02: arm builds move to glibc 2.31 (bullseye)
 
 `arm32v7/gcc:12` (glibc 2.36) binds `pthread_create`, `pthread_join`, `pthread_setname_np` and `pthread_setaffinity_np` to `GLIBC_2.34`, like `dladdr` before, so any threaded port (JV-880 1.0.3, probably Crate Digger) does not load on MPC OS 2.x (glibc 2.32). `build_port.sh` and `bench.sh` now use `arm32v7/gcc:11-bullseye` (glibc 2.31): JV-880 builds with highest symbol `GLIBC_2.17`. `catalog_check.py` limit lowered from 2.36 to 2.32 so this cannot regress. Port CI workflows pin `tools_ref`: bump it to the merge commit of this change before the next CI release. Ports still to rebuild and re-release: acid, crate-digger, jv-880, maze-voice (Dexed 1.0.3 is already fine).
+
+## 2026-10-02: optional drum-pad patch (tools/mpc_patch), verified on a Force
+`tools/mpc_patch/mpc-drum-pad-patch.sh` gives chosen plugins MPC's 16-pad drum layout on MPC OS 3.9.1.2 (all 16 pads lit, pad n sends
+note n-1). It patches Akai's factory `/usr/bin/MPC` on the device, so it is a standalone opt-in script (warnings, exact-checksum gate,
+typed confirmation, full backup, `status` / `uninstall`), not part of any plugin release or installer. It generalises the
+Machinedrum-only patch (mpc-vst-machinedrum `release/mpc_patch`): the plugin-name check is a table in `matcher.S`. Tested offline
+(name matcher under qemu-user at its real address; the script in BusyBox 1.36 against copies of the binary: install, cancel, repeat,
+uninstall from either backup, upgrade from the earlier patches, refusal of other firmware) and on a Force (6W6, 8W8, CW-78, 9W9: drum
+layout, pads 1-n play voices 1-n). Needs plugin notes 0-15 for the pads (the tr-drums ports remap them). To add a plugin: add its exact
+plugin name to the table, rebuild (`asm.sh`, `make_patch.py <stock MPC>`, `build_script.py`) and run both tests.
