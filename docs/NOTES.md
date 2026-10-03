@@ -888,3 +888,12 @@ With Receive MMC on for the addin's port and the transport stopped, an MMC locat
 94.19 bpm in 4/4) MPC's next Play reported its start as `F0 7F 00 06 44 06 01 00 00 0A 05 F7`, and after a locate
 to zero as all zeros. MPC's own locate is the 12-byte form without the sub-frame byte, so a decoder that wants the
 13-byte form misses it (the commander addin takes both since then).
+
+### 2026-10-03: recording from the commander app; what a restart drops
+- Record from the app works: the MMC record strobe then play (`F0 7F 7F 06 06 F7`, `F0 7F 7F 06 02 F7`) put MPC in
+  record, and MPC reported it back over MMC (the addin's transport showed `recording: true`); MMC stop ended it.
+- MPC ignores transport (MMC and real-time alike) while its New Project dialog is up, which it shows at startup
+  when `MpcEditor.Show.NewProjectDialogAtStartup` is 1. Open or create a project first.
+- Receive MMC set in the preferences was never written to `MPC.settings` (`receiveMMC` stayed 0), so a restart
+  turned it off again. Setting `receiveMMC` to 1 in the file with MPC stopped keeps it across restarts. The port's
+  per-device entry in `MidiDevices.Table` has its own `sync` flag per direction.
