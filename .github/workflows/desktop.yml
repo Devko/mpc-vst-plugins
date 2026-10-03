@@ -12,6 +12,9 @@ on:
       version:
         description: Version, e.g. 0.1.0
         required: true
+      changes:
+        description: What is new in this version (one line each, separated by | ), shown at the top of the release notes
+        required: false
 permissions:
   contents: read
 jobs:
@@ -68,8 +71,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
+          CHANGES: ${{ inputs.changes }}
         run: |
-          cat > notes.md <<EOF
+          : > notes.md
+          if [ -n "$CHANGES" ]; then
+            { echo "## What is new"; echo; echo "$CHANGES" | tr '|' '\n' | sed 's/^ *//; /^$/d; s/^/- /'; echo; } >> notes.md
+          fi
+          cat >> notes.md <<EOF
           The MPC plugin installer: a small app that installs, updates and removes plugins on a modded MPC or Force from your computer. Guide: https://sd88me.github.io/mpc-vst-plugins/install.html
 
           ## Which file do I need?

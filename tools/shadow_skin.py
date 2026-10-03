@@ -19,14 +19,14 @@ Layout file:
     toggle  cx= cy= label="..." key=<param>
     button  cx= cy= label="..." key=<param>          (trigger)
     enum_h  cx= cy= label="..." key=<param> [options="A,B,.."] [sw=<px>] [rows=<n>]
-    enum_v  cx= cy= label="..." key=<param> [options="A,B,.."]   (options default to the param's)
+    enum_v  cx= cy= label="..." key=<param> [options="A,B,.."] [sw=<px>]   (options default to the param's)
     slider_v cx= cy= w= h= label="..." key=<param>     (vertical slider; value text below)
     slider_h cx= cy= w= h= label="..." key=<param>     (horizontal slider; value text below)
     readout cx= cy= w= h= label="..." key=<param> [label_align=center]   (live value text;
                                                         label_align=center needs the browser renderer, "art": "html")
     menu    cx= cy= w= h= label="..." key=<param>      (value text; tap opens MPC's native picker -- which
                                                          opens EMPTY for a VST2, see docs/NOTES.md; use popup)
-    popup   cx= cy= w= h= label="..." key=<param> [options="A,B,.."] [cols=<n>]
+    popup   cx= cy= w= h= label="..." key=<param> [options="A,B,.."] [cols=<n>] [groups="Title:count,.."]
                                                        (value text; tap opens a drawn option list, a pick closes it.
                                                         Needs the hidden "<param>__open" param: popup_params())
     stepper cx= cy= w= h= label="..." key=<param> [label_align=center]   (live text;
@@ -80,7 +80,11 @@ LCD, LINE, BTN_BG, BTN_TEXT, BOX = "1a120d", "2a2823", "", "fdf3ea", "1f1f1f"
 DISPLAY_INK = "cdeb63"   # theme_display_ink: live-text colour over a dotreadout/dotstepper (see readout/stepper below)
 TD3 = False   # style=td3: frames are filled boxes, so widget crops sit on BOX, not the page bg
 LABEL_SCALE = 1.0   # label_scale=<n>: scales knob/toggle/pill name+value live-text size and their boxes
-FRAMES = 128               # filmstrip frames (stock strips: 128, numFrames 127)
+FRAMES = 128               # filmstrip frames emitted by (l)sstrip / (l)strip
+ROT_FRAMES = FRAMES - 1     # rotary knob FilmStrip: a rotation reads one fewer than the strip length
+STRIP_FRAMES = FRAMES       # vertical slider / meter FilmStrip: value is the frame's vertical position, so
+                            # numFrames must equal the exact strip length; FRAMES-1 mis-sizes the frame and
+                            # shows a second thumb near the top (device-confirmed, MPC One)
 KNOB_QLINKS = [13, 9, 5, 1, 14, 10, 6, 2]
 CONTROL_KINDS = ("knob", "slider_v", "slider_h", "toggle", "button", "enum_h", "enum_v", "readout", "stepper", "list", "menu",
                  "popup", "meter")
@@ -156,6 +160,8 @@ def parse_widget(line):
             w[k] = int(w[k])
     if "options" in w:
         w["options"] = w["options"].split(",")
+    if "groups" in w:   # popup headings: "606:8,808:16" = the first 8 options under 606, the next 16 under 808
+        w["groups"] = [(t, int(n)) for t, _, n in (g.rpartition(":") for g in w["groups"].split(","))]
     return w
 
 
@@ -252,17 +258,27 @@ def popup_params(layout_path, params):
     return extra
 
 
-def popup_panel(w):
-    """Option list geometry (shadow coords): (panel rect, [option rects]). Opens below the field,
-    else above, else from the top of the plugin area; columns when the options don't fit one."""
+POP_GROUP_ROWS = 8   # a grouped list wraps a group into columns of at most this many options
+
+
+def popup_layout(w):
+    """Option list geometry (shadow coords): (panel rect, [option rects], [(heading rect, title)]). Opens below the
+    field, else above, else from the top of the plugin area. Plain lists use columns when the options don't fit one;
+    with groups=, every group gets a heading and its own column(s) of up to POP_GROUP_ROWS options."""
     n = len(w["options"])
     fx, fy, fw, fh = w["cx"] - w["w"] // 2, w["cy"] - w["h"] // 2, w["w"], w["h"]
     below, above = Y_OFF + H - (fy + fh + 4), fy - 4 - Y_OFF
-    for cols in ([w["cols"]] if w.get("cols") else range(1, n + 1)):
-        rows = -(-n // cols)
-        ph = rows * (POP_ROW + POP_GAP) - POP_GAP + 2 * POP_PAD
-        if ph <= max(below, above):
-            break
+    groups = w.get("groups")
+    if groups:
+        rows = min(POP_GROUP_ROWS, max(c for _, c in groups))
+        cols = sum(-(-c // rows) for _, c in groups)
+        ph = (rows + 1) * (POP_ROW + POP_GAP) - POP_GAP + 2 * POP_PAD
+    else:
+        for cols in ([w["cols"]] if w.get("cols") else range(1, n + 1)):
+            rows = -(-n // cols)
+            ph = rows * (POP_ROW + POP_GAP) - POP_GAP + 2 * POP_PAD
+            if ph <= max(below, above):
+                break
     pw = cols * fw + (cols - 1) * POP_GAP + 2 * POP_PAD
     if ph <= below:
         py = fy + fh + 4
@@ -271,9 +287,29 @@ def popup_panel(w):
     else:
         py = Y_OFF   # nothing fits beside the field: the list covers it (a pick still closes it)
     px = max(0, min(fx, W - pw))
-    opts = [(px + POP_PAD + (o // rows) * (fw + POP_GAP), py + POP_PAD + (o % rows) * (POP_ROW + POP_GAP), fw, POP_ROW)
-            for o in range(n)]
-    return (px, py, pw, ph), opts
+    step = POP_ROW + POP_GAP
+    if not groups:
+        opts = [(px + POP_PAD + (o // rows) * (fw + POP_GAP), py + POP_PAD + (o % rows) * step, fw, POP_ROW) for o in range(n)]
+        return (px, py, pw, ph), opts, []
+    opts, heads, col = [], [], 0
+    for title, count in groups:
+        gcols = -(-count // rows)
+        heads.append(((px + POP_PAD + col * (fw + POP_GAP), py + POP_PAD, gcols * fw + (gcols - 1) * POP_GAP, POP_ROW), title))
+        for o in range(count):
+            opts.append((px + POP_PAD + (col + o // rows) * (fw + POP_GAP), py + POP_PAD + (1 + o % rows) * step, fw, POP_ROW))
+        col += gcols
+    return (px, py, pw, ph), opts, heads
+
+
+def popup_panel(w):
+    """(panel rect, [option rects]) of popup_layout()."""
+    panel, opts, _ = popup_layout(w)
+    return panel, opts
+
+
+def popup_heading_cmds(w):
+    """Art commands for a grouped popup's headings (none for a plain list): accent text on the list's own fill."""
+    return ["seg|%d|%d|%d|%d|%s|%s|%s" % (x, y, hw, hh, LCD, ACCENT, title) for (x, y, hw, hh), title in popup_layout(w)[2]]
 
 
 def qlink_for_slot(slot):
@@ -285,7 +321,7 @@ def qlink_for_slot(slot):
 def seg_rects(w):
     n = len(w["options"])
     if w["kind"] == "enum_v":
-        sw, sh, gap = 135, 30, 2
+        sw, sh, gap = w.get("sw") or 135, 30, 2   # respect the layout's sw= (like enum_h), else 135
         y0 = w["cy"] - (n * (sh + gap)) // 2
         return [(w["cx"] - sw // 2, y0 + i * (sh + gap), sw, sh) for i in range(n)]
     sw, sh, gap = w.get("sw") or 117, 33, 2
@@ -590,6 +626,8 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                     w["options"] = [str(o) for o in p.get("options") or []]
             if w["kind"].startswith("enum") and not w.get("options"):
                 w["options"] = [str(o).upper() for o in p.get("options") or []]   # default: the parameter's own
+            if w.get("groups") and sum(c for _, c in w["groups"]) != len(w["options"]):
+                raise SystemExit("layout: %s groups cover %d options, it has %d" % (k, sum(c for _, c in w["groups"]), len(w["options"])))
             if (w["kind"].startswith("enum") or w["kind"] == "popup") and len(w["options"]) != len(p.get("options") or []):
                 raise SystemExit("layout: %s has %d options, parameter has %d" % (k, len(w["options"]), len(p.get("options") or [])))
             controls.append(k)
@@ -673,7 +711,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                                                   _action("Enter Pressed", "Show Overlay", "knob overlay")], [
                     _focus(cw, ch),
                     _sub("Knob", {"version": 5, "knobType": "FilmStrip", "filmStrip": "sh_knob_r%d%s.png" % (r, sfx),
-                                  "numFrames": FRAMES - 1, "invert": False, "dragOrientation": "Vertical",
+                                  "numFrames": ROT_FRAMES, "invert": False, "dragOrientation": "Vertical",
                                   "handleName": "Data"}, _bounds((cw - s) // 2, 0, s, s), "Knob"),
                     _name_label(0, name_y, cw, name_h, 17.0 * LABEL_SCALE, INK),
                     _sub("Label", {"version": 1, "textStyle": {"version": 1, "font": {"version": 1, "name": "Titillium Web",
@@ -742,7 +780,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                                                   _action("Enter Pressed", "Show Overlay", "knob overlay")], [
                     _focus(cw, ch),
                     _sub("Knob", {"version": 5, "knobType": "FilmStrip", "filmStrip": img + ".png",
-                                  "numFrames": FRAMES - 1, "invert": False,
+                                  "numFrames": STRIP_FRAMES, "invert": False,
                                   "dragOrientation": "Vertical" if vert else "Horizontal",
                                   "handleName": "Data"}, _bounds((cw - sq) // 2, 0, sq, sq), "Slider"),
                     _name_label(0, name_y, cw, name_h, 17.0, INK),
@@ -777,7 +815,8 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 sq = max(mw, mh)
                 key = "shMeter_%dx%d%s" % (mw, mh, sfx)
                 defs.setdefault(key, _local(key, [], [
-                    _sub("Knob", {"version": 5, "knobType": "FilmStrip", "filmStrip": img + ".png", "numFrames": FRAMES - 1,
+                    # same vertical filmstrip as a slider (sliders.add above), so it uses STRIP_FRAMES too
+                    _sub("Knob", {"version": 5, "knobType": "FilmStrip", "filmStrip": img + ".png", "numFrames": STRIP_FRAMES,
                                   "invert": False, "dragOrientation": "Vertical", "handleName": "Data"},
                          _bounds(0, 0, sq, sq), "Meter")]))
                 kids.append(_placed(key, name, i, w["cx"] - sq // 2, w["cy"] - sq // 2, sq, sq, focus="No"))
@@ -804,7 +843,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 panel = "sh_pop_%d_%s" % (t, w["key"])
                 panel_draw = ("image|%s|%d|%d|%d|%d|stretch" % (lk["img"], px, py, pw, ph) if lk
                               else "tile|%d|%d|%d|%d|%s|%s|2" % (px, py, pw, ph, LCD, ACCENT))
-                script += ["clear|" + LCD, panel_draw, "crop|%s|%d|%d|%d|%d" % (art(panel), px, py, pw, ph)]
+                script += ["clear|" + LCD, panel_draw] + popup_heading_cmds(w) + ["crop|%s|%d|%d|%d|%d" % (art(panel), px, py, pw, ph)]
                 pkey = "shPopPanel_%d_%s" % (t, w["key"])
                 defs[pkey] = _local(pkey, [], [_sub("Image", {"version": 2, "imageType": "Regular", "colour": "0",
                                                               "image": panel + ".png"}, _bounds(0, 0, pw, ph), "Image")])

@@ -11,6 +11,7 @@ The easiest way to put plugins from the catalog on your MPC or Force is the **MP
 
 ## What you need
 - A first-generation MPC OS standalone device with a 32-bit ARM processor: Force, MPC Live and Live II, One, X and Key 61. The installer refuses anything else. Newer models are untested.
+- MPC OS 2.x (for example 2.15) ships an older system library (glibc, about 2.32) than MPC OS 3.x and the Force (2.39 where checked). Every plugin in this catalog is built to need no newer than glibc 2.32, and the catalog checks this. A plugin from elsewhere, or an old build, may be listed by MPC and still not load.
 - Root SSH access to the device, and its IP address. The address is assigned by your router, so look it up on the device or in your router each time.
 - A Windows, Mac or Linux computer on the same network as the device.
 - Optional: an SD card or USB drive in the device, if you want plugins on it instead of on the internal drive (see "Where it goes" under step 5).
@@ -68,7 +69,7 @@ Press **Install…** and read the question. **Save your project on the device fi
 - copies the plugins to the device, stops MPC once, runs each plugin's own installer, and starts MPC again;
 - makes a backup of MPC's settings file first, and starts MPC again even if something fails.
 
-**Where it goes.** If your device has an SD card or a USB drive with a `Synths` folder as well as its internal drive, an **Install to** choice appears above the Install button. The internal drive is the default. A card or drive works too, with three things to know: MPC must list its `Synths` folder as a content location, or a plugin's screen may not show (the page tells you if it does not); a drive that is formatted exFAT or FAT cannot store the symbolic links some plugins need (Crate Digger's bundled Python), so the app refuses those installs and tells you to use the internal drive; and if the drive is not in when MPC starts, its plugins drop out of MPC's plugin list until you register them again (see "Register plugin folders").
+**Where it goes.** If your device has an SD card or a USB drive with a `Synths` folder as well as its internal drive, an **Install to** choice appears above the Install button. The internal drive is the default. A card or drive works too, with three things to know: MPC must list its `Synths` folder as a content location, or a plugin's screen may not show (the page tells you if it does not); a drive that is formatted exFAT or FAT cannot store the symbolic links some plugins need (Crate Digger's bundled Python), so the app refuses those installs and tells you to use the internal drive; a drive mounted `noexec` (a Force's SSD is) is refused as well, because MPC cannot load plugins from it; and if the drive is not in when MPC starts, its plugins drop out of MPC's plugin list until you register them again (see "Register plugin folders").
 
 Some older releases have an installer that restarts MPC by itself, so MPC may restart more than once; the page says so before you confirm and the log shows it. Newer releases are installed in one go.
 
@@ -94,7 +95,7 @@ Every install, removal and sync makes a copy of MPC's settings file on the devic
 ## If a plugin disappears after a restart
 MPC keeps its whole plugin list in one place: the `pluginList-arm` list in its settings file, `MPC.settings`. Every way of installing plugins edits that same list, so one method can undo another. The plugin's files usually are still on the card; only its line in the list is gone. The usual causes:
 
-- **The settings file was edited while MPC was running.** MPC holds its settings in memory while it runs and saves them itself, so a change made underneath it can be overwritten. Stop MPC first (`systemctl stop acvs`; the service is `inmusic-mpc` on Hakai-enabled systems), edit, then start it (`systemctl start acvs`). The app and the installers do this for you.
+- **The settings file was edited while MPC was running.** MPC holds its settings in memory while it runs and saves them itself, so a change made underneath it can be overwritten. Stop MPC first (`systemctl stop acvs`; if `systemctl cat acvs` finds no such service, as on some MPC OS 2.x versions and on Hakai-enabled systems, the service is `inmusic-mpc`), edit, then start it (`systemctl start acvs`). The app and the installers do this for you.
 - **Another tool rebuilt the whole list.** Some community installers and scan scripts do not add one line: they write a new list from the plugin folders they find in the `Synths` folders (each folder with a `plugin-meta.xml` inside). A plugin that is not such a folder, for example one added by hand or installed by an older release with its `.so` in `/sdcard/vst`, drops off the list at the next scan. A release is such a folder if its zip has a `portable/` folder inside, and a scan keeps it. Reinstall anything older with a release that has one.
 - **The settings file became invalid.** After a broken edit MPC resets `MPC.settings` to its defaults, which empties the plugin list along with your other preferences. Restore a backup (below).
 - **The line points to a file that is not there**: a plugin folder was moved or renamed, or the card it is on is not inserted.
@@ -118,6 +119,7 @@ Before you paste a command you found online into the device's shell, copy the se
 - **The app says it cannot install on this device.** It only installs to a 32-bit ARM MPC OS device where you are logged in as root.
 - **MPC shows default settings after the restart.** The edited settings file was not accepted. Restore the backup the installer made, next to `MPC.settings` (see above).
 - **The plugin is not in the list.** MPC reads its plugin list at startup. Check that the app's log ended with "Done", then see "If a plugin disappears after a restart" above.
+- **The plugin is in the list but only "Load Plugin" shows.** MPC could not load the library. Two usual causes: the plugin sits on a drive mounted `noexec` (a Force's SSD is; check with `mount | grep noexec`, and install to the internal drive or an SD card instead), or it is a build that needs a newer glibc than your MPC OS has (a copy installed by hand, or a version older than the catalog's current one). Install the newest version from the app. If it still fails, send the `journalctl -u acvs` lines (or `journalctl -u inmusic-mpc` where there is no acvs) from the moment you add the plugin to a track, plus the output of `ls -l /lib/libc.so.6`.
 - **The plugin loads but has no screen.** The skin goes in a `/sdcard/Synths` folder, and MPC must have that folder in its content locations. The installer warns if it does not.
 - **Silence, or default sounds.** Some plugins need files you provide, such as ROMs or banks. Check the plugin's own page.
 
@@ -175,7 +177,7 @@ The app's buttons and plans change over time, so check Termius's own help if a s
 :::
 
 ::: details Fully by hand (without the installer script)
-Each zip's `INSTALL.md` lists the manual steps: copy the plugin folder (`portable/<Vendor> - VST - <Name>/` in the zip) to `/sdcard/Synths/`, stop MPC (`systemctl stop acvs`), back up `MPC.settings`, add the line from that folder's `plugin-meta.xml` to the plugin list with `%payload-path%` replaced by `/sdcard/Synths`, and start MPC (`systemctl start acvs`). Edit the settings file only while MPC is stopped (see "If a plugin disappears after a restart" above).
+Each zip's `INSTALL.md` lists the manual steps: copy the plugin folder (`portable/<Vendor> - VST - <Name>/` in the zip) to `/sdcard/Synths/`, stop MPC (`systemctl stop acvs`), back up `MPC.settings`, add the line from that folder's `plugin-meta.xml` to the plugin list with `%payload-path%` replaced by `/sdcard/Synths`, and start MPC (`systemctl start acvs`, or `inmusic-mpc` if that is the service you stopped). Edit the settings file only while MPC is stopped (see "If a plugin disappears after a restart" above).
 
 If you use a community tool that scans `Synths` folders for plugins, the same plugin folder works there: copy it into `Synths` and run the scan. Such a scan rebuilds the whole plugin list from the folders it finds, so it drops any plugin that is not such a folder, and it does not back up your settings first.
 :::

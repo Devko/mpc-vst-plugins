@@ -197,3 +197,18 @@ func TestInstallUsesInmusicMpcServiceOnHakai(t *testing.T) {
 		t.Fatalf("want stop/start of inmusic-mpc, got %v", got)
 	}
 }
+
+// A zip with an old installer (no -n, `systemctl ... acvs` hard-coded) must still stop and start the real unit on a system without acvs.
+func TestOldInstallerGetsInmusicMpcInPlaceOfAcvs(t *testing.T) {
+	fd := newFakeDevice(t)
+	os.WriteFile(filepath.Join(fd.dir, "svc"), []byte("inmusic-mpc\n"), 0o644)
+	old := fakeInstaller("A", false, 0) + "systemctl stop acvs\nsystemctl start acvs\n"
+	a := installerPkg(t, "A-1", "a-plug", "me - VST - A", old)
+	j, err := runJob(t, fd, Item{Pkg: a})
+	if err != nil {
+		t.Fatal(err, j.Lines)
+	}
+	if got := strings.Join(fd.calls(), ","); got != "stop inmusic-mpc,start inmusic-mpc" {
+		t.Fatalf("want the old installer's acvs calls turned into inmusic-mpc, got %v", got)
+	}
+}
