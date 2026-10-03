@@ -839,3 +839,15 @@ Both addins (remote 0.1.0 → 0.2.0, usb-audio 0.1.0) were installed, upgraded a
 
 ### 2026-10-03: MPC leaks `temp_*.img` files in /var/tmp/filmstrips at every start
 Each MPC start writes `temp_*.img` files (one start: 71 files, 178 MB; the largest 11 MB) to `/var/tmp/filmstrips` (the overlay's upper dir is on /data) and never deletes them. A day of restart-heavy testing left 2.5 GB of them and filled /data. Files no process holds open can be deleted. Delete them through `/var/tmp/filmstrips`: deleting them from the upper dir directly doesn't give the space back until `echo 2 > /proc/sys/vm/drop_caches`. Not a plugin or addin bug, but anything that restarts MPC often (installers, tests) adds to it.
+
+### 2026-10-03: the Plugin Manager's TESTING.md passes on an MPC Key 37 (addins and the browser tile)
+poloq-instruments/mpc-vst-manager#1 (addin support) run end to end on the Key 37 (MPC OS 3.9.1, install target `/storage/Synths`), with the two
+addin catalog entries from #144 added to a copy of the live catalog (`CATALOG_URL` compiled to a `file://` path on the device, since the
+device can't reach this computer's firewall-blocked HTTP server). All seven rows pass: Acid installed, loaded and removed through the manager
+(one restart each way, `MPC.settings.bak-acid-*` written each time); MPC Remote 0.2.1 installed from the Addins pill to
+`/data/mpc-addins/remote`, listed in the `90-mpc-addins.conf` drop-in and in MPC's own `LD_PRELOAD` after the restart, answering on 6720 with
+a screen capture, then removed (folder, drop-in line and port gone). The manager's offline suite gained a fake device for the Key 37's layout.
+Also verified: a vst.json `"tile"` (#90's tooling) shows in the INSTRUMENTS browser and opens its Default preset, which loads the plugin on
+the track. Presets are indexed at MPC start only: a tile installed without a restart is drawn but its tap does nothing until the next start,
+and the install's own restart covers it. Taps were injected over the network with the remote addin's standalone: a touch needs a hold of
+about 300 ms to register, the first touch after a project opens is often dropped, and a field popup (PLUGIN) opens on a double-tap.
