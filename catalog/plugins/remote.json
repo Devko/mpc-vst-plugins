@@ -13,5 +13,5 @@
     "midi"
   ],
   "license": "MIT",
-  "summary": "The MPC screen in a browser, and an MCP server so an AI model can see and touch it, play MIDI and read files."
+  "summary": "The MPC screen in a browser, and an MCP server so an AI model can see and touch it, play MIDI and read files. No login: anyone on your network can use it (port 6720; bind=127.0.0.1 in its settings limits it to the device)."
 }
