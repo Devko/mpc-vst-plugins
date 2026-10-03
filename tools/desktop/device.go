@@ -60,6 +60,7 @@ type Root struct {
 	Primary    bool   `json:"primary"`
 	InContent  bool   `json:"inContent"`  // MPC lists it as a content location, so a plugin's screen shows
 	NoSymlinks bool   `json:"noSymlinks"` // FAT, exFAT and NTFS cannot store symbolic links
+	NoExec     bool   `json:"noExec"`     // mounted noexec: MPC cannot load a plugin from it
 	ID         string `json:"-"`
 }
 
@@ -260,10 +261,13 @@ command -v systemctl >/dev/null 2>&1 && echo systemctl=1
 for r in %s; do
   [ -d "$r" ] && [ -w "$r" ] || continue
   rid=$(stat -L -c '%%d:%%i' "$r" 2>/dev/null)
-  set -- $(df -k "$r" 2>/dev/null | awk 'NR==2 {print $4, $NF}'); free=${1:-0}; mp=${2:-/}
-  set -- $(awk -v m="$mp" '$2 == m {t = $3; o = $4} END {print t, o}' %s 2>/dev/null); fs=${1:-}; opts=${2:-}
+  dfl=$(df -kP "$r" 2>/dev/null | awk 'NR==2 {m = $6; for (i = 7; i <= NF; i++) m = m " " $i; print $4 "\t" m}')   # the mount point may hold spaces ("/media/SSD - Force")
+  free=${dfl%%%%$TAB*}; mp=${dfl#*$TAB}; [ -n "$free" ] || free=0; [ -n "$mp" ] || mp=/
+  mpe=$(printf %%s "$mp" | sed 's/ /\\040/g')   # /proc/mounts writes a space as \040
+  set -- $(MP="$mpe" awk '$2 == ENVIRON["MP"] {t = $3; o = $4} END {print t, o}' %s 2>/dev/null); fs=${1:-}; opts=${2:-}
   case ",$opts," in *,ro,*) continue ;; esac   # a read-only mount (MPC's own content folder) cannot take plugins, even though root may "write" to it
-  printf 'root=%%s\t%%s\t%%s\t%%s\n' "$r" "$rid" "$free" "$fs"
+  nx=0; case ",$opts," in *,noexec,*) nx=1 ;; esac   # MPC cannot load a .so from a noexec mount (a Force's SSD): it lists the plugin but shows only "Load Plugin"
+  printf 'root=%%s\t%%s\t%%s\t%%s\t%%s\n' "$r" "$rid" "$free" "$fs" "$nx"
   if [ -f "$r/.mpc-store" ]; then sed "s|^|store=$r$TAB|" "$r/.mpc-store"; fi
   for d in "$r"/*/; do
     f="${d}plugin-meta.xml"; [ -f "$f" ] || continue
@@ -314,7 +318,7 @@ true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp), d
 		case "root":
 			if len(f) >= 4 {
 				free, _ := strconv.ParseInt(strings.TrimSpace(f[2]), 10, 64)
-				cands = append(cands, Root{Path: f[0], ID: f[1], FreeKB: free, FS: f[3]})
+				cands = append(cands, Root{Path: f[0], ID: f[1], FreeKB: free, FS: f[3], NoExec: len(f) >= 5 && f[4] == "1"})
 			}
 		case "addin":
 			if len(f) >= 4 && idRe.MatchString(f[0]) {

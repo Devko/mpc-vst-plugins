@@ -275,6 +275,8 @@ def widget_svg(w, art, params, base_dir):
                 art.ops.append(art.image(lk["img"], px, py, pw, ph, "stretch"))
             else:
                 art.run("tile|%d|%d|%d|%d|%s|%s|2" % (px, py, pw, ph, ss.LCD, ss.ACCENT))
+            for cmd in ss.popup_heading_cmds(w):
+                art.run(cmd)
             for o, (ox, oy, ow, oh) in enumerate(orects):
                 on = o == 0
                 art.run("seg|%d|%d|%d|%d|%s|%s|%s" % (ox, oy, ow, oh, ss.SEG_ON if on else ss.LCD,

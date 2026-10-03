@@ -1,5 +1,7 @@
 # VST Plugins for MPC OS
 
+> 💬 **Community:** join [**Open MPC** on Discord](https://discord.gg/sRRysZSgu3) for support, release announcements, plugin requests and MPC hacking.
+
 Native plugins for **Akai MPC OS standalone devices** (MPC Live/One/X/Key, Force): a catalog to find and install them,
 an installer app, and the tools to build, test and release your own.
 
