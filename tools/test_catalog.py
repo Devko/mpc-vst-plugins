@@ -320,6 +320,26 @@ class AddinTest(Base):
         self.assertEqual(errors, [])
         self.assertTrue(any("install.sh differs" in w for w in warnings), warnings)
 
+    def test_registry_build_and_tsv(self):
+        import catalog_build, catalog_site
+        entry = {"id": "test-addin", "name": "Test addin", "author": "A", "repo": "acme/mpc-addin-test", "kind": "addin",
+                 "license": "MIT", "summary": "s"}
+        self.assertEqual(catalog_build.check_entry(entry), [])
+        self.assertTrue(catalog_build.check_entry(dict(entry, distribution="build-yourself")))
+        rel = lambda tag, aid: {"tag_name": tag, "prerelease": False, "draft": False, "published_at": "2026-10-02T00:00:00Z",
+                                "body": "", "assets": [{"id": aid, "name": "x-mpc-armv7.zip", "browser_download_url": "https://x/a.zip"}]}
+        gh = FakeGitHub({"acme/mpc-addin-test": [rel("v1.2.0", 1)]}, {1: self.build_addin()})
+        cat, problems = catalog_build.build([entry], gh, os.path.join(self.tmp, "cache"), set())
+        self.assertEqual(problems, [])
+        self.assertEqual(cat["plugins"][0]["latest"], "1.2.0")
+        row = catalog_site.tsv(cat, []).splitlines()[1].split("\t")
+        self.assertEqual(row[:8], ["plugin", "test-addin", "1.2.0", "1", "addin", "Test addin", "-", "-"])
+        self.assertEqual((row[12], row[13]), ("test.conf", "1"))
+        # an addin release listed under an instrument entry (or the reverse) is refused
+        cat, problems = catalog_build.build([dict(entry, kind="instrument")], gh, os.path.join(self.tmp, "cache"), set())
+        self.assertEqual(cat["plugins"][0]["versions"], [])
+        self.assertIn("is an addin", problems[0]["error"])
+
     def test_installer_shell_tests(self):
         """tools/test_addin.sh: the LD_PRELOAD installer against scratch systemd trees."""
         r = subprocess.run(["bash", os.path.join(HERE, "test_addin.sh")], capture_output=True, text=True)
