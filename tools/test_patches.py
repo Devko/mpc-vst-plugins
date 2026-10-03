@@ -150,5 +150,33 @@ class ManifestCheck(unittest.TestCase):
         self.assertTrue(any("escapes" in e for e in self.errors(d)))
 
 
+class SitePublishesManifest(unittest.TestCase):
+    def build(self, patches):
+        out = tempfile.mkdtemp()
+        cat = os.path.join(out, "catalog.json")
+        with open(cat, "w") as f:
+            json.dump({"schema": 1, "plugins": []}, f)
+        r = subprocess.run([sys.executable, os.path.join(HERE, "catalog_site.py"), "--catalog", cat, "--out", os.path.join(out, "site"),
+                            "--patches", patches], capture_output=True, text=True, timeout=60, cwd=ROOT)
+        return out, r
+
+    def test_the_manifest_is_published_next_to_catalog_json(self):
+        src = os.path.join(ROOT, "catalog", "patches.json")
+        out, r = self.build(src)
+        self.addCleanup(shutil.rmtree, out, True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(src, "rb") as a, open(os.path.join(out, "site", "patches.json"), "rb") as b:
+            self.assertEqual(a.read(), b.read())
+
+    def test_an_invalid_manifest_fails_the_site_build(self):
+        bad = os.path.join(tempfile.mkdtemp(), "patches.json")
+        with open(bad, "w") as f:
+            json.dump({"schema": 1, "patches": [{"id": "x"}]}, f)
+        out, r = self.build(bad)
+        self.addCleanup(shutil.rmtree, out, True)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertFalse(os.path.exists(os.path.join(out, "site", "patches.json")))
+
+
 if __name__ == "__main__":
     unittest.main()
