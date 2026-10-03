@@ -836,4 +836,23 @@ nudge, (2) five slow ones in a row, (3) one fast spin, (4) a reversal, (5) a tou
 Q-Link knob of that control and with the data wheel. Read `S` values to get the delta per event (in the param's own units: option
 index, whole number, or the 0..1 value), and compare each `S` with the `G` just before it to see whether MPC measures from the
 read-back value or from where the gesture started. Results go here, with the device, MPC OS version and date.
-Not yet run on a device.
+
+**Result (2026-10-03, Akai Force, MPC OS 3.9.1; one run, one device; Key 37 and MPC One not re-measured).** Every `S` is the
+value MPC last read back (`G`) plus a small delta: nothing is measured from where a gesture started, for either input. Deltas
+below are in 1/128 of the host's 0..1 range:
+- **Q-Link, `cont` and `int`:** exactly 1 per event, one event per click. A fast spin sends 1..3 per event; a reversal is the same
+  size, negative. (`int` 1..8: 1/128 of the range is 0.055 of a whole number.)
+- **Data wheel, `cont` and `int`:** exactly 1.28 (0.01) per event, one event per click; fast spin 1.28 and 2.56. Reversal negative.
+- **Touch drag, either control:** about 4 to 7 (0.04) per event, still from the last read-back, so a drag is a stream of larger nudges.
+- **`opt` (9 options), Q-Link:** 1 per event (0.0625 of an option), 1..3 on a fast turn, negative on a reversal.
+- **`opt`, data wheel:** 1.28 and 1.92 alternating (0.08 and 0.12 of an option) per event, one event per click; each event lands
+  between options, so today's wrapper steps one option per click. The first attempt produced no `setParameter` at all (the
+  wrapper logs before it acts, so MPC sent nothing); after a retry the wheel drove it. What changed between the two attempts
+  (focus or tile selection) was not recorded.
+- **Tap on an option tile:** one `S` on the exact option (a jump of up to 7 options).
+- **Distinguishing wheel from Q-Link by delta:** not reliable. A slow wheel click (1.28) is only 28% above a Q-Link click (1),
+  a fast Q-Link event (2..3) overlaps the wheel's 1.92 and 2.56, and a drag overlaps a fast spin. Treat both as "a small delta
+  from the read-back value".
+- **Consequence for #90 and #130:** counting several events per option (#90's `QLINK_TICKS` 3) also applies to wheel clicks, which
+  arrive one per detent: three clicks per option. Tick counting therefore has to be a per-param opt-in (`qlink_ticks`, default 1),
+  not a wrapper-wide default, until the wheel can be told apart.
