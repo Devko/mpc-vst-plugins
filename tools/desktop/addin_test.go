@@ -26,7 +26,7 @@ func addinEntries(t *testing.T, top, id, version string) []zent {
 		{p + "uninstall.sh", 0o755, read("uninstall.sh")},
 		{p + "addin-lib.sh", 0o755, read("addin-lib.sh")},
 		{p + "addin.manifest", 0, "ADDIN_ID=" + id + "\nADDIN_NAME=\"Test addin\"\nADDIN_SO=libtest.so\nADDIN_CONF=test.conf\nADDIN_VERSION=" + version + "\n"},
-		{p + "libtest.so", 0, "ELF"},
+		{p + "libtest.so", 0, "\x7fELF\x01\x01\x01" + strings.Repeat("\x00", 9) + "\x03\x00\x28\x00"}, // ELF32 little-endian ARM shared object: install.sh checks it
 		{p + "test.conf", 0, "x=1\n"},
 		{p + "SHA256SUMS", 0, ""},
 		{p + "mpc-plugin.json", 0, string(m)},

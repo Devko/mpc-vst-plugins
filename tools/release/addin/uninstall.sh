@@ -1,6 +1,7 @@
 #!/bin/sh
 # Remove an MPC addin (the one addin.manifest describes): take its .so out of LD_PRELOAD (other addins stay),
-# restart MPC, delete its folder.   sh uninstall.sh [-y] [-n] [-t <folder>]
+# restart MPC, delete the files it installed, its settings file included, and its folder once that is empty.
+#   sh uninstall.sh [-y] [-n] [-t <folder>]   (the folder must be named after the addin: .../<id>)
 # The installed folder holds a copy of this script: `sh /data/mpc-addins/<id>/uninstall.sh` works without the release.
 # mpc-vst-plugins tools/release/addin: identical in every addin release (docs/ADDINS.md).
 set -e
@@ -21,6 +22,7 @@ check_dir
 SO="$DIR/$ADDIN_SO"
 [ -n "$ADDIN_INSTALL_TEST" ] || [ "$(id -u)" = 0 ] || die "run as root"
 SVC=$(mpc_service)
+check_lib "$SVC"
 if [ $YES = 0 ]; then
     printf "Remove %s%s? [y/N] " "$ADDIN_NAME" "$([ $RESTART = 1 ] && echo ' and restart MPC')"; read -r ok
     case "$ok" in y|Y|yes) ;; *) echo "cancelled"; exit 1 ;; esac
@@ -28,6 +30,6 @@ fi
 preload_remove "$SVC" "$SO"
 svc daemon-reload
 if [ $RESTART = 1 ]; then svc restart "$SVC"; fi
-rm -rf "$DIR"   # after the restart: MPC no longer has the .so mapped (with -n it stays mapped until MPC restarts)
+remove_files   # after the restart: MPC no longer has the .so mapped (with -n it stays mapped until MPC restarts)
 sync
 echo "Removed $ADDIN_NAME."

@@ -9,11 +9,14 @@ T=$(mktemp -d); trap 'chmod -R u+w "$T"; rm -rf "$T"' EXIT
 fails=0
 ok() { echo "ok   $1"; }
 bad() { echo "FAIL $1"; fails=$((fails + 1)); }
+elf() {   # elf <file> <class+data> <e_type> <e_machine>: the first 20 bytes of an ELF header, then padding
+    printf "\\177ELF$2\\001\\000\\000\\000\\000\\000\\000\\000\\000\\000$3$4padding" > "$1"
+}
 pkg() {   # pkg <id>: a package folder for a fake addin
     rm -rf "$T/pkg-$1"; mkdir -p "$T/pkg-$1"
     cp install.sh uninstall.sh addin-lib.sh "$T/pkg-$1/"
     printf 'ADDIN_ID=%s\nADDIN_NAME="Test %s"\nADDIN_SO=lib%s.so\nADDIN_CONF=%s.conf\nADDIN_FILES="%s.dat"\nADDIN_DONE="see %s"\nADDIN_VERSION=1.2.3\n' "$1" "$1" "$1" "$1" "$1" "$1" > "$T/pkg-$1/addin.manifest"
-    echo so > "$T/pkg-$1/lib$1.so"; echo "default=1" > "$T/pkg-$1/$1.conf"; echo data > "$T/pkg-$1/$1.dat"
+    elf "$T/pkg-$1/lib$1.so" '\001\001' '\003\000' '\050\000'; echo "default=1" > "$T/pkg-$1/$1.conf"; echo data > "$T/pkg-$1/$1.dat"
 }
 run() {   # run <id> <script> [args]: as the device would, with the addin folder under the scratch tree
     ADDIN_INSTALL_TEST=1 SYSTEMD_ROOT="$T/root" ADDIN_TEST_LOG="$T/log" $SH "$T/pkg-$1/$2" -y -t "$T/addins/$1" "${@:3}" > "$T/out" 2>&1 || { cat "$T/out"; return 1; }
@@ -127,5 +130,44 @@ pkg a; rm "$T/pkg-a/a.dat"; refused "a missing file" a -t "$T/addins/a"
 pkg a; echo n | ADDIN_INSTALL_TEST=1 SYSTEMD_ROOT="$T/root" $SH "$T/pkg-a/install.sh" > "$T/out" 2>&1 || true
 grep -q "/data/mpc-addins/a/" "$T/out" && grep -q cancelled "$T/out" && [ "$(line)" = "Environment=LD_PRELOAD=/usr/lib/x.so" ] \
   && ok "the default folder is /data/mpc-addins/<id>; answering no changes nothing" || bad "default folder / cancel: $(cat "$T/out")"
+
+# 9. the library is checked before it goes into LD_PRELOAD
+fresh; unit 'Environment=LD_PRELOAD=/usr/lib/x.so'
+pkg a; echo so > "$T/pkg-a/liba.so"; refused "a .so that is not ELF" a -t "$T/addins/a"
+pkg a; elf "$T/pkg-a/liba.so" '\002\001' '\003\000' '\050\000'; refused "a 64-bit .so" a -t "$T/addins/a"
+pkg a; elf "$T/pkg-a/liba.so" '\001\001' '\003\000' '\076\000'; refused "an x86-64 .so" a -t "$T/addins/a"
+pkg a; elf "$T/pkg-a/liba.so" '\001\001' '\002\000' '\050\000'; refused "an ARM executable" a -t "$T/addins/a"
+[ "$(line)" = "Environment=LD_PRELOAD=/usr/lib/x.so" ] && [ ! -e "$T/addins/a" ] && ok "a bad .so changes nothing" || bad "bad .so: $(line)"
+
+# 10. uninstall only ever deletes what the addin installed, in a folder named after it
+uremoved() {   # uremoved <what> <folder>: uninstall must refuse, and the folder must survive
+    mkdir -p "$2" 2>/dev/null || true
+    if ADDIN_INSTALL_TEST=1 SYSTEMD_ROOT="$T/root" ADDIN_TEST_LOG="$T/log" $SH "$T/pkg-a/uninstall.sh" -y -n -t "$2" >/dev/null 2>&1; then bad "uninstall -t $1 accepted"; else ok "uninstall -t $1 refused"; fi
+}
+fresh; unit 'Environment=LD_PRELOAD=/usr/lib/x.so'
+mkdir -p "$T/victim/a"; echo keep > "$T/victim/keep"
+uremoved "/" /
+uremoved "/etc" /etc
+uremoved "a folder not named after the addin" "$T/victim"
+uremoved "with a .. segment" "$T/victim/x/../a"
+uremoved "with a . segment" "$T/victim/./a"
+uremoved "ending in /" "$T/victim/a/"
+[ -f "$T/victim/keep" ] && [ -d /etc ] && ok "refused uninstalls deleted nothing" || bad "a refused uninstall deleted files"
+run a install.sh; echo mine > "$T/addins/a/notes.txt"
+run a uninstall.sh
+[ -f "$T/addins/a/notes.txt" ] && [ ! -e "$T/addins/a/liba.so" ] && [ ! -e "$T/addins/a/a.conf" ] && [ ! -e "$T/addins/a/uninstall.sh" ] && grep -q "kept" "$T/out" \
+  && ok "uninstall deletes the addin's files and keeps the user's" || bad "uninstall with a user file: $(ls "$T/addins/a" 2>&1)"
+
+# 11. the shared drop-in records its format; an older installer leaves a newer one alone
+fresh; unit 'Restart=always'; ro a-w
+run a install.sh
+grep -qx "# lib: 2" "$DROP" && ok "the drop-in records its format" || bad "no lib line: $(cat "$DROP")"
+sed -i 's/^# lib: 2$/# lib: 99/' "$DROP"; cp "$DROP" "$T/drop.before"
+refused "a drop-in from a newer installer (install)" b -t "$T/addins/b"
+if ADDIN_INSTALL_TEST=1 SYSTEMD_ROOT="$T/root" $SH "$T/pkg-a/uninstall.sh" -y -n -t "$T/addins/a" >/dev/null 2>&1; then bad "uninstall under a newer drop-in accepted"; else ok "a drop-in from a newer installer (uninstall) refused"; fi
+cmp -s "$DROP" "$T/drop.before" && [ -f "$A" ] && ok "a newer drop-in is left as it was" || bad "a newer drop-in changed"
+sed -i '/^# lib:/d' "$DROP"
+run b install.sh
+grep -qx "# lib: 2" "$DROP" && grep -qx "Environment=LD_PRELOAD=$A:$B" "$DROP" && ok "a drop-in without a format line is read as format 2" || bad "old drop-in: $(cat "$DROP")"
 
 [ $fails = 0 ] && echo "installer: all passed" || { echo "installer: $fails FAILED"; exit 1; }

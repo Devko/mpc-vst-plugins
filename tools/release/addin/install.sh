@@ -29,8 +29,10 @@ if [ -z "$ADDIN_INSTALL_TEST" ]; then
     case "$(uname -m)" in armv7*) ;; *) die "this build is for 32-bit ARM MPC OS devices; this one is $(uname -m)" ;; esac
 fi
 for f in "$ADDIN_SO" $ADDIN_CONF $ADDIN_FILES; do [ -f "$f" ] || die "$f is missing next to install.sh"; done
+check_so "$ADDIN_SO"
 
 SVC=$(mpc_service)
+check_lib "$SVC"
 UNIT=$(unit_with_preload "$SVC" "$(ours "$SVC")")   # not our own drop-in: it repeats the unit's list
 echo "Installing $ADDIN_NAME${ADDIN_VERSION:+ $ADDIN_VERSION}:"
 echo "  $DIR/"

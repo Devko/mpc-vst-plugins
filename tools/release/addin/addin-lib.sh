@@ -1,6 +1,9 @@
 # The addin installer (mpc-vst-plugins tools/release/addin, docs/ADDINS.md): shared by install.sh and uninstall.sh, identical in
 # every addin release; only addin.manifest differs. tools/release_addin.py puts the three next to the addin's files.
-# It finds MPC's systemd service, edits its LD_PRELOAD list and loads addin.manifest. ADDIN_LIB_VERSION identifies this copy.
+# It finds MPC's systemd service, edits its LD_PRELOAD list and loads addin.manifest.
+# ADDIN_LIB_VERSION is the version of the shared drop-in's format, which every installed addin's copy of this file edits.
+# The rule: a copy refuses to touch a drop-in written by a newer version (its "# lib:" line; a drop-in without one is
+# version 2), and a new version must still read every older format. Bump it whenever the drop-in format changes.
 ADDIN_LIB_VERSION=2
 # Tests set ADDIN_INSTALL_TEST=1, SYSTEMD_ROOT (a scratch tree holding the unit files) and ADDIN_TEST_LOG.
 
@@ -98,9 +101,15 @@ sync_ours() {   # service add-so remove-so
     IFS=$IFS0
     if [ -z "$new" ]; then rm -f "$f"; rmdir "$(dirname "$f")" 2>/dev/null || true; return 0; fi
     mkdir -p "$(dirname "$f")"
-    printf '[Service]\n# MPC addins (mpc-vst-plugins addin installer). systemd replaces LD_PRELOAD, so this repeats the base list from\n# the unit, then the addins. Edit with install.sh / uninstall.sh, which rebuild it when the base changes.\n# base: %s\nEnvironment=LD_PRELOAD=%s\n' \
-        "$base" "$base${base:+:}$new" > "$f.new"
+    printf '[Service]\n# MPC addins (mpc-vst-plugins addin installer). systemd replaces LD_PRELOAD, so this repeats the base list from\n# the unit, then the addins. Edit with install.sh / uninstall.sh, which rebuild it when the base changes.\n# lib: %s\n# base: %s\nEnvironment=LD_PRELOAD=%s\n' \
+        "$ADDIN_LIB_VERSION" "$base" "$base${base:+:}$new" > "$f.new"
     mv "$f.new" "$f"
+}
+
+lib_of() { [ ! -f "$1" ] || sed -n 's/^# lib: *\([0-9][0-9]*\).*/\1/p' "$1" | head -n 1; }   # drop-in: its format version
+check_lib() {   # service: refuse a shared drop-in written by a newer installer, before anything changes
+    v=$(lib_of "$(ours "$1")"); [ -n "$v" ] || return 0
+    [ "$v" -le "$ADDIN_LIB_VERSION" ] || die "$(ours "$1") was written by a newer addin installer (format $v, this one is $ADDIN_LIB_VERSION): install a newer release of this addin"
 }
 
 edits_in_place() { [ -n "$2" ] && [ "$2" != "$(ours "$1")" ] && writable "$2"; }   # service unit
@@ -158,7 +167,26 @@ load_manifest() {
     DIR="${DIR:-/data/mpc-addins/$ADDIN_ID}"
 }
 
-check_dir() {
+check_dir() {   # the addin's folder: absolute, plain characters, no . or .. segments, and named after the addin
     case "$DIR" in /*) ;; *) die "-t must be an absolute path" ;; esac
     case "$DIR" in *[!A-Za-z0-9/._-]*) die "the folder may only contain letters, digits and / . _ -" ;; esac
+    case "/$DIR/" in */./*|*/../*) die "the folder may not contain . or .. segments" ;; esac
+    case "$DIR" in */) die "the folder may not end in /" ;; esac
+    [ "$(basename "$DIR")" = "$ADDIN_ID" ] || die "the folder must be named after the addin: .../$ADDIN_ID"
+}
+
+# Delete what the installer put in the folder (the addin's files, its settings, the installer's own files and any
+# staged .new copies), then the folder itself if nothing else is left in it.
+remove_files() {
+    for f in "$ADDIN_SO" $ADDIN_CONF $ADDIN_FILES $SELF_FILES; do rm -f "$DIR/$f" "$DIR/$f.new"; done
+    rmdir "$DIR" 2>/dev/null || echo "kept $DIR: it holds files the addin did not install"
+}
+
+# The library must be a 32-bit little-endian ARM shared object: anything else in LD_PRELOAD stops MPC from starting.
+check_so() {   # file
+    set -- $(dd if="$1" bs=20 count=1 2>/dev/null | od -b | sed 's/^[0-7]*//')
+    [ $# -ge 20 ] && [ "$1 $2 $3 $4" = "177 105 114 106" ] || die "$ADDIN_SO is not an ELF file"
+    [ "$5 $6" = "001 001" ] || die "$ADDIN_SO is not a 32-bit little-endian library"
+    [ "${17} ${18}" = "003 000" ] || die "$ADDIN_SO is not a shared library"
+    [ "${19} ${20}" = "050 000" ] || die "$ADDIN_SO is not built for ARM"
 }
