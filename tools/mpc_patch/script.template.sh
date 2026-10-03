@@ -111,8 +111,11 @@ restore_stock() {   # needs the file writable
 }
 
 cmd_status() {
-    need_root_device; open_root
+    need_root_device
+    was_mounted=0; [ -z "$TEST" ] && mountpoint -q "$MNT" 2>/dev/null && was_mounted=1
+    open_root
     cur=$(md5 "$F"); st=$(state_of "$cur")
+    [ -z "$TEST" ] && [ $was_mounted = 0 ] && umount "$MNT" 2>/dev/null   # status looked only: do not leave the bind mount of / behind
     echo "MPC checksum: $cur"
     case "$st" in
         stock) echo "State: stock MPC OS 3.9.1.2, not patched." ;;
