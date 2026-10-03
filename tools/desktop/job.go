@@ -101,6 +101,9 @@ func RunInstall(dev *Device, root Root, items []Item, workDir string, j *Job, re
 	if len(pkgs) == 0 {
 		return errors.New("nothing selected")
 	}
+	if root.NoExec {
+		return fmt.Errorf("%s (%s) is mounted noexec, so MPC cannot load plugins from it: they would be listed but only show \"Load Plugin\". Install on the internal drive or an SD card instead", root.Label, root.Path)
+	}
 	var need int64
 	for _, p := range pkgs {
 		need += p.Unpacked
