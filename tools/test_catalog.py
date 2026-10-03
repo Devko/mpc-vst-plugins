@@ -1033,7 +1033,7 @@ class StoreTest(Base):
         open(self.settings_path, "w").write(SyncTest.ONLY_OTHER)
         self.log = os.path.join(self.tmp, "mpc_ctl.log")
 
-    def write_catalog(self, published):
+    def write_catalog(self, published, addins=()):
         vs = []
         for v, path in self.versions:
             if v not in published:
@@ -1046,12 +1046,24 @@ class StoreTest(Base):
         cat = {"schema": 1, "plugins": [{"id": "test-synth", "name": "Test Synth", "kind": "instrument", "distribution": "release",
                                           "latest": vs[0]["version"], "versions": vs},
                                          {"id": "byo", "name": "Build Yourself", "kind": "instrument", "distribution": "build-yourself", "versions": []}]}
+        avs = []
+        for v in addins:   # (version, zip) of the test addin
+            path = os.path.join(self.web, os.path.basename(v[1]))
+            shutil.copy(v[1], path)
+            avs.insert(0, {"version": v[0], "size": os.path.getsize(path), "sha256": self.hashlib.sha256(open(path, "rb").read()).hexdigest(),
+                           "param_compat": int(v[0].split(".")[0]), "manifest": catalog_check.check(path, catalog=True)[2]["manifest"],
+                           "channel": "stable", "yanked": False, "defer": True, "url": "http://127.0.0.1:%d/%s" % (self.port, os.path.basename(path))})
+        if avs:
+            cat["plugins"].append({"id": "test-addin", "name": "Test addin", "kind": "addin", "distribution": "release",
+                                   "latest": avs[0]["version"], "versions": avs})
         helpers = [(n, os.path.join(self.web, n)) for n in ("sync.sh", "plugin_list.awk")]
         open(os.path.join(self.web, "catalog.tsv"), "w").write(self.catalog_site.tsv(cat, helpers))
 
     def store(self, *args, stdin=""):
         env = dict(os.environ, MPC_INSTALL_TEST="1", MPC_SETTINGS=self.settings_path, MPC_TEST_LOG=self.log, MPC_STORE_TMP=self.tmp,
-                   MPC_LEGACY_ROOT=os.path.join(self.tmp, "nolegacy"))
+                   MPC_LEGACY_ROOT=os.path.join(self.tmp, "nolegacy"),
+                   ADDIN_INSTALL_TEST="1", SYSTEMD_ROOT=os.path.join(self.tmp, "root"), ADDIN_TEST_LOG=os.path.join(self.tmp, "addin.log"),
+                   MPC_ADDINS=os.path.join(self.tmp, "addins"))
         if os.environ.get("INSTALLER_TEST_PATH"):
             env["PATH"] = os.environ["INSTALLER_TEST_PATH"]
         cmd = ["sh", os.path.join(HERE, "mpc-store.sh"), "-y", "-t", self.synths, "--url", "http://127.0.0.1:%d/catalog.tsv" % self.port, *args]
@@ -1101,6 +1113,56 @@ class StoreTest(Base):
         self.assertEqual(self.entries()["Test Synth"], os.path.join(self.synths, self.SKIN, "test_synth.so"))
         self.assertEqual(self.calls(), ["stop", "start"])    # its own stop and start; the store adds none
         self.assertEqual(self.state()[0][:2], ["test-synth", v])
+
+    MANIFEST = AddinTest.MANIFEST
+
+    def addin_unit(self):
+        d = os.path.join(self.tmp, "root", "usr", "lib", "systemd", "system")
+        os.makedirs(d, exist_ok=True)
+        self.unit = os.path.join(d, "acvs.service")
+        open(self.unit, "w").write("[Service]\nEnvironment=LD_PRELOAD=/usr/lib/x.so\n")
+        return os.path.join(self.tmp, "addins", "test-addin")
+
+    def test_addins_install_with_plugins_in_one_restart_update_and_remove(self):
+        folder = self.addin_unit()
+        a1 = AddinTest.build_addin(self, version="1.2.0")
+        self.write_catalog(["1.2.0"], addins=[("1.2.0", a1)])
+        r = self.store("list")
+        self.assertIn("Test addin (addin)", r.stdout)
+        r = self.store("install", "test-synth", "test-addin")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.calls(), ["stop", "start"])                        # one restart for the plugin and the addin
+        self.assertNotIn("restart", open(os.path.join(self.tmp, "addin.log")).read())
+        self.assertIn("LD_PRELOAD=/usr/lib/x.so:%s/libtest.so" % folder, open(self.unit).read())
+        for f in ("libtest.so", "test.conf", "helper", "uninstall.sh", "addin-lib.sh", "addin.manifest"):
+            self.assertTrue(os.path.exists(os.path.join(folder, f)), f)
+        self.assertEqual([x[0] for x in self.state()], ["test-synth"])          # the addin's folder records its version
+        self.assertRegex(self.store("list").stdout, r"test-addin\s+1\.2\.0\s+1\.2\.0")
+        open(os.path.join(folder, "test.conf"), "w").write("mine\n")
+        a2 = AddinTest.build_addin(self, version="1.3.0")
+        self.write_catalog(["1.2.0"], addins=[("1.2.0", a1), ("1.3.0", a2)])
+        r = self.store("update")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("test-addin: 1.2.0 -> 1.3.0", r.stdout)
+        self.assertIn("ADDIN_VERSION=1.3.0", open(os.path.join(folder, "addin.manifest")).read())
+        self.assertEqual(open(os.path.join(folder, "test.conf")).read(), "mine\n")   # the settings survive an update
+        settings = open(self.settings_path).read()
+        r = self.store("remove", "test-addin")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(folder))
+        self.assertEqual(open(self.unit).read(), "[Service]\nEnvironment=LD_PRELOAD=/usr/lib/x.so\n")
+        self.assertEqual(open(self.settings_path).read(), settings)                  # MPC.settings is not touched for an addin
+        self.assertFalse([n for n in os.listdir(self.tmp) if ".bak-store" in n])
+        self.assertEqual(self.calls()[-2:], ["stop", "start"])
+        self.assertNotEqual(self.store("remove", "test-addin").returncode, 0)         # not installed any more
+
+    def test_an_addin_folder_without_a_version_is_manual(self):
+        folder = self.addin_unit()
+        self.write_catalog(["1.2.0"], addins=[("1.2.0", AddinTest.build_addin(self))])
+        os.makedirs(folder)
+        open(os.path.join(folder, "addin.manifest"), "w").write("ADDIN_ID=test-addin\nADDIN_SO=libtest.so\n")
+        self.assertRegex(self.store("list").stdout, r"test-addin\s+1\.2\.0\s+manual")
+        self.assertIn("Nothing installed", self.store("update").stdout)
 
     def test_prune_keeps_the_newest_backups_and_touches_nothing_else(self):
         base = self.settings_path
