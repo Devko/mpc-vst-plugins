@@ -230,6 +230,102 @@ class LayoutWarningTest(unittest.TestCase):
         self.assertEqual(gen_vst.layout_warnings({"name": "X"}), [])
 
 
+class AddinTest(Base):
+    """tools/release_addin.py packages an addin (a library MPC preloads) and catalog_check.py validates it."""
+    MANIFEST = ('# a test addin\nADDIN_ID=test-addin\nADDIN_NAME="Test addin"   # shown\nADDIN_SO=libtest.so\n'
+                'ADDIN_CONF=test.conf\nADDIN_FILES="helper"\nADDIN_DONE="Open it."\n')
+
+    def build_addin(self, manifest=None, machine=40, version="1.2.0", repo="acme/mpc-addin-test"):
+        d = os.path.join(self.tmp, "pkg")
+        os.makedirs(d, exist_ok=True)
+        open(os.path.join(d, "addin.manifest"), "w").write(manifest or self.MANIFEST)
+        fake_so(os.path.join(d, "libtest.so"), machine)
+        open(os.path.join(d, "test.conf"), "w").write("x=1\n")
+        open(os.path.join(d, "helper"), "w").write("data\n")
+        out = os.path.join(self.tmp, "dist")
+        r = subprocess.run([sys.executable, os.path.join(HERE, "release_addin.py"), "--dir", d, "--version", version,
+                            "--repo", repo, "--license", "MIT", "-o", out], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return os.path.join(out, "Test-addin-%s-mpc-armv7.zip" % version)
+
+    def rezip(self, zpath, fn):
+        """Rewrite the package through fn({relative name: bytes}) and fix SHA256SUMS."""
+        import hashlib
+        with zipfile.ZipFile(zpath) as z:
+            top = z.infolist()[0].filename.split("/")[0]
+            data = {i.filename[len(top) + 1:]: z.read(i) for i in z.infolist()}
+        fn(data)
+        data["SHA256SUMS"] = "".join("%s  %s\n" % (hashlib.sha256(v).hexdigest(), k) for k, v in sorted(data.items())
+                                     if k != "SHA256SUMS").encode()
+        out = zpath + ".r.zip"
+        with zipfile.ZipFile(out, "w") as z:
+            for k, v in data.items():
+                z.writestr(top + "/" + k, v)
+        return out
+
+    def errors(self, zpath):
+        return catalog_check.check(zpath, catalog=True, expect_id="test-addin", expect_repo="acme/mpc-addin-test")[0]
+
+    def test_good_addin(self):
+        z = self.build_addin()
+        errors, warnings, rec = catalog_check.check(z, catalog=True, expect_id="test-addin", expect_repo="acme/mpc-addin-test")
+        self.assertEqual((errors, warnings), ([], []))
+        m = rec["manifest"]
+        self.assertEqual((m["kind"], m["layout"], m["so"], m["conf"], m["files"], m["user_data"]),
+                         ("addin", "addin", "libtest.so", "test.conf", ["helper"], ["test.conf"]))
+        self.assertTrue(rec["defer"])
+        with zipfile.ZipFile(z) as zf:
+            am = zf.read("Test-addin-1.2.0/addin.manifest").decode()
+            for f in catalog_check.ADDIN_SCRIPTS:
+                self.assertEqual(zf.read("Test-addin-1.2.0/" + f), open(os.path.join(HERE, "release", "addin", f), "rb").read())
+                self.assertEqual(zf.getinfo("Test-addin-1.2.0/" + f).external_attr >> 16 & 0o777, 0o755)
+        self.assertTrue(am.endswith("ADDIN_VERSION=1.2.0\n"), am)
+
+    def test_release_refuses_bad_input(self):
+        for bad in ("ADDIN_ID=Test_Addin\nADDIN_SO=libtest.so\n", "ADDIN_ID=t\nADDIN_SO=libtest.so\nADDIN_FILES=missing\n",
+                    "ADDIN_ID=t\nADDIN_SO=$(reboot)\n", "ADDIN_ID=t\nADDIN_SO=libtest.so\nADDIN_CONF=install.sh\n"):
+            shutil.rmtree(os.path.join(self.tmp, "pkg"), ignore_errors=True)
+            d = os.path.join(self.tmp, "pkg"); os.makedirs(d)
+            open(os.path.join(d, "addin.manifest"), "w").write(bad)
+            fake_so(os.path.join(d, "libtest.so"))
+            open(os.path.join(d, "install.sh"), "w").write("")
+            r = subprocess.run([sys.executable, os.path.join(HERE, "release_addin.py"), "--dir", d, "--version", "1.0.0",
+                                "-o", os.path.join(self.tmp, "o")], capture_output=True, text=True)
+            self.assertNotEqual(r.returncode, 0, bad)
+
+    def test_tampering_is_caught(self):
+        z = self.build_addin()
+        cases = [
+            ("a manifest that runs code", lambda d: d.__setitem__("addin.manifest", d["addin.manifest"] + b"ADDIN_DONE=$(reboot)\n"),
+             "not a plain assignment"),
+            ("an unknown key", lambda d: d.__setitem__("addin.manifest", d["addin.manifest"] + b"LD_PRELOAD=/x.so\n"), "known key"),
+            ("a manifest that disagrees", lambda d: d.__setitem__("addin.manifest", d["addin.manifest"].replace(b"libtest.so", b"other.so")),
+             "ADDIN_SO"),
+            ("an extra file", lambda d: d.__setitem__("payload.sh", b"x"), "unexpected file payload.sh"),
+            ("a missing data file", lambda d: d.pop("helper"), "missing helper"),
+            ("a library that is not ELF", lambda d: d.__setitem__("libtest.so", b"#!/bin/sh"), "not an ELF"),
+            ("an x86 library", lambda d: d.__setitem__("libtest.so", d["libtest.so"][:18] + (62).to_bytes(2, "little") + d["libtest.so"][20:]),
+             "32-bit ARM"),
+            ("a plugin kind", lambda d: d.__setitem__("mpc-plugin.json", d["mpc-plugin.json"].replace(b'"kind": "addin"', b'"kind": "effect"')),
+             "kind must be addin"),
+            ("no installer library", lambda d: d.pop("addin-lib.sh"), "missing addin-lib.sh"),
+        ]
+        for what, fn, expect in cases:
+            errors = self.errors(self.rezip(z, fn))
+            self.assertTrue(any(expect in e for e in errors), "%s: %s" % (what, errors))
+
+    def test_modified_installer_warns(self):
+        z = self.rezip(self.build_addin(), lambda d: d.__setitem__("install.sh", d["install.sh"] + b"\n# changed\n"))
+        errors, warnings, _ = catalog_check.check(z, catalog=True)
+        self.assertEqual(errors, [])
+        self.assertTrue(any("install.sh differs" in w for w in warnings), warnings)
+
+    def test_installer_shell_tests(self):
+        """tools/test_addin.sh: the LD_PRELOAD installer against scratch systemd trees."""
+        r = subprocess.run(["bash", os.path.join(HERE, "test_addin.sh")], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-2000:])
+
+
 class FakeGitHub:
     def __init__(self, releases, zips):
         self.releases, self.zips = releases, zips
