@@ -36,6 +36,11 @@ once for a batch (`DEFER=1` in the script tells batch installers so). The folder
 `addin-lib.sh` and `addin.manifest`, so `sh /data/mpc-addins/<id>/uninstall.sh` removes the addin later without the
 release; that is what `mpc-store.sh remove` and the desktop app run.
 
+An addin runs inside MPC before MPC sets itself up, so it must not take anything MPC needs first. The DRM card is
+the known case: whatever opens `/dev/dri/card*` first, while the card has no master, becomes the
+master, and MPC then fails with "Failed to initialise display". An addin (or a helper tool) that opens the card must
+call `DRM_IOCTL_DROP_MASTER` right after opening it (NOTES.md, 2026-10-03).
+
 ## addin.manifest
 
 Next to the addin's files, in its build output. `install.sh` sources it as root, so it may hold only plain
