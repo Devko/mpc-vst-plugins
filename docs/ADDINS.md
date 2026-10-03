@@ -53,7 +53,7 @@ ADDIN_NAME="MPC Remote"               # shown to the user
 ADDIN_SO=mpc_remote_addin.so          # preloaded into MPC
 ADDIN_CONF=mpc_remote_addin.conf      # installed only when the folder has none ("" none)
 ADDIN_FILES="standalone"              # other files, replaced on every install ("" none)
-ADDIN_DONE="Open http://<device>:8080 in a browser."   # printed at the end ("" none)
+ADDIN_DONE="Open http://<device>:6720 in a browser."   # printed at the end ("" none)
 ```
 
 `ADDIN_VERSION` is added by `tools/release_addin.py`. File names are plain names (no `/`, no leading `.`) and may not
