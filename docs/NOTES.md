@@ -13,7 +13,8 @@ from the Force and may differ on MPC Live/One/X/Key (e.g. `Force Documents` vs `
   `<PLUGIN name="X" descriptiveName="X" format="VST" category="Synth|Effect" manufacturer="V"
   version="1.0" file="/sdcard/vst/x.so" uid="<hex uniqueID>" isInstrument="0|1" fileTime="0"
   infoUpdateTime="0" numInputs="2" numOutputs="2" isShell="0"/>`
-- Device: armv7l, glibc 2.39 (build with an older glibc, e.g. `arm32v7/gcc:12` docker = 2.36).
+- Device: armv7l, glibc 2.39 on MPC OS 3.x (2.32 on MPC OS 2.x). Build with an older glibc: `arm32v7/gcc:11-bullseye` (2.31) is what
+  `build_port.sh` uses since 2026-10-02; `arm32v7/gcc:12` (2.36) binds some pthread symbols to `GLIBC_2.34` and does not load on 2.x.
 - Audio: 44100 Hz, 128-frame period; the engine interface (`wrapper/engine.h`) renders in exactly those blocks.
 - AEffect magic must be `'VstP'` (0x56737450). **The forum snippet's magic is wrong.**
 - Instruments: set `effFlagsIsSynth`, category 2, answer `effCanDo "receiveVstEvents"`;
@@ -818,6 +819,45 @@ uninstall from either backup, upgrade from the earlier patches, refusal of other
 layout, pads 1-n play voices 1-n). Needs plugin notes 0-15 for the pads (the tr-drums ports remap them). To add a plugin: add its exact
 plugin name to the table, rebuild (`asm.sh`, `make_patch.py <stock MPC>`, `build_script.py`) and run both tests.
 
+## Input probe: what MPC sends for a Q-Link turn, a data wheel click and a touch drag (2026-10-03, Force, MPC OS 3.9.1)
+`poc/inputprobe` is a silent plugin with a continuous knob (`cont`), a whole-number knob (`int`, 1..8), a 9-option list
+(`opt`) and a MARK button. It is built with `"defines": {"WRAP_TRACE": 1}`: the wrapper then calls `wrap_trace(kind, index,
+value)` from `setParameter` (kind 0) and `getParameter` (kind 1), and the probe's engine writes `/tmp/inputprobe.log`
+(`INPUTPROBE_LOG` moves it; it stops at 2 MB). `WRAP_TRACE` is off by default and costs nothing then. Why: #90 reports every
+Q-Link event as one 1/128 step from the value MPC last read back (Key 37), while #130 reports data wheel ticks as the
+current value plus a fraction of a step and drag/Q-Link sweeps measured from where they started (MPC One); the wrapper cannot tell
+a wheel click from a Q-Link event by the number alone, so the two stepping designs need real numbers per device.
+
+Log lines: `<ms> S <key> <host value> <value in the param's units>` (a raw setParameter), `<ms> G ...` (what getParameter
+returned, only when it changed), `<ms> E <key> <string>` (what the wrapper handed the engine after rounding/stepping),
+`<ms> MARK <n>` (the MARK button).
+
+Test (one control at a time, tap MARK before each step so the log splits cleanly): focus the control, then (1) one slow click or
+nudge, (2) five slow ones in a row, (3) one fast spin, (4) a reversal, (5) a touch drag across the control. Do it with the
+Q-Link knob of that control and with the data wheel. Read `S` values to get the delta per event (in the param's own units: option
+index, whole number, or the 0..1 value), and compare each `S` with the `G` just before it to see whether MPC measures from the
+read-back value or from where the gesture started. Results go here, with the device, MPC OS version and date.
+
+**Result (2026-10-03, Akai Force, MPC OS 3.9.1; one run, one device; Key 37 and MPC One not re-measured).** Every `S` is the
+value MPC last read back (`G`) plus a small delta: nothing is measured from where a gesture started, for either input. Deltas
+below are in 1/128 of the host's 0..1 range:
+- **Q-Link, `cont` and `int`:** exactly 1 per event, one event per click. A fast spin sends 1..3 per event; a reversal is the same
+  size, negative. (`int` 1..8: 1/128 of the range is 0.055 of a whole number.)
+- **Data wheel, `cont` and `int`:** exactly 1.28 (0.01) per event, one event per click; fast spin 1.28 and 2.56. Reversal negative.
+- **Touch drag, either control:** about 4 to 7 (0.04) per event, still from the last read-back, so a drag is a stream of larger nudges.
+- **`opt` (9 options), Q-Link:** 1 per event (0.0625 of an option), 1..3 on a fast turn, negative on a reversal.
+- **`opt`, data wheel:** 1.28 and 1.92 alternating (0.08 and 0.12 of an option) per event, one event per click; each event lands
+  between options, so today's wrapper steps one option per click. The first attempt produced no `setParameter` at all (the
+  wrapper logs before it acts, so MPC sent nothing); after a retry the wheel drove it. What changed between the two attempts
+  (focus or tile selection) was not recorded.
+- **Tap on an option tile:** one `S` on the exact option (a jump of up to 7 options).
+- **Distinguishing wheel from Q-Link by delta:** not reliable. A slow wheel click (1.28) is only 28% above a Q-Link click (1),
+  a fast Q-Link event (2..3) overlaps the wheel's 1.92 and 2.56, and a drag overlaps a fast spin. Treat both as "a small delta
+  from the read-back value".
+- **Consequence for #90 and #130:** counting several events per option (#90's `QLINK_TICKS` 3) also applies to wheel clicks, which
+  arrive one per detent: three clicks per option. Tick counting therefore has to be a per-param opt-in (`qlink_ticks`, default 1),
+  not a wrapper-wide default, until the wheel can be told apart.
+
 ## 2026-10-03: MPC OS 2.15.1: plugins load, skins do not draw (user reports on an MPC Live, plus other 2.x users; not reproduced by us)
 
 Unit: MPC Live (first generation), MPC OS 2.15.1, Buildroot 2021.02, BusyBox userland (no `ldd`, `file`; `head -n`, not `head -3`), `armv7l`. MPC runs as `inmusic-mpc.service`; there is no `acvs`.
@@ -836,3 +876,15 @@ Patched checksum `7cf96599ec61b1079688f253f3b65b9f`. The script recognises the p
 earlier version and upgrades it. Offline: `test_matcher.sh` (qemu-user, 8 names match, 15 others fall through) and
 `test_script.sh` (BusyBox 1.36, 23 cases incl. upgrade from `f899e581...`; working copies are removed between cases to keep a
 tmpfs from filling) all pass. Not yet run on a device in this form.
+
+## 2026-10-03: Force SSD is mounted `noexec`, plugins installed there only show "Load Plugin" (user report, Force, volume `/media/SSD - Force`)
+
+A user batch-installed plugins to the Force's SSD with the desktop installer: all listed under VST, each shows only "Load Plugin" when added to a track. The same plugins installed to the SD card load fine. The user's mount line:
+```
+/dev/sda1 on /media/SSD - Force type exfat (rw,nosuid,nodev,noexec,relatime,nosymfollow,fmask=0022,dmask=0022,iocharset=utf8,errors=remount-ro,uhelper=edisksd)
+```
+- **Cause: `noexec`.** MPC cannot `dlopen` a `.so` from that mount. Not the plugin build, not the glibc, and not the spaces in the volume name. This differs from the 2026-09-29 test, where an exFAT USB stick (`/dev/sda1`, no `noexec`) loaded and played, so the options depend on how the drive is mounted (here `uhelper=edisksd`, a drive in the Force's SSD slot): always check the mount line, not the filesystem.
+- Independent report (issue #150, Force Gen1, MPC OS 3.9.1): the ForceHD SSD is `noexec`; their patch makes only `/media/ForceHD/vst` executable and loads Dexed and Plaits from it. Not run by us.
+- Workaround: install to the internal drive or an SD card (`/sdcard/Synths`).
+- **Desktop app bug found while looking (not the cause), fixed:** `readInfo` (`tools/desktop/device.go`) took the mount point from `df ... $NF`, so `/media/SSD - Force` became `Force`; the `/proc/mounts` lookup then found nothing (it writes spaces as `\040`) and the filesystem and options came back empty, which also skipped the symlink and read-only checks. It now reads `df -kP` fields 6+ and matches the escaped name.
+- **noexec check (host tests only, not run on a Force):** the app flags a location mounted `noexec` (`Root.NoExec`, a note on the location, install refused with the reason); `install.sh` prints a warning (it still installs, so a hand-made exec mount is not blocked). Tests: `TestNoexecMountWithSpacesInItsNameIsFlaggedAndRefused` (fake BusyBox-style `df` line and an escaped `/proc/mounts` line; fails with the old parsing), `tools.test_catalog` (70 OK), `install.sh` fragment run against a fake `df` and `/proc/mounts` with and without `noexec`.
