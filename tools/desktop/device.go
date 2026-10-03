@@ -273,10 +273,11 @@ for r in %s; do
 done
 SET=$(ls %s 2>/dev/null | head -n 1)
 if [ -n "$SET" ]; then sed -n 's/.*<Location>\(.*\)<\/Location>.*/loc=\1/p' "$SET"; fi
+mval() { sed -n "s/^$1=//p" "$2" | head -n 1 | sed -e 's/^"\([^"]*\)".*/\1/;t' -e "s/^'\\([^']*\\)'.*/\\1/;t" -e 's/[[:space:]]*#.*//'; }
 for d in %s/*/; do
   f="${d}addin.manifest"; [ -f "$f" ] || continue
   u=0; [ -f "${d}uninstall.sh" ] && u=1
-  printf 'addin=%%s\t%%s\t%%s\t%%s\n' "$(basename "$d")" "$(sed -n 's/^ADDIN_VERSION=//p' "$f" | head -n 1)" "$u" "$(sed -n 's/^ADDIN_NAME=//p' "$f" | head -n 1)"
+  printf 'addin=%%s\t%%s\t%%s\t%%s\n' "$(basename "$d")" "$(mval ADDIN_VERSION "$f")" "$u" "$(mval ADDIN_NAME "$f")"
 done
 true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp), d.cfg.RootGlobs, shQuote(d.cfg.MountsFile), d.cfg.SettingsGlob, shQuote(d.cfg.AddinsDir))
 	info := DeviceInfo{Host: host, Fingerprint: fp, Synths: d.cfg.SynthsDir, Installed: []string{}, Store: map[string]string{}, Stores: map[string]map[string]string{}}

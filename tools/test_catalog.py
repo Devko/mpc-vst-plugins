@@ -1188,6 +1188,13 @@ class StoreTest(Base):
         self.assertRegex(self.store("list").stdout, r"test-addin\s+1\.2\.0\s+manual")
         self.assertIn("Nothing installed", self.store("update").stdout)
 
+    def test_a_quoted_addin_version_is_read_without_its_quotes(self):
+        folder = self.addin_unit()
+        self.write_catalog(["1.2.0"], addins=[("1.2.0", AddinTest.build_addin(self))])
+        os.makedirs(folder)
+        open(os.path.join(folder, "addin.manifest"), "w").write('ADDIN_ID=test-addin\nADDIN_SO=libtest.so\nADDIN_VERSION="1.2.0"   # a note\n')
+        self.assertRegex(self.store("list").stdout, r"test-addin\s+1\.2\.0\s+1\.2\.0")
+
     def test_prune_keeps_the_newest_backups_and_touches_nothing_else(self):
         base = self.settings_path
         for i in range(12):   # bak-...-01 is the oldest, -12 the newest

@@ -63,9 +63,12 @@ row() {   # row <id> [version]: the catalog line (latest when no version)
     awk -F'\t' -v id="$1" -v v="${2:-}" '$1 == "plugin" && $2 == id && ((v == "" && $4 == 1) || (v != "" && $3 == v)) { print; exit }' "$W/catalog.tsv"
 }
 col() { echo "$1" | cut -d"$TAB" -f"$2"; }   # plugin id version latest kind name skin uid param_compat size sha256 url user_data
+manifest_value() {   # manifest_value <key> <file>: as the installer's shell reads it, quotes and a trailing comment dropped
+    sed -n "s/^$1=//p" "$2" | head -n 1 | sed -e 's/^"\([^"]*\)".*/\1/;t' -e "s/^'\\([^']*\\)'.*/\\1/;t" -e 's/[[:space:]]*#.*//'
+}
 addin_version() {   # the version an installed addin's folder records ("" for one installed without a catalog release)
     case "$1" in ""|*/*|.*) return 0 ;; esac
-    [ -f "$ADDINS/$1/addin.manifest" ] && sed -n 's/^ADDIN_VERSION=//p' "$ADDINS/$1/addin.manifest" | head -n 1 || true
+    [ -f "$ADDINS/$1/addin.manifest" ] && manifest_value ADDIN_VERSION "$ADDINS/$1/addin.manifest" || true
 }
 installed_version() {
     v=$(addin_version "$1"); [ -z "$v" ] || { echo "$v"; return 0; }
