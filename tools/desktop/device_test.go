@@ -31,6 +31,18 @@ func TestDialReadsTheDeviceAndRefusesBadInput(t *testing.T) {
 	}
 }
 
+func TestDialWithoutPasswordOrKey(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // no ~/.ssh keys
+	if _, err := Dial("127.0.0.1", "", newFakeDevice(t).cfg()); err == nil || !strings.Contains(err.Error(), "enter the device's password") {
+		t.Errorf("a device that wants a password must ask for one, got %v", err)
+	}
+	d, err := Dial("127.0.0.1", "", newOpenFakeDevice(t).cfg())
+	if err != nil {
+		t.Fatalf("a device whose root has no password must connect with none: %v", err)
+	}
+	d.Close()
+}
+
 func TestProblemsExplainWhyADeviceIsRefused(t *testing.T) {
 	p := DeviceInfo{Arch: "x86_64", UID: "1000"}.problems()
 	if len(p) < 4 {

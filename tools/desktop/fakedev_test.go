@@ -28,7 +28,12 @@ type fakeDevice struct {
 	mpcLog string // systemctl calls, one per line
 }
 
-func newFakeDevice(t *testing.T) *fakeDevice {
+func newFakeDevice(t *testing.T) *fakeDevice { t.Helper(); return newFake(t, false) }
+
+// newOpenFakeDevice: a device whose root has no password, so the "none" method logs in (some modified firmware).
+func newOpenFakeDevice(t *testing.T) *fakeDevice { t.Helper(); return newFake(t, true) }
+
+func newFake(t *testing.T, open bool) *fakeDevice {
 	t.Helper()
 	dir := t.TempDir()
 	fd := &fakeDevice{t: t, dir: dir, shims: filepath.Join(dir, "shims"), mpcLog: filepath.Join(dir, "mpc.log")}
@@ -53,7 +58,7 @@ func newFakeDevice(t *testing.T) *fakeDevice {
 			return nil, nil
 		}
 		return nil, io.ErrUnexpectedEOF
-	}}
+	}, NoClientAuth: open}
 	conf.AddHostKey(signer)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

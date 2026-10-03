@@ -163,10 +163,9 @@ func Dial(host, password string, cfg Config) (*Device, error) {
 	if !validHost(host) {
 		return nil, errors.New("use the address as numbers and dots (or a host name)")
 	}
+	// With no password and no key, auth is empty and the client offers only "none", which a device whose root has no
+	// password (some modified firmware) accepts.
 	auth := authMethods(password)
-	if len(auth) == 0 {
-		return nil, errors.New("enter the device's password (no SSH key was found on this computer)")
-	}
 	var fp string
 	conf := &ssh.ClientConfig{
 		User: cfg.User, Auth: auth, Timeout: 10 * time.Second,
@@ -174,6 +173,9 @@ func Dial(host, password string, cfg Config) (*Device, error) {
 	}
 	c, err := ssh.Dial("tcp", net.JoinHostPort(host, cfg.Port), conf)
 	if err != nil {
+		if len(auth) == 0 && strings.Contains(err.Error(), "unable to authenticate") {
+			return nil, errors.New("enter the device's password (no SSH key was found on this computer)")
+		}
 		return nil, fmt.Errorf("cannot log in to %s: %w", host, err)
 	}
 	d := &Device{client: c, cfg: cfg}
