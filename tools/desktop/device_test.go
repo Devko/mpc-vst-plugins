@@ -176,7 +176,7 @@ func TestARefusedDeviceIsNotTouched(t *testing.T) {
 
 func TestInstallScriptQuotesEverything(t *testing.T) {
 	p := &Package{Title: "It's; rm -rf / \"x\"", Defer: true, Plugins: []Manifest{{ID: "a", Version: "1", Skin: "a'b - VST - $(x)", ParamCompat: 1}}}
-	s := installScript("/sd card/Synths", "/tmp/x y", []*Package{p})
+	s := installScript("/sd card/Synths", "/data/mpc-addins", "/tmp/x y", []*Package{p})
 	for _, must := range []string{`'/sd card/Synths'`, `'Installing It'\''s; rm -rf / "x"'`, `'a'\''b - VST - $(x)'`} {
 		if !strings.Contains(s, must) {
 			t.Errorf("script must contain %s:\n%s", must, s)

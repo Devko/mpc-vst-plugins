@@ -25,10 +25,11 @@ type Config struct {
 	RootGlobs    string // where to look for plugin locations, shell words (globs allowed): "/sdcard/Synths /media/*/Synths"
 	SettingsGlob string // where MPC.settings is
 	MountsFile   string // the list of mounts, "/proc/mounts"
+	AddinsDir    string // where addins live, one folder each: "/data/mpc-addins"
 }
 
 func defaultConfig() Config {
-	return Config{Port: "22", User: "root", RemoteTmp: "/tmp", SynthsDir: "/sdcard/Synths", RootGlobs: "/sdcard/Synths /media/*/Synths", MountsFile: "/proc/mounts", SettingsGlob: "/media/az01-internal/Settings/*/MPC.settings"}
+	return Config{Port: "22", User: "root", RemoteTmp: "/tmp", SynthsDir: "/sdcard/Synths", RootGlobs: "/sdcard/Synths /media/*/Synths", MountsFile: "/proc/mounts", SettingsGlob: "/media/az01-internal/Settings/*/MPC.settings", AddinsDir: "/data/mpc-addins"}
 }
 
 type DeviceInfo struct {
@@ -45,6 +46,7 @@ type DeviceInfo struct {
 	Installed   []string                     `json:"installed"` // names of the plugin folders found in any of them
 	Store       map[string]string            `json:"store"`     // plugin id -> version recorded by this app or mpc-store.sh, in the internal drive
 	Plugins     []DevPlugin                  `json:"-"`
+	Addins      []DevAddin                   `json:"-"`
 	Stores      map[string]map[string]string `json:"-"` // root path -> plugin id -> recorded version
 }
 
@@ -104,6 +106,15 @@ type DevPlugin struct {
 	Folder string `json:"folder"`
 	UID    string `json:"uid"`
 	Name   string `json:"name"`
+}
+
+// DevAddin is an addin folder on the device (one with an addin.manifest). Removable: it carries its own uninstall.sh (every addin
+// installed from a catalog release does); Version is "" for an addin installed without one.
+type DevAddin struct {
+	ID        string
+	Name      string
+	Version   string
+	Removable bool
 }
 
 type Device struct {
@@ -260,7 +271,12 @@ for r in %s; do
 done
 SET=$(ls %s 2>/dev/null | head -n 1)
 if [ -n "$SET" ]; then sed -n 's/.*<Location>\(.*\)<\/Location>.*/loc=\1/p' "$SET"; fi
-true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp), d.cfg.RootGlobs, shQuote(d.cfg.MountsFile), d.cfg.SettingsGlob)
+for d in %s/*/; do
+  f="${d}addin.manifest"; [ -f "$f" ] || continue
+  u=0; [ -f "${d}uninstall.sh" ] && u=1
+  printf 'addin=%%s\t%%s\t%%s\t%%s\n' "$(basename "$d")" "$(sed -n 's/^ADDIN_VERSION=//p' "$f" | head -n 1)" "$u" "$(sed -n 's/^ADDIN_NAME=//p' "$f" | head -n 1)"
+done
+true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp), d.cfg.RootGlobs, shQuote(d.cfg.MountsFile), d.cfg.SettingsGlob, shQuote(d.cfg.AddinsDir))
 	info := DeviceInfo{Host: host, Fingerprint: fp, Synths: d.cfg.SynthsDir, Installed: []string{}, Store: map[string]string{}, Stores: map[string]map[string]string{}}
 	var lines []string
 	var mu sync.Mutex
@@ -296,6 +312,18 @@ true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp), d
 			if len(f) >= 4 {
 				free, _ := strconv.ParseInt(strings.TrimSpace(f[2]), 10, 64)
 				cands = append(cands, Root{Path: f[0], ID: f[1], FreeKB: free, FS: f[3]})
+			}
+		case "addin":
+			if len(f) >= 4 && idRe.MatchString(f[0]) {
+				name := strings.TrimSpace(f[3])
+				if i := strings.Index(name, "  #"); i >= 0 { // a trailing comment
+					name = strings.TrimSpace(name[:i])
+				}
+				name = strings.Trim(name, `"'`)
+				if name == "" {
+					name = f[0]
+				}
+				info.Addins = append(info.Addins, DevAddin{ID: f[0], Name: name, Version: strings.Trim(f[1], `"'`), Removable: f[2] == "1"})
 			}
 		case "plug":
 			if len(f) >= 4 {

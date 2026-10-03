@@ -43,6 +43,12 @@ one MPC stop and start around the whole batch when the installers allow it.
    the newest is never deleted, and only files named like that are touched). MPC is not stopped. `mpc-store.sh prune [--keep N]` does the
    same on the device.
 
+**Addins** (catalog kind `addin`: libraries MPC loads when it starts, `docs/ADDINS.md`) go through the same steps. A catalog addin or a
+dropped addin zip installs to `/data/mpc-addins/<id>` with its own `install.sh -y -n`, inside the same single MPC stop and start, whatever
+location step 3 picked. Step 4 lists the addins found there after the plugins; one installed from a release carries its own `uninstall.sh`,
+which removal runs (it takes the addin out of MPC's `LD_PRELOAD` and deletes its folder; `MPC.settings` is not touched). An addin
+installed without a release has none and is listed but not removable here.
+
 The catalog says, for every version, whether its installer understands `-n` (`defer` in `catalog.json`, the last column of `catalog.tsv`).
 The page uses that to state the exact number of MPC restarts before you confirm, and marks releases whose older installer restarts MPC by
 itself. A zip you drop in is inspected directly.
