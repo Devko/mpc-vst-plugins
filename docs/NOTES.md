@@ -881,3 +881,17 @@ A user batch-installed plugins to the Force's SSD with the desktop installer: al
 - Workaround: install to the internal drive or an SD card (`/sdcard/Synths`).
 - **Desktop app bug found while looking (not the cause), fixed:** `readInfo` (`tools/desktop/device.go`) took the mount point from `df ... $NF`, so `/media/SSD - Force` became `Force`; the `/proc/mounts` lookup then found nothing (it writes spaces as `\040`) and the filesystem and options came back empty, which also skipped the symlink and read-only checks. It now reads `df -kP` fields 6+ and matches the escaped name.
 - **noexec check (host tests only, not run on a Force):** the app flags a location mounted `noexec` (`Root.NoExec`, a note on the location, install refused with the reason); `install.sh` prints a warning (it still installs, so a hand-made exec mount is not blocked). Tests: `TestNoexecMountWithSpacesInItsNameIsFlaggedAndRefused` (fake BusyBox-style `df` line and an escaped `/proc/mounts` line; fails with the old parsing), `tools.test_catalog` (70 OK), `install.sh` fragment run against a fake `df` and `/proc/mounts` with and without `noexec`.
+
+## Stepping of option lists and whole numbers: `settle()` (2026-10-04, offline; from #130 and the Force input probe)
+Until now an integer param kept an unrounded "shadow" position so a slow Q-Link turn accumulated, and an option list stepped one
+option per event. Two measurements say that cannot serve both inputs: on a Force (MPC OS 3.9.1, "Input probe" above) a Q-Link event
+is the read-back value plus 1/128 of the range and a data wheel click the read-back value plus 0.01, one event per detent, so the
+wrapper cannot tell them apart; on an MPC One (#130) the wheel on a 1..8 param "only trembled" with the shadow (0.07 of a step per
+click, 14 clicks per step) and a drag or Q-Link sweep, measured from where it started, flickered between two values. `settle()`
+(wrapper/vst2_wrap.c, code from #130 by poloq-instruments) rounds toward the way the value moves: from the host's last position
+while it moves continuously, else from the current value; `shadow[]` is gone. Result: one step per wheel click or Q-Link event, a
+sweep up or down without flicker. Cost: a short whole-number range (1..8) crosses its range in about seven Q-Link events on a Force,
+where the shadow took about 18 per step. Counting several events per step is #90's opt-in `qlink_ticks`, because the wheel then needs
+as many clicks. Test: `poc/steptest` with the stepping section of `tools/host_test.c` (six wheel clicks, six Q-Link events, a sweep
+up and back, for an option list and an integer); on the previous wrapper the same checks fail. Not yet re-checked with a hand on a
+Q-Link or the wheel after this change.
