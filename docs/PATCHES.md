@@ -93,7 +93,7 @@ checks that (1) a wrong sha256 is refused before anything is copied, (2) `status
 (5) a non-zero exit is reported as failed and never as applied, (6) unsupported firmware offers no Apply. Mutation-check each (remove the check, see the test fail). Then run the real script under BusyBox against copies of the binary (`test_script.sh`) and once on a real Force with a stock `MPC`.
 
 ### Order of work
-1. `STATE` line and `--confirmed` in `mpc-drum-pad-patch.sh` (template, build, test_script), manifest and `patch_check.py` with a test.
+1. **Done (2026-10-03, host only):** `STATE` line and `--confirmed` in `mpc-drum-pad-patch.sh` (script v3), `catalog/patches.json`, `tools/patch_check.py`, `tools/test_patches.py` (11 tests, mutation-checked, CI in `.github/workflows/patches.yml`). The script contract is tested on a synthetic stand-in for the MPC binary (checksums rewritten), not on Akai's file or a device; run `tools/mpc_patch/test_script.sh` with the real fixtures and a Force before relying on it. The manifest's licence is `unspecified` until the repo has one.
 2. `patches.go` and `GET /api/patches` with step 7 in read-only mode (stage (b)).
 3. `POST /api/patch`, the confirm box, the fake-device tests (stage (c)); then a Force test of Apply and Undo; then release.
 4. Add Timo's patch only after its script has been read and meets the contract.

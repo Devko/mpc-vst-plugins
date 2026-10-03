@@ -1,4 +1,4 @@
-﻿# Optional: MPC OS drum-pad patch (16-pad drum layout)
+# Optional: MPC OS drum-pad patch (16-pad drum layout)
 
 **Not part of any plugin release.** `mpc-drum-pad-patch.sh` is a standalone script you run on the device yourself, if you want it.
 
@@ -21,6 +21,7 @@ sh /tmp/mpc-drum-pad-patch.sh status      # changes nothing
 sh /tmp/mpc-drum-pad-patch.sh install     # shows the warnings, asks you to type PATCH
 sh /tmp/mpc-drum-pad-patch.sh uninstall   # puts the original bytes back
 ```
+For programs (the installer app's patches step, `docs/PATCHES.md`): `status` ends with one line `STATE state=stock|patched|old-patch|unsupported supported=0|1 backup=0|1`, and `install --confirmed` skips the typed question (the caller has shown the warnings and asked for the word itself). Everything else is unchanged; other firmware is refused either way.
 `install` saves the full original MPC (112 MB) and the original bytes to `/sdcard/MPC-backup` first, checks the result by checksum, and restores the original itself if that fails. A device that has the earlier Machinedrum-only patch is upgraded (the old patch is undone first).
 
 ## Files (maintainers)
