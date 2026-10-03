@@ -6,7 +6,7 @@
       "title": "16-pad drum layout for selected plugins",
       "summary": "Machinedrum Module, 6W6, 8W8, CW-78, 9W9 and TR-MPC get MPC's drum layout with all 16 pads lit.",
       "author": "sd88me",
-      "license": "unspecified",
+      "license": "MIT",
       "docs": "tools/mpc_patch/README.md",
       "script": {
         "url": "https://raw.githubusercontent.com/sd88me/mpc-vst-plugins/a30986609a1453b1657d4a4e5a27fc0195cb0f12/tools/mpc_patch/mpc-drum-pad-patch.sh",
