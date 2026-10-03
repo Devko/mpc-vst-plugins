@@ -851,3 +851,18 @@ Also verified: a vst.json `"tile"` (#90's tooling) shows in the INSTRUMENTS brow
 the track. Presets are indexed at MPC start only: a tile installed without a restart is drawn but its tap does nothing until the next start,
 and the install's own restart covers it. Taps were injected over the network with the remote addin's standalone: a touch needs a hold of
 about 300 ms to register, the first touch after a project opens is often dropped, and a field popup (PLUGIN) opens on a double-tap.
+
+### 2026-10-03: the commander addin loads on the Key 37 without an MPC restart (pre-install check)
+mpc-addin-commander 0.1.0 (the plugins MPC loads, served to a desktop app; a sequencer port for transport and MIDI; a project snapshot)
+was checked on the Key 37 (MPC OS 3.9.1) before any install, by preloading its `.so` into a copy of `/usr/bin/dbus-monitor` renamed `MPC`
+in `/tmp` (the addin gates on the executable's name, so this starts it without touching the real MPC; BusyBox applets can't be used for
+this: a copy named `MPC` says "applet not found"). Verified: it starts and serves on its port; `GET /project` reads `recentProject1` from
+`/media/az01-internal/Settings/MPC/MPC.settings`, inflates the `.xpj` with the device's `libz.so.1` (loaded at run time) and reports the
+real project's tempo, current sequence and 36 tracks with mixer state and plugins (stock instruments show as format `MPC`, e.g. `MPC:Hype`;
+track kinds seen: 0 drum, 3 plugin, 6 audio, 7 return, 8 submix, 9 output, 10 input). **MPC hot-detects a new sequencer client and
+connects it both ways by itself**: within a second of the port appearing, MPC's client 129 had new ports "MPC Commander Out/In" connected to
+the addin's `Out`/`In` (`/proc/asound/seq/clients`), with no restart and no preference change (`MidiDevices.AutoEnableForTracks=1`). Whether
+MPC also sends clock/MMC on such a port without the sync output being enabled in preferences is not verified yet. A leftover check process
+keeps its sequencer client (and MPC's mirror ports) until killed: find it through `/proc/*/exe`, never by the name `MPC`. Release tooling
+found: `release_addin.py`/`release.py` read the glibc requirement by scanning the file for `GLIBC_x.y` strings, so a `dlvsym` version
+name in `.rodata` counted as a requirement; both now parse the ELF version-needs section (41ebc53). The real install (restart) is pending.
