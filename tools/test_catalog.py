@@ -885,8 +885,6 @@ class InstallerTest(Base):
         self.assertEqual(open(self.settings_path).read(), broken)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class SyncTest(Base):
@@ -1251,3 +1249,6 @@ class StoreTest(Base):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("hash", r.stderr)
 
+
+if __name__ == "__main__":
+    unittest.main()
