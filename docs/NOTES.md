@@ -866,3 +866,18 @@ MPC also sends clock/MMC on such a port without the sync output being enabled in
 keeps its sequencer client (and MPC's mirror ports) until killed: find it through `/proc/*/exe`, never by the name `MPC`. Release tooling
 found: `release_addin.py`/`release.py` read the glibc requirement by scanning the file for `GLIBC_x.y` strings, so a `dlvsym` version
 name in `.rodata` counted as a requirement; both now parse the ELF version-needs section (41ebc53). The real install (restart) is pending.
+
+### 2026-10-03: the commander addin installed on the Key 37: plugins, MIDI and transport verified
+Installed with the zip's `install.sh` (one restart; `MPC.settings` backed up first), then restarted once more to swap
+in a fix. Inside MPC with Matt1 open: both NAM instances listed with all 60 params, values and display text; a `set`
+from the computer changed NAM's Bass and MPC showed the new value; a note played into the addin's `In` port with
+`aplaymidi` arrived as `midi_in`. Transport, learned on the device:
+- MPC connects a new sequencer client both ways by itself and lists it as "MPC Commander In" (MPC's output to it) and
+  "MPC Commander Out" (MPC's input from it) in `MidiDevices.Table`, with track on and sync on the output side.
+- With clock sync out on the port, MPC sends MIDI clock (24 per beat at the project tempo). After a restart it sent
+  none until the sync preferences were set again.
+- MPC's Play sends no MIDI start: it sends an MMC locate (`F0 7F 00 06 44 06 01 hh mm ss ff sf F7`, a time code
+  position) then MMC play, and pauses its clock while stopped. A clock-only follower would miss start.
+- Play and stop sent from the computer as MMC (with MIDI real-time alongside) did nothing until **Receive MMC** was on;
+  then MPC obeyed both and reported each change back over MMC. Preference changes are not written to
+  `MPC.settings` right away (still 0 there afterwards), so the file can't be used to check them.
