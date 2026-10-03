@@ -19,7 +19,7 @@ ENTRY = ('<PLUGIN name="Test Synth" format="VST" category="Synth" manufacturer="
          'numInputs="0" numOutputs="2" isShell="0" hasARAExtension="0" uniqueId="0"/>')
 
 
-def fake_so(path, machine=40, glibc=b"GLIBC_2.30"):
+def fake_so(path, machine=40, glibc=b"GLIBC_2.30", elf_class=1):
     """A 32-bit little-endian ELF with just a string table and a version-needs section naming glibc (one need of
     libc.so.6 with one version), the shape the release tools read the glibc requirement from."""
     strtab = b"\0libc.so.6\0" + glibc + b"\0"
@@ -29,7 +29,7 @@ def fake_so(path, machine=40, glibc=b"GLIBC_2.30"):
         + (11).to_bytes(4, "little") + (0).to_bytes(4, "little")                                  # Elf32_Vernaux
     ehdr = bytearray(52)
     ehdr[:4] = b"\x7fELF"
-    ehdr[4], ehdr[5], ehdr[6] = 1, 1, 1                      # 32-bit, little-endian, version 1
+    ehdr[4], ehdr[5], ehdr[6] = elf_class, 1, 1              # 32-bit (unless a test says otherwise), little-endian, version 1
     ehdr[16:18] = (3).to_bytes(2, "little")                  # ET_DYN
     ehdr[18:20] = machine.to_bytes(2, "little")
     body = bytes(ehdr) + strtab + verneed
@@ -69,9 +69,9 @@ class Base(unittest.TestCase):
                 zout.writestr(i, data[i.filename])
         return out
 
-    def build(self, version="1.2.0", machine=40, glibc=b"GLIBC_2.30", extra=()):
+    def build(self, version="1.2.0", machine=40, glibc=b"GLIBC_2.30", extra=(), elf_class=1):
         t = self.tmp
-        fake_so(os.path.join(t, "test_synth.so"), machine, glibc)
+        fake_so(os.path.join(t, "test_synth.so"), machine, glibc, elf_class)
         skin = os.path.join(t, "Acme - VST - Test Synth")
         os.makedirs(os.path.join(skin, "Plugin Skins"), exist_ok=True)
         open(os.path.join(skin, "version.xml"), "w").write("<v/>")
@@ -182,6 +182,8 @@ class CatalogTest(Base):
     def test_wrong_arch_and_glibc(self):
         e, _, _ = catalog_check.check(self.build(machine=62))
         self.assertTrue(any("armv7" in x for x in e))
+        e, _, _ = catalog_check.check(self.build(elf_class=2))   # ARM, but not the 32-bit class
+        self.assertTrue(any("armv7" in x for x in e) and any("not a 32-bit ARM library" in x for x in e), e)
         e, _, _ = catalog_check.check(self.build(glibc=b"GLIBC_2.38"))
         self.assertTrue(any("GLIBC" in x for x in e))
 
@@ -300,6 +302,10 @@ class AddinTest(Base):
                 self.assertEqual(zf.read("Test-addin-1.2.0/" + f), open(os.path.join(HERE, "release", "addin", f), "rb").read())
                 self.assertEqual(zf.getinfo("Test-addin-1.2.0/" + f).external_attr >> 16 & 0o777, 0o755)
         self.assertTrue(am.endswith("ADDIN_VERSION=1.2.0\n"), am)
+
+    def test_a_64_bit_class_arm_library_is_refused(self):
+        z = self.rezip(self.build_addin(), lambda f: f.update({"libtest.so": f["libtest.so"][:4] + b"\x02" + f["libtest.so"][5:]}))
+        self.assertIn("libtest.so is not a 32-bit ARM library", self.errors(z))
 
     def test_release_refuses_bad_input(self):
         for bad in ("ADDIN_ID=Test_Addin\nADDIN_SO=libtest.so\n", "ADDIN_ID=t\nADDIN_SO=libtest.so\nADDIN_FILES=missing\n",

@@ -173,7 +173,10 @@ open(os.path.join(root, "INSTALL.md"), "w").write(install_md)
 
 def elf_machine(path):
     d = open(path, "rb").read(20)
-    return {40: "armv7", 62: "x86_64", 183: "aarch64", 3: "x86"}.get(int.from_bytes(d[18:20], "little"), "unknown") if d[:4] == b"\x7fELF" else "not-elf"
+    if d[:4] != b"\x7fELF":
+        return "not-elf"
+    arch = {40: "armv7", 62: "x86_64", 183: "aarch64", 3: "x86"}.get(int.from_bytes(d[18:20], "little"), "unknown")
+    return arch if arch != "armv7" or d[4:6] == b"\x01\x01" else "unknown"   # ARM, but not 32-bit little-endian
 
 
 def walk(top):

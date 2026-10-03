@@ -26,6 +26,11 @@ ADDIN_SCRIPTS = ("install.sh", "uninstall.sh", "addin-lib.sh")
 ADDIN_FILE = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9._-]*")
 
 
+def arm32(d):
+    """Whether the bytes start an ELF file for MPC OS: 32-bit (EI_CLASS 1), little-endian (EI_DATA 1), ARM (e_machine 40)."""
+    return d[:4] == b"\x7fELF" and d[4:6] == b"\x01\x01" and int.from_bytes(d[18:20], "little") == 40
+
+
 def max_glibc(path):
     """The newest GLIBC_x.y[.z] symbol version the ELF file needs, as "x.y[.z]", from its version-needs section
     (never from a string search: a library may carry a version name as data without needing it). None if it needs
@@ -177,6 +182,8 @@ def check(zpath, catalog=False, expect_id=None, expect_repo=None):
             err("missing " + so_rel)
         elif files[so_rel][:4] != b"\x7fELF":
             err(m["so"] + " is not an ELF file")
+        elif not arm32(files[so_rel]):
+            err(m["so"] + " is not a 32-bit ARM library")
         skin = "payload/Synths/%s/" % m["skin"]
         for need in ("version.xml", "Plugin Skins/TUI.json"):
             if skin + need not in files:
@@ -234,7 +241,7 @@ def check(zpath, catalog=False, expect_id=None, expect_repo=None):
                 err("missing " + f)
         if files.get(m["so"], b"\x7fELF")[:4] != b"\x7fELF":
             err(m["so"] + " is not an ELF file")
-        elif m["so"] in files and int.from_bytes(files[m["so"]][18:20], "little") != 40:
+        elif m["so"] in files and not arm32(files[m["so"]]):
             err(m["so"] + " is not a 32-bit ARM library")
         if not m["so"].endswith(".so"):
             err("so must be a .so")
@@ -264,6 +271,8 @@ def check(zpath, catalog=False, expect_id=None, expect_repo=None):
                     err("plugin folder is missing " + need)
             if files.get(base + m["so"], b"\x7fELF")[:4] != b"\x7fELF":
                 err(m["so"] + " is not an ELF file")
+            elif base + m["so"] in files and not arm32(files[base + m["so"]]):
+                err(m["so"] + " is not a 32-bit ARM library")
             for e in m.get("extras", []):
                 if not any(f == base + e or f.startswith(base + e + "/") for f in files):
                     err("extra %s listed but not in the plugin folder" % e)
