@@ -77,6 +77,29 @@ be the installer's own. An addin finds its settings file in its own folder (the 
 4. Publish it as a GitHub release of the addin's repo and add a registry entry with `"kind": "addin"`
    (`catalog/README.md`). Addins are always release entries, never build-yourself.
 
+### Releasing from CI
+`.github/workflows/addin-release.yml` does steps 1, 2 and 4's upload in GitHub Actions: it builds under QEMU, runs the
+host test, packages and checks the zip, and attaches it to a **draft** release in the addin's repo. Step 3 stays on a
+device, with the draft's zip; publishing the draft creates the tag. Call it from the addin's repo with a
+`workflow_dispatch` workflow that takes the version, pinning this repo to one commit in both places:
+```yaml
+jobs:
+  addin:
+    uses: sd88me/mpc-vst-plugins/.github/workflows/addin-release.yml@<sha>
+    permissions: { contents: write }
+    with:
+      tag: my-addin-v${{ inputs.version }}
+      version: ${{ inputs.version }}
+      tools_ref: <sha>                 # the same commit
+      package_dir: build/package       # the build writes addin.manifest, the .so and the files it names here
+      build: tools/build_armhf.sh      # run from the repo root; MPC_VST is set
+      host_test: tools/test_host.sh    # optional; MPC_VST is set
+      about: One line about the addin.
+      license: MIT                     # needed to be listed in the catalog
+      dry_run: ${{ inputs.dry_run }}   # optional: the zip as a run artifact only
+```
+Re-running with the same version replaces the draft's zip; a version that is already published is refused.
+
 Addin repos are named `mpc-addin-<name>`. For a quick test without a release, unzip the package from step 2 (or copy
 the three installer files next to the build output) and run its `install.sh`.
 
