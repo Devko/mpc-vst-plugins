@@ -25,6 +25,7 @@ type App struct {
 	token      string
 	hosts      map[string]bool // accepted Host headers
 	catalogURL string
+	patchesURL string
 	work       string
 
 	mu      sync.Mutex
@@ -33,11 +34,16 @@ type App struct {
 	cat     []CatPlugin
 	catAt   time.Time
 	job     *Job
+
+	patches   []Patch
+	patchesAt time.Time
+	patchNote string            // why there are no patches (none published yet), shown by the page
+	patchCode map[string][]byte // verified scripts by sha256, so connecting again does not download them again
 }
 
 func NewApp(cfg Config, token, hostport, catalogURL, work string) *App {
 	port := hostport[strings.LastIndex(hostport, ":")+1:]
-	return &App{cfg: cfg, token: token, catalogURL: catalogURL, work: work, uploads: map[string]*Package{},
+	return &App{cfg: cfg, token: token, catalogURL: catalogURL, patchesURL: patchesURLFor(catalogURL), work: work, uploads: map[string]*Package{}, patchCode: map[string][]byte{},
 		hosts: map[string]bool{"127.0.0.1:" + port: true, "localhost:" + port: true}}
 }
 
@@ -59,6 +65,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/backups", a.backups)
 	mux.HandleFunc("/api/prune", a.prune)
 	mux.HandleFunc("/api/job", a.jobStatus)
+	mux.HandleFunc("/api/patches", a.patchList)
 	return a.guard(mux)
 }
 
@@ -719,4 +726,49 @@ func (a *App) prune(w http.ResponseWriter, r *http.Request) {
 	}
 	bi, _ := dev.Backups()
 	writeJSON(w, 200, map[string]any{"deleted": n, "backups": bi})
+}
+
+// patchList is read only: the manifest (cached ten minutes) and, when connected, each patch's state from its script's `status`.
+// Nothing is applied here; while a job runs the device is not asked at all.
+func (a *App) patchList(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	if a.patches == nil || time.Since(a.patchesAt) > 10*time.Minute {
+		a.mu.Unlock()
+		ps, err := FetchPatches(a.patchesURL)
+		a.mu.Lock()
+		switch {
+		case errors.Is(err, errNoPatches):
+			a.patches, a.patchesAt, a.patchNote = []Patch{}, time.Now(), "No device patches are published yet."
+		case err != nil:
+			a.mu.Unlock()
+			fail(w, 502, "cannot read the patch list: "+err.Error())
+			return
+		default:
+			a.patches, a.patchesAt, a.patchNote = ps, time.Now(), ""
+		}
+	}
+	patches, note, dev := a.patches, a.patchNote, a.dev
+	if a.job != nil {
+		if st, _, _, _ := a.job.snapshot(0); st == "running" {
+			dev, note = nil, "A job is running: patch states are checked when it is done."
+		}
+	}
+	a.mu.Unlock()
+	fetch := func(p Patch) ([]byte, error) {
+		a.mu.Lock()
+		data, ok := a.patchCode[p.Script.SHA256]
+		a.mu.Unlock()
+		if ok {
+			return data, nil
+		}
+		data, err := FetchPatchScript(p)
+		if err != nil {
+			return nil, err
+		}
+		a.mu.Lock()
+		a.patchCode[p.Script.SHA256] = data
+		a.mu.Unlock()
+		return data, nil
+	}
+	writeJSON(w, 200, map[string]any{"patches": PatchRows(dev, patches, fetch), "note": note, "connected": dev != nil})
 }

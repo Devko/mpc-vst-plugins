@@ -94,7 +94,7 @@ checks that (1) a wrong sha256 is refused before anything is copied, (2) `status
 
 ### Order of work
 1. **Done (2026-10-03, host only):** `STATE` line and `--confirmed` in `mpc-drum-pad-patch.sh` (script v3), `catalog/patches.json`, `tools/patch_check.py`, `tools/test_patches.py` (11 tests, mutation-checked, CI in `.github/workflows/patches.yml`). The script contract is tested on a synthetic stand-in for the MPC binary (checksums rewritten), not on Akai's file or a device; run `tools/mpc_patch/test_script.sh` with the real fixtures and a Force before relying on it. The manifest's licence is `unspecified` until the repo has one.
-2. `patches.go` and `GET /api/patches` with step 7 in read-only mode (stage (b)).
+2. **Done (2026-10-03, host only):** `patches.go`, `GET /api/patches` and step 7 in read-only mode (stage (b)): the page asks the device only when step 7 is opened or "Check the device" is pressed (not at connect), the script is downloaded and checked against the manifest's sha256 before it reaches the device, only `status` runs, the copy on the device is removed, and while a job runs the device is not asked. Tests: `patches_test.go` (Go, fake device, six mutations checked) and `ui_test/ui_patches.py` (Chromium, API stubbed). Finding on the way: `status` left a bind mount of `/` behind (`mount --bind / /tmp/mpc-patch-root`); script v4 unmounts it when it opened it (checked with shimmed `mount`/`umount`/`mountpoint`, not on a device).
 3. `POST /api/patch`, the confirm box, the fake-device tests (stage (c)); then a Force test of Apply and Undo; then release.
 4. Add Timo's patch only after its script has been read and meets the contract.
 
