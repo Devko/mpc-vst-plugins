@@ -164,8 +164,7 @@ What's next is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ### MPC OS 2.x vs 3.x
 
-What is known (reports from users on an MPC Live on MPC OS 2.15.1, a BusyBox/Buildroot system; the Force is the
-reference device for 3.x; dates are 2026-10-02/03, details in [docs/NOTES.md](docs/NOTES.md)):
+What is known, details in [docs/NOTES.md](docs/NOTES.md)):
 
 - **Loading works on 2.x, with a build that fits its glibc.** MPC OS 2.x has an older glibc (about 2.32; 3.x and the
   Force have 2.39). Builds that needed `GLIBC_2.34` (older Dexed and JV-880 releases) were listed by MPC but showed only
@@ -178,15 +177,12 @@ reference device for 3.x; dates are 2026-10-02/03, details in [docs/NOTES.md](do
   nothing in the log. Replacing the plugin's `Plugin Skins` folder with a stock one (AIR Compressor) made the stock
   page appear for our plugin, so 2.x does load skins from a plugin folder and the problem is inside our `TUI.json`.
 - **Likely cause (not proven): the file format is too new.** Every JSON object in a skin carries a `version`. The stock
-  `TUI.json` files on the 2.15.1 unit use versions 1 and 2 only (one count of 45 was cut off in the report, probably
-  3); the Force's stock skins (OS base 5.0.17) use 1 to 5. Our generator (`tools/shadow_skin.py`) writes the Force
+  `TUI.json` files on the 2.15.1 unit use versions 1 and 2 only; the Force's stock skins (OS base 5.0.17) use 1 to 5. Our generator (`tools/shadow_skin.py`) writes the Force
   shape: component definitions version 4, tabs 3, film-strip knobs 5, `Q-Links.json` 4. The 2.x parser may drop a
   file with versions it does not know.
 - **Not known yet:** what the older shape looks like (field names, whether film-strip knobs exist), and whether other
   2.x versions or models behave the same. We need a stock `TUI.json` from a 2.x unit to compare; stock Akai skins are
   never committed to this repo.
-- **The same stock skin looks the same on both.** The layout of AIR Compressor is identical on a 2.15.1 MPC Live and a
-  Force, so screen size and aspect are not the problem.
 
 **Help us:** tell us your model, your MPC OS version (Settings), whether a plugin's page appeared, and what the
 screen shows. If you are comfortable in a terminal and on 2.x, the output of this read-only command is very useful:
