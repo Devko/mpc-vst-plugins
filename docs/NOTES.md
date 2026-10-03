@@ -909,3 +909,12 @@ A user batch-installed plugins to the Force's SSD with the desktop installer: al
 - Workaround: install to the internal drive or an SD card (`/sdcard/Synths`).
 - **Desktop app bug found while looking (not the cause), fixed:** `readInfo` (`tools/desktop/device.go`) took the mount point from `df ... $NF`, so `/media/SSD - Force` became `Force`; the `/proc/mounts` lookup then found nothing (it writes spaces as `\040`) and the filesystem and options came back empty, which also skipped the symlink and read-only checks. It now reads `df -kP` fields 6+ and matches the escaped name.
 - **noexec check (host tests only, not run on a Force):** the app flags a location mounted `noexec` (`Root.NoExec`, a note on the location, install refused with the reason); `install.sh` prints a warning (it still installs, so a hand-made exec mount is not blocked). Tests: `TestNoexecMountWithSpacesInItsNameIsFlaggedAndRefused` (fake BusyBox-style `df` line and an escaped `/proc/mounts` line; fails with the old parsing), `tools.test_catalog` (70 OK), `install.sh` fragment run against a fake `df` and `/proc/mounts` with and without `noexec`.
+
+### 2026-10-03: network addins bind to 127.0.0.1 by default; the hardened installer on a device (Key 37)
+Remote 0.2.2 and Commander 0.1.1 (both built with the installer from 83c6cbd) installed with `install.sh -y -n`, then one
+restart. Commander upgraded over 0.1.0 and kept the device's `bind=0.0.0.0`; Remote went on fresh and listened on
+`127.0.0.1:6720` only (`netstat -ltn`). From a computer on the LAN, port 6720 refused the connection, and through
+`ssh -N -L 16720:127.0.0.1:6720 root@<device>` `/info` and `/screen.png` answered. The shared drop-in gained its
+`# lib: 2` line. `sh /data/mpc-addins/remote/uninstall.sh -y` then took Remote out of `LD_PRELOAD`, restarted MPC and
+removed the folder (nothing else was in it); Commander and the usb-audio addin kept running. The install message of an
+upgrade says the addin listens on the device only even when the kept settings say `bind=0.0.0.0`.
