@@ -895,3 +895,15 @@ where the shadow took about 18 per step. Counting several events per step is #90
 as many clicks. Test: `poc/steptest` with the stepping section of `tools/host_test.c` (six wheel clicks, six Q-Link events, a sweep
 up and back, for an option list and an integer); on the previous wrapper the same checks fail. Not yet re-checked with a hand on a
 Q-Link or the wheel after this change.
+
+**Checked on a Force (MPC OS 3.9.1, 2026-10-04), probe build of poc/inputprobe with this wrapper:** `S` is what MPC sent, `E` what the engine got.
+- Q-Link on `int` (1..8): each event is +0.055 from the read-back value and steps one whole number (4 events: 5, 6, 7, 8), the known
+  cost. On `opt` (9 options) each event steps one option (8 events: 1 to 8).
+- Data wheel: +0.07 (`int`) and +0.08/+0.12 (`opt`) per click, one step per click (0 to 5 in six clicks).
+- A slow touch drag (0.2 to 0.3 step per event) goes up and back down steadily: engine values 1,2,2,3,3,3,3,4,4,4,4,5,5,5, then
+  back to 1 with the reversal taking effect at once. No flicker.
+- **A fast drag (0.5 to 0.9 step per event) flickered once:** positions 7.66, 7.22, 6.66, 6.11 gave 7, 7, 6, 7, then 5, 4, 3, 2, 1.
+  When two events are half a step or more apart, `settle()` ignores the host's last position and takes the direction from the
+  value: 6.11 against a value of 6 reads as "up". The same numbers are what a wheel reversal sends (pos = value - 0.07 after an up
+  click, 0.86 above the previous position), so the two cannot be told apart from one event; the 0.5 limit is the compromise that keeps
+  wheel reversals right. Known limit: a fast drag over a short range can step one the wrong way at a time.
