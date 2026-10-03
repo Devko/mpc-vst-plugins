@@ -74,16 +74,27 @@ Most addins also have an off switch in their settings file (`enabled=0`), which 
 
 ## Addins that listen on the network
 
-An addin that serves something over the network must say in its catalog `summary` what it exposes and whether it asks
-for a login, and its settings must have a `bind` setting. The ones in the catalog:
+An addin that serves something over the network must listen on the device only by default (`bind=127.0.0.1`),
+must say in its catalog `summary` what it exposes and how to reach it, and must have a `bind` setting. Addins run as
+root inside MPC and the ones below have no login, so the network is opt-in.
 
-| Addin | Listens on | Login | Who can reach it can |
+To reach one from a computer, open an SSH tunnel to the device and leave it running, then use `localhost` on that
+computer:
+
+```sh
+ssh -N -L 6730:127.0.0.1:6730 root@<device address>     # one -L per addin: 6720 for remote, 6730 for commander
+```
+
+`bind=0.0.0.0` in the addin's settings file opens it to every network interface instead (settings are read when MPC
+starts). The ones in the catalog, and what anyone who can reach the port can then do:
+
+| Addin | Port | Login | Who can reach it can |
 |---|---|---|---|
-| `remote` | HTTP on port 6720, every interface (`bind=0.0.0.0`) | none | see and touch the screen, send any MIDI into MPC, and read text files in the `mcp_files` folders through its MCP endpoint (read-only; `mcp=0` turns MCP off). The MCP endpoint refuses requests from a web page on another site (`Origin` and `Host` checks); the rest of the server has no such check |
-| `commander` | HTTP and WebSocket on port 6730, every interface (`bind=0.0.0.0`) | none | change any parameter of the VST plugins MPC has loaded, send MIDI and transport commands into MPC, write to the control-surface injector file, read the most recent project file and the plugins' skins. There is no `Origin` check yet, so a web page open in a browser on the same network can reach it too |
+| `remote` | HTTP 6720 | none | see and touch the screen, send any MIDI into MPC, and read text files in the `mcp_files` folders through its MCP endpoint (read-only; `mcp=0` turns MCP off). The MCP endpoint refuses requests from a web page on another site (`Origin` and `Host` checks); the rest of the server has no such check |
+| `commander` | HTTP and WebSocket 6730 | none | change any parameter of the VST plugins MPC has loaded, send MIDI and transport commands into MPC, write to the control-surface injector file, read the most recent project file and the plugins' skins. There is no `Origin` check yet, so a web page open in a browser on the same network can reach it too |
 
-On a network you don't trust, set `bind=127.0.0.1` in the addin's settings file and reach it through an SSH tunnel
-(`ssh -L 6730:127.0.0.1:6730 root@<device>`), or turn it off with `enabled=0`.
+An upgrade keeps the user's settings file, so a device that installed an older release with `bind=0.0.0.0` keeps
+listening on the network until `bind` is changed by hand.
 
 ## addin.manifest
 
