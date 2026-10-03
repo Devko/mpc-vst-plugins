@@ -856,3 +856,27 @@ below are in 1/128 of the host's 0..1 range:
 - **Consequence for #90 and #130:** counting several events per option (#90's `QLINK_TICKS` 3) also applies to wheel clicks, which
   arrive one per detent: three clicks per option. Tick counting therefore has to be a per-param opt-in (`qlink_ticks`, default 1),
   not a wrapper-wide default, until the wheel can be told apart.
+
+## 2026-10-03: MPC OS 2.15.1: plugins load, skins do not draw (user reports on an MPC Live, plus other 2.x users; not reproduced by us)
+
+Unit: MPC Live (first generation), MPC OS 2.15.1, Buildroot 2021.02, BusyBox userland (no `ldd`, `file`; `head -n`, not `head -3`), `armv7l`. MPC runs as `inmusic-mpc.service`; there is no `acvs`.
+
+- **Service name.** Release zips built before the installers picked the service themselves ran `systemctl stop acvs` and aborted ("Unit acvs.service not loaded") before touching `MPC.settings`. Fixed in the installers and in the desktop app (a `systemctl` shim for old zips, desktop v0.3.2).
+- **glibc.** Builds that need `GLIBC_2.34` (`dladdr`, `pthread_*`: Dexed 1.0.1-1.0.2, JV-880 1.0.0-1.0.3, checked with `objdump -T`) were registered correctly (right `file=`, file present, executable) but MPC showed only "Load Plugin". Dexed 1.0.4 (needs 2.29) installed through the app loads: the log shows `Attempting to load VST`, `Creating VST instance`, `Initialising VST`. The two old releases per plugin are yanked in `catalog/yanked.json`.
+- **Skin location was not the cause.** The plugin's folder was under a `Synths` path listed in `SynthContentLocations` (SSD and internal SD both tried), `Plugin Skins/TUI.json` present. The edit page showed MPC's frame (header "Plugin 001", preset `<none>`) with an empty body; the log has no skin or JSON message. Q-Links showed and drove the parameters.
+- **2.x does read a skin from a plugin folder.** Copying the stock AIR Compressor `Plugin Skins` over the Dexed folder made the Compressor page appear as Dexed's edit page. So the fault is in our `TUI.json`, not in how MPC finds it.
+- **Imports exist.** Our `TUI.json` imports `/usr/share/Akai/Content/Synths/Generic/Generic Knob Overlay.json` and `Generic Menu Overlay.json`; both exist on 2.15.1 (also `Generic Slider.json`, `version.xml`).
+- **Format versions (counts of `"version": N` over every stock `Plugin Skins/TUI.json`).** 2.15.1: 1 = 10884, 2 = 3030, and 45 for a value cut off in the report (probably 3). Force, OS base 5.0.17: 1 = 9259, 2 = 5929, 3 = 224, 4 = 388, 5 = 76. Our generator (`tools/shadow_skin.py`) writes component definitions at version 4 (94 in the Dexed skin), tabs at 3, film-strip knob data at 5, `Q-Links.json` at 4: the same shape as the Force's stock Decimator skin. Hypothesis: 2.x does not accept versions above its own. **Open:** the 2.x shape of those objects; needs a stock `TUI.json` (and one with knobs) from a 2.x unit. The same stock AIR Compressor skin lays out identically on 2.15.1 (MPC Live) and on the Force, so screen size is not the issue.
+- Akai's support pages (read 2026-10-03) say standalone MPC does not support third-party plugins at all, list the standalone models, and say new built-in plugins need newer OS versions (Native Instruments 3.5+, Spitfire 3.7.1+). Forum posts say 2.15.x is no longer updated by Akai. None of this covers skin formats.
+
+## 2026-10-03: Force SSD is mounted `noexec`, plugins installed there only show "Load Plugin" (user report, Force, volume `/media/SSD - Force`)
+
+A user batch-installed plugins to the Force's SSD with the desktop installer: all listed under VST, each shows only "Load Plugin" when added to a track. The same plugins installed to the SD card load fine. The user's mount line:
+```
+/dev/sda1 on /media/SSD - Force type exfat (rw,nosuid,nodev,noexec,relatime,nosymfollow,fmask=0022,dmask=0022,iocharset=utf8,errors=remount-ro,uhelper=edisksd)
+```
+- **Cause: `noexec`.** MPC cannot `dlopen` a `.so` from that mount. Not the plugin build, not the glibc, and not the spaces in the volume name. This differs from the 2026-09-29 test, where an exFAT USB stick (`/dev/sda1`, no `noexec`) loaded and played, so the options depend on how the drive is mounted (here `uhelper=edisksd`, a drive in the Force's SSD slot): always check the mount line, not the filesystem.
+- Independent report (issue #150, Force Gen1, MPC OS 3.9.1): the ForceHD SSD is `noexec`; their patch makes only `/media/ForceHD/vst` executable and loads Dexed and Plaits from it. Not run by us.
+- Workaround: install to the internal drive or an SD card (`/sdcard/Synths`).
+- **Desktop app bug found while looking (not the cause), fixed:** `readInfo` (`tools/desktop/device.go`) took the mount point from `df ... $NF`, so `/media/SSD - Force` became `Force`; the `/proc/mounts` lookup then found nothing (it writes spaces as `\040`) and the filesystem and options came back empty, which also skipped the symlink and read-only checks. It now reads `df -kP` fields 6+ and matches the escaped name.
+- **noexec check (host tests only, not run on a Force):** the app flags a location mounted `noexec` (`Root.NoExec`, a note on the location, install refused with the reason); `install.sh` prints a warning (it still installs, so a hand-made exec mount is not blocked). Tests: `TestNoexecMountWithSpacesInItsNameIsFlaggedAndRefused` (fake BusyBox-style `df` line and an escaped `/proc/mounts` line; fails with the old parsing), `tools.test_catalog` (70 OK), `install.sh` fragment run against a fake `df` and `/proc/mounts` with and without `noexec`.

@@ -1,7 +1,13 @@
 # VST Plugins for MPC OS
 
+> 💬 **Community:** join [**Open MPC** on Discord](https://discord.gg/sRRysZSgu3) for support, release announcements, plugin requests and MPC hacking.
+
 Native plugins for **Akai MPC OS standalone devices** (MPC Live/One/X/Key, Force): a catalog to find and install them,
 an installer app, and the tools to build, test and release your own.
+
+> **MPC OS 2.x vs 3.x.** The touchscreen skins are designed for, and verified on, **MPC OS 3.x**. **MPC OS 2.x needs
+> further development**: on 2.x (reported on 2.15.1) a plugin installs and its Q-Links work, but the touchscreen page
+> stays empty. See [MPC OS 2.x vs 3.x](#mpc-os-2x-vs-3x) below for what we know and how to help.
 
 ## Plugin catalog
 
@@ -51,8 +57,9 @@ authors, listed in the catalog, and installed by people on their own units.
 - **A release you can trust.** Every release is built in CI on a pinned toolchain, checked against the catalog's rules
   (layout, checksums, glibc and CPU limits), smoke-tested on a real device and only then published. Each version
   shows its SHA-256 and what it was tested on.
-- **Runs on MPC OS 2.x and 3.x.** Plugins are built against glibc 2.31, so they load on older firmware (glibc 2.32,
-  e.g. MPC OS 2.15) as well as current (2.39). The catalog refuses anything that needs more than 2.32.
+- **Loads on MPC OS 2.x and 3.x; pages are verified on 3.x only.** Plugins are built against glibc 2.31, so they load
+  on older firmware (glibc 2.32, e.g. MPC OS 2.15) as well as current (2.39). The catalog refuses anything that needs
+  more than 2.32. On 2.x the touchscreen page does not appear yet (see the note at the top).
 - **Tested on a Force** (MPC OS 3.9.1) as the reference device. Other Gen1 MPC OS devices (Live and Live II, One, X,
   Key 61) run the same `MPC` program. A user's MPC One on MPC OS 2.15 is what led to the glibc 2.31 builds; reports
   from other models are welcome. Gen2 devices (e.g. Live III) are reported to be more locked down.
@@ -113,6 +120,8 @@ design.
 
 ## Limitations
 
+- **No touchscreen page on MPC OS 2.x yet.** Skins are written for MPC OS 3.x. On 2.x (reported on 2.15.1) the plugin
+  works but the page is empty; use the Q-Links. See [MPC OS 2.x vs 3.x](#mpc-os-2x-vs-3x).
 - **VST2 only.** MPC OS has no VST3 or LV2 support.
 - **Setup needs root SSH to the device**, to copy the plugin and add it to `MPC.settings`, so it is for modded units.
   Adding a new plugin needs one MPC restart; the installers stop and start MPC for you (the service is `acvs`, or
@@ -154,6 +163,32 @@ What's next is in [docs/ROADMAP.md](docs/ROADMAP.md).
    check rejects anything above 2.32. Audio is 44.1 kHz in 128-frame blocks.
 3. A skin folder `/sdcard/Synths/<manufacturer> - VST - <name>/` (`version.xml`, `Plugin Skins/TUI.json`,
    `Q-Links.json`) gives it a native screen. Controls bind to `"Parameter N"`, the VST parameter index.
+
+### MPC OS 2.x vs 3.x
+
+What is known, details in [docs/NOTES.md](docs/NOTES.md)):
+
+- **Loading works on 2.x, with a build that fits its glibc.** MPC OS 2.x has an older glibc (about 2.32; 3.x and the
+  Force have 2.39). Builds that needed `GLIBC_2.34` (older Dexed and JV-880 releases) were listed by MPC but showed only
+  "Load Plugin"; those releases are yanked from the catalog, and current builds need 2.32 or less and load. The
+  log line to look for is `Attempting to load VST: ...` / `Initialising VST: ...` in `journalctl -u inmusic-mpc`.
+- **The service has another name.** On 2.15.1 MPC runs as `inmusic-mpc`, not `acvs`. The installer app and current
+  release zips detect it; zips built before that fix aborted with "Unit acvs.service not loaded".
+- **The skin is read, but ours does not draw.** With one of our plugins installed and its skin folder in a location
+  MPC lists (`SynthContentLocations`), the edit page shows only MPC's frame (header, preset box) and an empty body, with
+  nothing in the log. Replacing the plugin's `Plugin Skins` folder with a stock one (AIR Compressor) made the stock
+  page appear for our plugin, so 2.x does load skins from a plugin folder and the problem is inside our `TUI.json`.
+- **Likely cause (not proven): the file format is too new.** Every JSON object in a skin carries a `version`. The stock
+  `TUI.json` files on the 2.15.1 unit use versions 1 and 2 only; the Force's stock skins (OS base 5.0.17) use 1 to 5. Our generator (`tools/shadow_skin.py`) writes the Force
+  shape: component definitions version 4, tabs 3, film-strip knobs 5, `Q-Links.json` 4. The 2.x parser may drop a
+  file with versions it does not know.
+- **Not known yet:** what the older shape looks like (field names, whether film-strip knobs exist), and whether other
+  2.x versions or models behave the same. We need a stock `TUI.json` from a 2.x unit to compare; stock Akai skins are
+  never committed to this repo.
+
+**Help us:** tell us your model, your MPC OS version (Settings), whether a plugin's page appeared, and what the
+screen shows. If you are comfortable in a terminal and on 2.x, the output of this read-only command is very useful:
+`cat /usr/share/Akai/Content/Synths/*/'Plugin Skins'/TUI.json | grep -o '"version": *[0-9]*' | sort | uniq -c`.
 
 ### Layout
 
