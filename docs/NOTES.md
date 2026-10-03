@@ -818,6 +818,45 @@ uninstall from either backup, upgrade from the earlier patches, refusal of other
 layout, pads 1-n play voices 1-n). Needs plugin notes 0-15 for the pads (the tr-drums ports remap them). To add a plugin: add its exact
 plugin name to the table, rebuild (`asm.sh`, `make_patch.py <stock MPC>`, `build_script.py`) and run both tests.
 
+## Input probe: what MPC sends for a Q-Link turn, a data wheel click and a touch drag (2026-10-03, Force, MPC OS 3.9.1)
+`poc/inputprobe` is a silent plugin with a continuous knob (`cont`), a whole-number knob (`int`, 1..8), a 9-option list
+(`opt`) and a MARK button. It is built with `"defines": {"WRAP_TRACE": 1}`: the wrapper then calls `wrap_trace(kind, index,
+value)` from `setParameter` (kind 0) and `getParameter` (kind 1), and the probe's engine writes `/tmp/inputprobe.log`
+(`INPUTPROBE_LOG` moves it; it stops at 2 MB). `WRAP_TRACE` is off by default and costs nothing then. Why: #90 reports every
+Q-Link event as one 1/128 step from the value MPC last read back (Key 37), while #130 reports data wheel ticks as the
+current value plus a fraction of a step and drag/Q-Link sweeps measured from where they started (MPC One); the wrapper cannot tell
+a wheel click from a Q-Link event by the number alone, so the two stepping designs need real numbers per device.
+
+Log lines: `<ms> S <key> <host value> <value in the param's units>` (a raw setParameter), `<ms> G ...` (what getParameter
+returned, only when it changed), `<ms> E <key> <string>` (what the wrapper handed the engine after rounding/stepping),
+`<ms> MARK <n>` (the MARK button).
+
+Test (one control at a time, tap MARK before each step so the log splits cleanly): focus the control, then (1) one slow click or
+nudge, (2) five slow ones in a row, (3) one fast spin, (4) a reversal, (5) a touch drag across the control. Do it with the
+Q-Link knob of that control and with the data wheel. Read `S` values to get the delta per event (in the param's own units: option
+index, whole number, or the 0..1 value), and compare each `S` with the `G` just before it to see whether MPC measures from the
+read-back value or from where the gesture started. Results go here, with the device, MPC OS version and date.
+
+**Result (2026-10-03, Akai Force, MPC OS 3.9.1; one run, one device; Key 37 and MPC One not re-measured).** Every `S` is the
+value MPC last read back (`G`) plus a small delta: nothing is measured from where a gesture started, for either input. Deltas
+below are in 1/128 of the host's 0..1 range:
+- **Q-Link, `cont` and `int`:** exactly 1 per event, one event per click. A fast spin sends 1..3 per event; a reversal is the same
+  size, negative. (`int` 1..8: 1/128 of the range is 0.055 of a whole number.)
+- **Data wheel, `cont` and `int`:** exactly 1.28 (0.01) per event, one event per click; fast spin 1.28 and 2.56. Reversal negative.
+- **Touch drag, either control:** about 4 to 7 (0.04) per event, still from the last read-back, so a drag is a stream of larger nudges.
+- **`opt` (9 options), Q-Link:** 1 per event (0.0625 of an option), 1..3 on a fast turn, negative on a reversal.
+- **`opt`, data wheel:** 1.28 and 1.92 alternating (0.08 and 0.12 of an option) per event, one event per click; each event lands
+  between options, so today's wrapper steps one option per click. The first attempt produced no `setParameter` at all (the
+  wrapper logs before it acts, so MPC sent nothing); after a retry the wheel drove it. What changed between the two attempts
+  (focus or tile selection) was not recorded.
+- **Tap on an option tile:** one `S` on the exact option (a jump of up to 7 options).
+- **Distinguishing wheel from Q-Link by delta:** not reliable. A slow wheel click (1.28) is only 28% above a Q-Link click (1),
+  a fast Q-Link event (2..3) overlaps the wheel's 1.92 and 2.56, and a drag overlaps a fast spin. Treat both as "a small delta
+  from the read-back value".
+- **Consequence for #90 and #130:** counting several events per option (#90's `QLINK_TICKS` 3) also applies to wheel clicks, which
+  arrive one per detent: three clicks per option. Tick counting therefore has to be a per-param opt-in (`qlink_ticks`, default 1),
+  not a wrapper-wide default, until the wheel can be told apart.
+
 ## 2026-10-03: MPC OS 2.15.1: plugins load, skins do not draw (user reports on an MPC Live, plus other 2.x users; not reproduced by us)
 
 Unit: MPC Live (first generation), MPC OS 2.15.1, Buildroot 2021.02, BusyBox userland (no `ldd`, `file`; `head -n`, not `head -3`), `armv7l`. MPC runs as `inmusic-mpc.service`; there is no `acvs`.

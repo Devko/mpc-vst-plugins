@@ -22,6 +22,12 @@
 #ifndef HAS_LFO_BPM
 #define HAS_LFO_BPM 0 /* 1: pass the host tempo to the DSP as "lfo_bpm" */
 #endif
+#ifdef WRAP_TRACE   /* poc/inputprobe: the port provides wrap_trace() and logs every raw host call (kind 0 = setParameter, 1 = getParameter) */
+void wrap_trace(int kind, int idx, float value);
+#define TRACE(kind, idx, value) wrap_trace(kind, idx, value)
+#else
+#define TRACE(kind, idx, value) ((void)0)
+#endif
 #ifndef MODULE_DIR
 #define MODULE_DIR NULL /* set via vst.json "defines" for a DSP that reads its own files
                           * (ROMs, etc.) from "<module_dir>/..." (see jv880's create_instance) */
@@ -144,6 +150,7 @@ static float get_norm(wrap_t *w, int i) {
 
 static void setParameter(AEffect *e, int32_t i, float n) {
     wrap_t *w = e->object;
+    TRACE(0, i, n);
     char buf[64];
     if (i < 0 || i >= NPARAMS) return;
     const param_t *p = &PARAMS[i];
@@ -198,7 +205,11 @@ static void setParameter(AEffect *e, int32_t i, float n) {
     w->need_update_display = 1;   /* deferred to processReplacing(), see the step_target branch above */
 }
 
-static float getParameter(AEffect *e, int32_t i) { return get_norm(e->object, i); }
+static float getParameter(AEffect *e, int32_t i) {
+    float v = get_norm(e->object, i);
+    TRACE(1, i, v);
+    return v;
+}
 
 static void update_tempo(wrap_t *w) {
     VstTimeInfo *ti = (VstTimeInfo *)w->master(&w->fx, audioMasterGetTime, 0, kVstTempoValid, 0, 0);
