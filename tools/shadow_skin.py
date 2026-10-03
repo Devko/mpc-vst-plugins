@@ -26,7 +26,7 @@ Layout file:
                                                         label_align=center needs the browser renderer, "art": "html")
     menu    cx= cy= w= h= label="..." key=<param>      (value text; tap opens MPC's native picker -- which
                                                          opens EMPTY for a VST2, see docs/NOTES.md; use popup)
-    popup   cx= cy= w= h= label="..." key=<param> [options="A,B,.."] [cols=<n>] [groups="Title:count,.."]
+    popup   cx= cy= w= h= label="..." key=<param> [options="A,B,.."] [cols=<n>] [groups="Title:count[:RRGGBB],.."]
                                                        (value text; tap opens a drawn option list, a pick closes it.
                                                         Needs the hidden "<param>__open" param: popup_params())
     stepper cx= cy= w= h= label="..." key=<param> [label_align=center]   (live text;
@@ -162,8 +162,8 @@ def parse_widget(line):
             w[k] = int(w[k])
     if "options" in w:
         w["options"] = w["options"].split(",")
-    if "groups" in w:   # popup headings: "606:8,808:16" = the first 8 options under 606, the next 16 under 808
-        w["groups"] = [(t, int(n)) for t, _, n in (g.rpartition(":") for g in w["groups"].split(","))]
+    if "groups" in w:   # popup headings: "606:8,808:16:e8763a" = the first 8 options under 606, the next 16 under 808 (tinted)
+        w["groups"] = [((p[0], int(p[1]), p[2] if len(p) > 2 else None)) for p in (g.split(":") for g in w["groups"].split(","))]
     return w
 
 
@@ -288,8 +288,8 @@ def popup_layout(w):
     below, above = Y_OFF + H - (fy + fh + 4), fy - 4 - Y_OFF
     groups = w.get("groups")
     if groups:
-        rows = min(POP_GROUP_ROWS, max(c for _, c in groups))
-        cols = sum(-(-c // rows) for _, c in groups)
+        rows = min(POP_GROUP_ROWS, max(g[1] for g in groups))
+        cols = sum(-(-g[1] // rows) for g in groups)
         ph = (rows + 1) * (POP_ROW + POP_GAP) - POP_GAP + 2 * POP_PAD
     else:
         for cols in ([w["cols"]] if w.get("cols") else range(1, n + 1)):
@@ -310,7 +310,7 @@ def popup_layout(w):
         opts = [(px + POP_PAD + (o // rows) * (fw + POP_GAP), py + POP_PAD + (o % rows) * step, fw, POP_ROW) for o in range(n)]
         return (px, py, pw, ph), opts, []
     opts, heads, col = [], [], 0
-    for title, count in groups:
+    for title, count, _color in groups:
         gcols = -(-count // rows)
         heads.append(((px + POP_PAD + col * (fw + POP_GAP), py + POP_PAD, gcols * fw + (gcols - 1) * POP_GAP, POP_ROW), title))
         for o in range(count):
@@ -325,9 +325,28 @@ def popup_panel(w):
     return panel, opts
 
 
+def mix_hex(a, b, t):
+    """a blended toward b by t (0..1), both RRGGBB."""
+    ca, cb = [int(a[i:i + 2], 16) for i in (0, 2, 4)], [int(b[i:i + 2], 16) for i in (0, 2, 4)]
+    return "%02x%02x%02x" % tuple(round(x + (y - x) * t) for x, y in zip(ca, cb))
+
+
 def popup_heading_cmds(w):
-    """Art commands for a grouped popup's headings (none for a plain list): accent text on the list's own fill."""
-    return ["seg|%d|%d|%d|%d|%s|%s|%s" % (x, y, hw, hh, LCD, ACCENT, title) for (x, y, hw, hh), title in popup_layout(w)[2]]
+    """Art commands for a grouped popup's headings (none for a plain list): a group's colour fills its heading
+    (dark text); without one the heading is accent text on the list's own fill."""
+    out = []
+    for ((x, y, hw, hh), title), g in zip(popup_layout(w)[2], w.get("groups") or []):
+        fill, ink = (g[2], "101214") if g[2] else (LCD, ACCENT)
+        out.append("seg|%d|%d|%d|%d|%s|%s|%s" % (x, y, hw, hh, fill, ink, title))
+    return out
+
+
+def popup_option_fills(w):
+    """The fill of each option while not selected: the list's own, or a faint tint of its group's colour."""
+    fills = []
+    for g in w.get("groups") or []:
+        fills += [mix_hex(LCD, g[2], 0.22) if g[2] else LCD] * g[1]
+    return fills or [LCD] * len(w["options"])
 
 
 def qlink_for_slot(slot):
@@ -644,8 +663,8 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                     w["options"] = [str(o) for o in p.get("options") or []]
             if w["kind"].startswith("enum") and not w.get("options"):
                 w["options"] = [str(o).upper() for o in p.get("options") or []]   # default: the parameter's own
-            if w.get("groups") and sum(c for _, c in w["groups"]) != len(w["options"]):
-                raise SystemExit("layout: %s groups cover %d options, it has %d" % (k, sum(c for _, c in w["groups"]), len(w["options"])))
+            if w.get("groups") and sum(g[1] for g in w["groups"]) != len(w["options"]):
+                raise SystemExit("layout: %s groups cover %d options, it has %d" % (k, sum(g[1] for g in w["groups"]), len(w["options"])))
             if (w["kind"].startswith("enum") or w["kind"] == "popup") and len(w["options"]) != len(p.get("options") or []):
                 raise SystemExit("layout: %s has %d options, parameter has %d" % (k, len(w["options"]), len(p.get("options") or [])))
             controls.append(k)
@@ -868,9 +887,10 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                                                               "image": panel + ".png"}, _bounds(0, 0, pw, ph), "Image")])
                 parts = [_placed(pkey, "%s list" % name, oi, px, py, pw, ph, focus="No")]
                 n = len(w["options"])
+                fills = popup_option_fills(w)
                 for o, (ox, oy, ow, oh) in enumerate(orects):
                     img = "sh_popopt_%d_%s_%d" % (t, w["key"], o)
-                    for state, fill, ink in (("on", SEG_ON, SEG_ON_TX), ("off", LCD, INK)):
+                    for state, fill, ink in (("on", SEG_ON, SEG_ON_TX), ("off", fills[o], INK)):
                         script += ["clear|" + LCD, "seg|%d|%d|%d|%d|%s|%s|%s" % (ox, oy, ow, oh, fill, ink, w["options"][o]),
                                    "crop|%s|%d|%d|%d|%d" % (art("%s_%s" % (img, state)), ox, oy, ow, oh)]
                     okey = "shPopOpt_%d_%s_%d" % (t, w["key"], o)

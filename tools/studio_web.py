@@ -277,9 +277,10 @@ def widget_svg(w, art, params, base_dir):
                 art.run("tile|%d|%d|%d|%d|%s|%s|2" % (px, py, pw, ph, ss.LCD, ss.ACCENT))
             for cmd in ss.popup_heading_cmds(w):
                 art.run(cmd)
+            fills = ss.popup_option_fills(w)
             for o, (ox, oy, ow, oh) in enumerate(orects):
                 on = o == 0
-                art.run("seg|%d|%d|%d|%d|%s|%s|%s" % (ox, oy, ow, oh, ss.SEG_ON if on else ss.LCD,
+                art.run("seg|%d|%d|%d|%d|%s|%s|%s" % (ox, oy, ow, oh, ss.SEG_ON if on else fills[o],
                                                       ss.SEG_ON_TX if on else ss.INK, w["options"][o]))
             opened, art.ops = "".join(art.ops), ops
     elif k == "stepper":
