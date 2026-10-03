@@ -69,6 +69,8 @@ A plugin install is additive (files plus one settings entry). A patch rewrites A
 | Command | Must |
 |---|---|
 | `status` | change nothing; print the human text and, last, one line `STATE state=<stock\|patched\|old-patch\|unsupported> supported=<0\|1> backup=<0\|1>` |
+| `status` (v5) | also end the `STATE` line with `checksum=<md5>` of the device's MPC program, so the app can say why a build is unsupported |
+| `uninstall` of an unknown build (v5) | only from a saved full backup whose md5 is the stock program's; typed `RESTORE` or `--confirmed`; verify the result; otherwise touch nothing |
 | `install --confirmed` | do what `install` does but skip the typed prompt (the app shows the same warnings and takes the typed word itself); refuse unsupported firmware; back up first; verify; restore on failure |
 | `install` | unchanged: show warnings, ask for the typed word |
 | `uninstall` | work without the app; exit non-zero if the device did not return to stock |
