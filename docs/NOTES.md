@@ -876,8 +876,15 @@ from the computer changed NAM's Bass and MPC showed the new value; a note played
   "MPC Commander Out" (MPC's input from it) in `MidiDevices.Table`, with track on and sync on the output side.
 - With clock sync out on the port, MPC sends MIDI clock (24 per beat at the project tempo). After a restart it sent
   none until the sync preferences were set again.
-- MPC's Play sends no MIDI start: it sends an MMC locate (`F0 7F 00 06 44 06 01 hh mm ss ff sf F7`, a time code
-  position) then MMC play, and pauses its clock while stopped. A clock-only follower would miss start.
+- MPC's Play sends no MIDI start: it sends an MMC locate (`F0 7F 00 06 44 06 01 hh mm ss ff F7`, a time code
+  position with no sub-frame byte, 12 bytes) then MMC play, and pauses its clock while stopped. A clock-only follower would miss start.
 - Play and stop sent from the computer as MMC (with MIDI real-time alongside) did nothing until **Receive MMC** was on;
   then MPC obeyed both and reported each change back over MMC. Preference changes are not written to
   `MPC.settings` right away (still 0 there afterwards), so the file can't be used to check them.
+
+### 2026-10-03: MPC obeys an MMC locate from the commander app
+With Receive MMC on for the addin's port and the transport stopped, an MMC locate sent from the app
+(`F0 7F 7F 06 44 06 01 hh mm ss ff sf F7`, 30 fps) moves MPC's playhead: after a locate to 0:00:10.05 (bar 5 at
+94.19 bpm in 4/4) MPC's next Play reported its start as `F0 7F 00 06 44 06 01 00 00 0A 05 F7`, and after a locate
+to zero as all zeros. MPC's own locate is the 12-byte form without the sub-frame byte, so a decoder that wants the
+13-byte form misses it (the commander addin takes both since then).
