@@ -109,7 +109,7 @@ type DevPlugin struct {
 }
 
 // DevAddin is an addin folder on the device (one with an addin.manifest). Removable: it carries its own uninstall.sh (every addin
-// installed from a catalog release does); Version is "" for an addin installed without one.
+// installed by the addin installer does); Version is "" for an addin installed without a catalog release.
 type DevAddin struct {
 	ID        string
 	Name      string

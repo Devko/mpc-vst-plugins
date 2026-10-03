@@ -190,8 +190,8 @@ Locrian's installer uses a drop-in folder in `Synths` (`docs/CATALOG_SPEC.md`, "
 - [x] Libraries MPC preloads are a catalog kind (`addin`, `docs/ADDINS.md`): the shared LD_PRELOAD installer lives in
       `tools/release/addin` (tested with sh and BusyBox, `tools/test_addin.sh`), `tools/release_addin.py` packages an addin,
       `catalog_check.py` validates it, the registry, `catalog.tsv` and the site list it, and `mpc-store.sh` and the desktop app
-      install, update and remove addins in the same single MPC restart as plugins. Offline tests only so far.
-- [ ] Device test of a released addin through `mpc-store.sh` and the desktop app.
+      install, update and remove addins in the same single MPC restart as plugins.
+- [x] Device test of released addins through the zip, `mpc-store.sh` and the desktop app (NOTES.md 2026-10-03).
 
 ### Phase 5: Nice to have
 - [ ] Automated screenshot generation of every skin page from the zip (reuses `studio.py preview`).

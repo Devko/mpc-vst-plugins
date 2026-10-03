@@ -307,7 +307,7 @@ function drawDev() {
     if (p.version) b.appendChild(el("span", "tag", "v" + p.version));
     t.appendChild(b);
     if (p.addin) t.appendChild(el("span", "d", p.known ? "addin · removed by its own uninstaller, its settings with it"
-      : "addin · installed without a catalog release, so it has no uninstaller in its folder: run the uninstall.sh of its release"));
+      : "addin · no uninstall.sh in its folder (not installed by the addin installer): remove it by hand"));
     else t.appendChild(el("span", "d", p.known ? p.folder + (p.keep.length ? " · your files kept: " + p.keep.join(", ") : " · nothing in it is kept") + " · " + (p.source === "catalog" ? "from the catalog" : "from a zip you added")
       : p.folder + " · not from the catalog, so the app can't tell which files in it are yours. Drop its release zip above to manage it here, or remove it by hand."));
     var lab = el("label"); lab.htmlFor = cb.id; lab.style.display = "contents"; lab.appendChild(t);

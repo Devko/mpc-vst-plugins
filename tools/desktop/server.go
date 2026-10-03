@@ -589,7 +589,7 @@ func (a *App) remove(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if kp.Addin && !kp.Known {
-			fail(w, 400, fmt.Sprintf("the addin %s has no uninstall.sh in its folder (it was installed without a catalog release): run the uninstall.sh of its release", it.Folder))
+			fail(w, 400, fmt.Sprintf("the addin %s has no uninstall.sh in its folder (it was not installed by the addin installer): remove it by hand", it.Folder))
 			return
 		}
 		if !kp.Known {

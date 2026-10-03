@@ -105,7 +105,7 @@ stop_mpc() {
     mpc_ctl stop
     trap 'mpc_ctl start; rm -rf "$W"' EXIT
     i=0; while pidof MPC >/dev/null 2>&1 && [ $i -lt 30 ]; do sleep 1; i=$((i + 1)); done   # a test run has no MPC: it passes through
-    if pidof MPC >/dev/null 2>&1; then die "MPC did not stop"; fi   # not `pidof && die`: as a function's last command it returns 1, and set -e exits
+    if pidof MPC >/dev/null 2>&1; then die "MPC did not stop"; fi   # an `if`: as the function's last command, a failing `pidof` would make `set -e` end the script
 }
 confirm() {   # confirm <question>
     [ $YES = 1 ] && return 0
@@ -207,7 +207,7 @@ do_remove() {
     for id in "$@"; do
         r=$(row "$id" ""); [ -n "$r" ] || die "$id is not in the catalog"
         if [ "$(col "$r" 5)" = addin ]; then   # an addin removes itself with the uninstall.sh its folder carries
-            [ -f "$ADDINS/$id/uninstall.sh" ] || die "$id is not installed in $ADDINS (or was installed by hand: run the uninstall.sh of its release)"
+            [ -f "$ADDINS/$id/uninstall.sh" ] || die "$id is not installed in $ADDINS (or its folder was made by hand: remove it by hand)"
             echo "Will remove the addin $ADDINS/$id (and take it out of MPC's LD_PRELOAD)"
             continue
         fi

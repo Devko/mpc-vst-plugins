@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The addin installer (tools/release/addin: install.sh, uninstall.sh, addin-lib.sh) against scratch systemd layouts, with two
-# addins side by side. BUSYBOX=/path/to/busybox runs them in the device's shell (the default when busybox is installed). Checks that LD_PRELOAD keeps every other addin, installs are idempotent,
-# settings survive, uninstalling one addin leaves the other, and bad manifests are refused.
+# addins side by side: the cases listed in docs/ADDINS.md, Tests. BUSYBOX=/path/to/busybox runs them in the device's shell (the
+# default when busybox is installed).
 set -euo pipefail
 cd "$(dirname "$0")/release/addin"
 SH="sh"; BB="${BUSYBOX:-$(command -v busybox || true)}"; [ -n "$BB" ] && SH="$BB sh"

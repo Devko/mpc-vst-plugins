@@ -1,6 +1,6 @@
 # The addin installer (mpc-vst-plugins tools/release/addin, docs/ADDINS.md): shared by install.sh and uninstall.sh, identical in
 # every addin release; only addin.manifest differs. tools/release_addin.py puts the three next to the addin's files.
-# MPC's systemd service, its LD_PRELOAD list, and the manifest. ADDIN_LIB_VERSION identifies this copy.
+# It finds MPC's systemd service, edits its LD_PRELOAD list and loads addin.manifest. ADDIN_LIB_VERSION identifies this copy.
 ADDIN_LIB_VERSION=2
 # Tests set ADDIN_INSTALL_TEST=1, SYSTEMD_ROOT (a scratch tree holding the unit files) and ADDIN_TEST_LOG.
 
