@@ -27,17 +27,12 @@ import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from catalog_check import ADDIN_FILE, ADDIN_SCRIPTS, ID, SEMVER, parse_addin_manifest  # noqa: E402
+from catalog_check import ADDIN_FILE, ADDIN_SCRIPTS, ID, SEMVER, max_glibc, parse_addin_manifest  # noqa: E402
 
 
 def elf_machine(path):
     d = open(path, "rb").read(20)
     return {40: "armv7", 62: "x86_64", 183: "aarch64", 3: "x86"}.get(int.from_bytes(d[18:20], "little"), "unknown") if d[:4] == b"\x7fELF" else "not-elf"
-
-
-def max_glibc(path):
-    found = re.findall(rb"GLIBC_(\d+(?:\.\d+){1,2})", open(path, "rb").read())
-    return max((f.decode() for f in found), key=lambda v: tuple(map(int, v.split(".")))) if found else None
 
 
 def main():

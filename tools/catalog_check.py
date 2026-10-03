@@ -26,6 +26,55 @@ ADDIN_SCRIPTS = ("install.sh", "uninstall.sh", "addin-lib.sh")
 ADDIN_FILE = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9._-]*")
 
 
+def max_glibc(path):
+    """The newest GLIBC_x.y[.z] symbol version the ELF file needs, as "x.y[.z]", from its version-needs section
+    (never from a string search: a library may carry a version name as data without needing it). None if it needs
+    none, or the file is not ELF."""
+    with open(path, "rb") as f:
+        d = f.read()
+    if d[:4] != b"\x7fELF":
+        return None
+    bits64, little = d[4] == 2, d[5] == 1
+    u16, u32 = (lambda o: int.from_bytes(d[o:o + 2], "little" if little else "big")), \
+        (lambda o: int.from_bytes(d[o:o + 4], "little" if little else "big"))
+    if bits64:
+        shoff = int.from_bytes(d[40:48], "little" if little else "big")
+        shentsize, shnum = u16(58), u16(60)
+    else:
+        shoff, shentsize, shnum = u32(32), u16(46), u16(48)
+    sections = []
+    for k in range(shnum):
+        o = shoff + k * shentsize
+        if bits64:
+            sections.append((u32(o + 4), int.from_bytes(d[o + 24:o + 32], "little" if little else "big"),
+                             int.from_bytes(d[o + 32:o + 40], "little" if little else "big"), u32(o + 40)))
+        else:
+            sections.append((u32(o + 4), u32(o + 16), u32(o + 20), u32(o + 24)))
+    found = []
+    for sh_type, off, size, link in sections:
+        if sh_type != 0x6FFFFFFE or link >= len(sections):   # SHT_GNU_verneed, strings in its linked section
+            continue
+        str_off = sections[link][1]
+        o = off
+        while o < off + size:
+            cnt, aux, nxt = u16(o + 2), u32(o + 8), u32(o + 12)
+            a = o + aux
+            for _ in range(cnt):
+                name_off = str_off + u32(a + 8)
+                name = d[name_off:d.index(b"\0", name_off)]
+                m = re.fullmatch(rb"GLIBC_(\d+(?:\.\d+){1,2})", name)
+                if m:
+                    found.append(m[1].decode())
+                nxa = u32(a + 12)
+                if not nxa:
+                    break
+                a += nxa
+            if not nxt:
+                break
+            o += nxt
+    return max(found, key=lambda v: tuple(map(int, v.split(".")))) if found else None
+
+
 def parse_addin_manifest(text):
     """addin.manifest -> {key: value}. install.sh sources it as root, so only plain assignments of the known keys are allowed:
     KEY=bare, KEY="text" or KEY='text' (no $, backquote or backslash), comments and blank lines. Raises ValueError."""

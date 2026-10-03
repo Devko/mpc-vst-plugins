@@ -20,9 +20,29 @@ ENTRY = ('<PLUGIN name="Test Synth" format="VST" category="Synth" manufacturer="
 
 
 def fake_so(path, machine=40, glibc=b"GLIBC_2.30"):
-    hdr = bytearray(b"\x7fELF" + bytes(16))
-    hdr[18:20] = machine.to_bytes(2, "little")
-    open(path, "wb").write(bytes(hdr) + b"\0" + glibc + b"\0")
+    """A 32-bit little-endian ELF with just a string table and a version-needs section naming glibc (one need of
+    libc.so.6 with one version), the shape the release tools read the glibc requirement from."""
+    strtab = b"\0libc.so.6\0" + glibc + b"\0"
+    verneed = (1).to_bytes(2, "little") + (1).to_bytes(2, "little") + (1).to_bytes(4, "little") \
+        + (16).to_bytes(4, "little") + (0).to_bytes(4, "little")                                  # Elf32_Verneed
+    verneed += (0).to_bytes(4, "little") + (0).to_bytes(2, "little") + (2).to_bytes(2, "little") \
+        + (11).to_bytes(4, "little") + (0).to_bytes(4, "little")                                  # Elf32_Vernaux
+    ehdr = bytearray(52)
+    ehdr[:4] = b"\x7fELF"
+    ehdr[4], ehdr[5], ehdr[6] = 1, 1, 1                      # 32-bit, little-endian, version 1
+    ehdr[16:18] = (3).to_bytes(2, "little")                  # ET_DYN
+    ehdr[18:20] = machine.to_bytes(2, "little")
+    body = bytes(ehdr) + strtab + verneed
+    shoff = len(body)
+    ehdr[32:36] = shoff.to_bytes(4, "little")
+    ehdr[46:48] = (40).to_bytes(2, "little")
+    ehdr[48:50] = (3).to_bytes(2, "little")
+
+    def shdr(sh_type, off, size, link):
+        return (0).to_bytes(4, "little") + sh_type.to_bytes(4, "little") + (0).to_bytes(8, "little") \
+            + off.to_bytes(4, "little") + size.to_bytes(4, "little") + link.to_bytes(4, "little") + bytes(12)
+    shdrs = shdr(0, 0, 0, 0) + shdr(3, 52, len(strtab), 0) + shdr(0x6FFFFFFE, 52 + len(strtab), len(verneed), 1)
+    open(path, "wb").write(bytes(ehdr) + strtab + verneed + shdrs)
 
 
 class Base(unittest.TestCase):

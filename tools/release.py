@@ -21,8 +21,12 @@ import os
 import re
 import shutil
 import stat
+import sys
 import tempfile
 import zipfile
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from catalog_check import max_glibc  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -166,12 +170,6 @@ See `SHA256SUMS`. Made with [mpc-vst-plugins](https://github.com/sd88me/mpc-vst-
            skin=skin_name, extra_md=extra_md, bench=b, user_md=user_md,
            where="Instrument plugins" if kind == "instrument" else "Insert effects")
 open(os.path.join(root, "INSTALL.md"), "w").write(install_md)
-
-def max_glibc(path):
-    """Highest GLIBC_x.y[.z] symbol version the .so asks for, as 'x.y[.z]' (None if it needs none)."""
-    found = re.findall(rb"GLIBC_(\d+(?:\.\d+){1,2})", open(path, "rb").read())
-    return max((f.decode() for f in found), key=lambda v: tuple(map(int, v.split(".")))) if found else None
-
 
 def elf_machine(path):
     d = open(path, "rb").read(20)
