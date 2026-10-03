@@ -104,10 +104,8 @@ mpc_ctl() {   # stop | start; a test run logs the call to $MPC_TEST_LOG instead 
 stop_mpc() {
     mpc_ctl stop
     trap 'mpc_ctl start; rm -rf "$W"' EXIT
-    if [ -z "$MPC_INSTALL_TEST" ]; then
-        i=0; while pidof MPC >/dev/null && [ $i -lt 30 ]; do sleep 1; i=$((i + 1)); done
-        pidof MPC >/dev/null && die "MPC did not stop"
-    fi
+    i=0; while pidof MPC >/dev/null 2>&1 && [ $i -lt 30 ]; do sleep 1; i=$((i + 1)); done   # a test run has no MPC: it passes through
+    if pidof MPC >/dev/null 2>&1; then die "MPC did not stop"; fi   # not `pidof && die`: as a function's last command it returns 1, and set -e exits
 }
 confirm() {   # confirm <question>
     [ $YES = 1 ] && return 0
