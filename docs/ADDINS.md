@@ -26,6 +26,11 @@ addin). So every addin installs the same way, with the installer in `tools/relea
   rebuilds the drop-in from the new list, so the firmware's own libraries are never shadowed for long. Re-run an
   addin's `install.sh` after a firmware update.
 - Uninstalling takes only that addin's `.so` out, and removes the shared drop-in once no addin is left in it.
+- The shared drop-in records its format (`# lib: <n>`, `ADDIN_LIB_VERSION` in `addin-lib.sh`; a drop-in without the line
+  is format 2). Every installed addin carries its own copy of the installer, so copies of different ages edit the same
+  file. The rule: an installer refuses to touch a drop-in written by a newer format (it says to install a newer release
+  of the addin), and a new format must still read every older one. Bump the number whenever the drop-in's format
+  changes.
 - A folder is "writable" only if a probe file can be created in it: BusyBox's `[ -w ]` says yes to root on a
   read-only mount.
 
@@ -36,10 +41,49 @@ once for a batch (`DEFER=1` in the script tells batch installers so). The folder
 `addin-lib.sh` and `addin.manifest`, so `sh /data/mpc-addins/<id>/uninstall.sh` removes the addin later without the
 release; that is what `mpc-store.sh remove` and the desktop app run.
 
+Before anything changes, `install.sh` checks the `.so` on the device: it must be an ELF 32-bit little-endian ARM shared
+object, since anything else in `LD_PRELOAD` stops MPC from starting. The folder (`-t`, default
+`/data/mpc-addins/<id>`) must be an absolute path named after the addin (`.../<id>`), with no `.` or `..` segments.
+`uninstall.sh` deletes only the files the installer put there: the `.so`, the files in `ADDIN_FILES`, **the settings
+file** (so the user's edits to it are lost; copy it first to keep them) and the installer's own three files. It then
+removes the folder if it is empty, and otherwise keeps it and says so.
+
 An addin runs inside MPC before MPC sets itself up, so it must not take anything MPC needs first. The DRM card is
 the known case: whatever opens `/dev/dri/card*` first, while the card has no master, becomes the
 master, and MPC then fails with "Failed to initialise display". An addin (or a helper tool) that opens the card must
 call `DRM_IOCTL_DROP_MASTER` right after opening it (NOTES.md, 2026-10-03).
+
+## When an addin stops MPC from starting
+
+An addin runs inside MPC, so a broken one can crash MPC at every start. SSH stays up (it is a separate service), and
+everything an addin changed can be undone from there:
+
+1. Stop MPC: `systemctl stop acvs` (`inmusic-mpc` on some modified firmware; `systemctl list-units | grep -i mpc`
+   shows which).
+2. **One addin:** run its `sh /data/mpc-addins/<id>/uninstall.sh -y -n`. If that fails, take its `.so` path out of the
+   `Environment=LD_PRELOAD=` line of `/etc/systemd/system/acvs.service.d/90-mpc-addins.conf` by hand (leave the `# base:`
+   line and the libraries before the addins alone). If the addins went into a unit file that already set
+   `LD_PRELOAD`, edit that file instead (`grep -rl LD_PRELOAD /etc/systemd/system/acvs.service*`).
+3. **Every addin at once:** delete `/etc/systemd/system/acvs.service.d/90-mpc-addins.conf`, and restore every
+   `<file>.bak-mpc-addins` backup over the file it was taken from
+   (`find /etc/systemd/system -name '*.bak-mpc-addins'`). That puts back the list the firmware set; the addins' folders
+   stay in `/data/mpc-addins/` and do nothing until they are installed again.
+4. `systemctl daemon-reload`, then `systemctl start acvs`.
+
+Most addins also have an off switch in their settings file (`enabled=0`), which leaves the library loaded but idle.
+
+## Addins that listen on the network
+
+An addin that serves something over the network must say in its catalog `summary` what it exposes and whether it asks
+for a login, and its settings must have a `bind` setting. The ones in the catalog:
+
+| Addin | Listens on | Login | Who can reach it can |
+|---|---|---|---|
+| `remote` | HTTP on port 6720, every interface (`bind=0.0.0.0`) | none | see and touch the screen, send any MIDI into MPC, and read text files in the `mcp_files` folders through its MCP endpoint (read-only; `mcp=0` turns MCP off). The MCP endpoint refuses requests from a web page on another site (`Origin` and `Host` checks); the rest of the server has no such check |
+| `commander` | HTTP and WebSocket on port 6730, every interface (`bind=0.0.0.0`) | none | change any parameter of the VST plugins MPC has loaded, send MIDI and transport commands into MPC, write to the control-surface injector file, read the most recent project file and the plugins' skins. There is no `Origin` check yet, so a web page open in a browser on the same network can reach it too |
+
+On a network you don't trust, set `bind=127.0.0.1` in the addin's settings file and reach it through an SSH tunnel
+(`ssh -L 6730:127.0.0.1:6730 root@<device>`), or turn it off with `enabled=0`.
 
 ## addin.manifest
 
@@ -108,7 +152,9 @@ the three installer files next to the build output) and run its `install.sh`.
 - `tools/test_addin.sh` (run by `tools/test_catalog.py`): the installer against scratch systemd trees with two
   addins side by side: appending to a list, idempotency, settings kept, one uninstall leaving the other, the quoted
   form, the shared drop-in, the winning drop-in, `inmusic-mpc`, a read-only unit and a firmware update changing its
-  list, the folder's own uninstaller, refusals of odd folders and bad manifests. `BUSYBOX=/path/to/busybox` runs it
+  list, the folder's own uninstaller, refusals of odd folders (`/`, `/etc`, `..`, a folder not named after the addin)
+  and bad manifests, a library that is not a 32-bit ARM shared object, a drop-in from a newer format, and an
+  uninstall that keeps a file the user added. `BUSYBOX=/path/to/busybox` runs it
   in the device's shell (the default when `busybox` is on the PATH).
 - `tools/test_catalog.py` (`AddinTest`, `StoreTest`): packaging, validation and tampering, registry and
   `catalog.tsv`, and `mpc-store.sh` installing, updating and removing an addin alongside a plugin.
