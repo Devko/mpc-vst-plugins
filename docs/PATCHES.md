@@ -33,6 +33,71 @@ A plugin install is additive (files plus one settings entry). A patch rewrites A
 5. **Staged rollout:** (a) docs only: the tab lists patches with copy-paste commands, no Run; (b) read-only `status` per patch; (c) Apply and Undo.
    Stop at (b) until a patch has been applied from the app on a real device.
 
+## Spec
+
+### Manifest `catalog/patches.json`
+```json
+{
+  "schema": 1,
+  "patches": [
+    {
+      "id": "drum-pad-layout",
+      "title": "16-pad drum layout for selected plugins",
+      "summary": "Machinedrum Module, 6W6, 8W8, CW-78, 9W9 and TR-MPC get MPC's drum layout with all 16 pads lit.",
+      "author": "sd88me",
+      "license": "MIT",
+      "docs": "tools/mpc_patch/README.md",
+      "script": {"url": "https://raw.githubusercontent.com/sd88me/mpc-vst-plugins/<commit>/tools/mpc_patch/mpc-drum-pad-patch.sh",
+                 "sha256": "4b9a8b08ef00e17639e7976d243431bc216864939981a48d6dc5719f4a1425cb"},
+      "supports": {"mpc_md5": ["592eebc8e1ce0797dc8c98e7002143b8"], "os": "MPC OS 3.9.1.2", "arch": "armv7l"},
+      "modifies": ["/usr/bin/MPC"],
+      "backup": "/sdcard/MPC-backup",
+      "restarts_mpc": true,
+      "reversible": true
+    }
+  ]
+}
+```
+- `url` is pinned to a commit (never a branch), `https` only, and `sha256` is re-checked after download, as the catalog zips are. The sha256 above is the
+  current script; it changes with every rebuild, so the manifest entry is updated in the same commit that rebuilds the script.
+- `supports` is advisory text for the page; the script's own checksum gate is what actually refuses.
+- `modifies`, `backup`, `restarts_mpc`, `reversible` are shown before anything runs and must be true statements (a test per patch checks `uninstall`).
+- A `tools/patch_check.py` validates the file (schema, https, 40-hex commit in the URL, sha256 matches the downloaded or local script, every field present) and
+  runs in CI next to `catalog_check.py`.
+
+### Script contract (each patch script)
+| Command | Must |
+|---|---|
+| `status` | change nothing; print the human text and, last, one line `STATE state=<stock\|patched\|old-patch\|unsupported> supported=<0\|1> backup=<0\|1>` |
+| `install --confirmed` | do what `install` does but skip the typed prompt (the app shows the same warnings and takes the typed word itself); refuse unsupported firmware; back up first; verify; restore on failure |
+| `install` | unchanged: show warnings, ask for the typed word |
+| `uninstall` | work without the app; exit non-zero if the device did not return to stock |
+| exit status | 0 only if the device ended in the requested state |
+`mpc-drum-pad-patch.sh` needs two small edits (the `STATE` line in `cmd_status`, and `--confirmed` in `cmd_install`); both go through `script.template.sh` and `build_script.py`,
+then `test_script.sh` gets a case each (status line for stock, patched, old-patch and other firmware; `--confirmed` installs without a prompt and still refuses other firmware).
+
+### App (tools/desktop)
+- `patches.go`: fetch and verify the manifest (same https/hash/size rules as `catalog.go`), `PatchStatus(dev, p)` (copy script to the device's `/tmp`, run `status`, parse the `STATE` line,
+  remove it), `RunPatch(dev, p, action, j)` (copy, run `install --confirmed` or `uninstall`, stream output into a `Job`, always remove the copy). The plan is rebuilt on the server from the
+  manifest and the device; the page only sends `{id, action}` and the typed word.
+- `server.go`: `GET /api/patches` (manifest plus the status per patch, read-only), `POST /api/patch` (`{id, action: install|uninstall, typed: "PATCH"}`), reusing `/api/job` for the output. Same guard as the other endpoints (token, Host, Origin).
+  The typed word is checked on the server (it must equal the word the manifest or script names), not only in the page.
+- `web/index.html`: step 7, "Advanced: device patches", collapsed with a red warning, after "Clean up old backups". The page is one stepped page, not tabs, so a collapsed final step matches it; a real tab bar can come later if there are more advanced tools than patches.
+  Per patch: name, summary, state badge (not applied / applied / unsupported firmware), "What it changes" (`modifies`, `backup`, `restarts_mpc`), Apply and Undo buttons that open a confirm box with the typed word.
+- MPC stop/start stays inside the script (it already does both); the app does not stop MPC for a patch, so there is never a double restart or a start while the patch is writing.
+- Never run a patch as part of install, update, register or the batch; never remember a patch as "wanted".
+
+### Tests (before stage (c))
+Using the existing fake device (`fakedev_test.go`, shims for `systemctl` etc.): a fake patch script that records its arguments and honours `status`/`install --confirmed`/`uninstall`;
+checks that (1) a wrong sha256 is refused before anything is copied, (2) `status` is the only call made on connect, (3) `install` without the typed word is refused by the server, (4) the copy in `/tmp` is removed after success and after failure,
+(5) a non-zero exit is reported as failed and never as applied, (6) unsupported firmware offers no Apply. Mutation-check each (remove the check, see the test fail). Then run the real script under BusyBox against copies of the binary (`test_script.sh`) and once on a real Force with a stock `MPC`.
+
+### Order of work
+1. `STATE` line and `--confirmed` in `mpc-drum-pad-patch.sh` (template, build, test_script), manifest and `patch_check.py` with a test.
+2. `patches.go` and `GET /api/patches` with step 7 in read-only mode (stage (b)).
+3. `POST /api/patch`, the confirm box, the fake-device tests (stage (c)); then a Force test of Apply and Undo; then release.
+4. Add Timo's patch only after its script has been read and meets the contract.
+
 ## Open questions
 - **The ForceHD patch is unreviewed.** We have the issue text only: it reportedly makes `/media/ForceHD/vst` executable and leaves the rest of the
   SSD `noexec`, persistently, on a Force Gen1, MPC OS 3.9.1. Before it is listed: the script, its licence, what it edits (fstab, a bind mount, a service),
