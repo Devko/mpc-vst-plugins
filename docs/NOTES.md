@@ -13,7 +13,8 @@ from the Force and may differ on MPC Live/One/X/Key (e.g. `Force Documents` vs `
   `<PLUGIN name="X" descriptiveName="X" format="VST" category="Synth|Effect" manufacturer="V"
   version="1.0" file="/sdcard/vst/x.so" uid="<hex uniqueID>" isInstrument="0|1" fileTime="0"
   infoUpdateTime="0" numInputs="2" numOutputs="2" isShell="0"/>`
-- Device: armv7l, glibc 2.39 (build with an older glibc, e.g. `arm32v7/gcc:12` docker = 2.36).
+- Device: armv7l, glibc 2.39 on MPC OS 3.x (2.32 on MPC OS 2.x). Build with an older glibc: `arm32v7/gcc:11-bullseye` (2.31) is what
+  `build_port.sh` uses since 2026-10-02; `arm32v7/gcc:12` (2.36) binds some pthread symbols to `GLIBC_2.34` and does not load on 2.x.
 - Audio: 44100 Hz, 128-frame period; the engine interface (`wrapper/engine.h`) renders in exactly those blocks.
 - AEffect magic must be `'VstP'` (0x56737450). **The forum snippet's magic is wrong.**
 - Instruments: set `effFlagsIsSynth`, category 2, answer `effCanDo "receiveVstEvents"`;

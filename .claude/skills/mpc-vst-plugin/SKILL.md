@@ -10,7 +10,8 @@ This skill lives in the repo (https://github.com/sd88me/mpc-vst-plugins). Read `
 open issues, resume point) and `docs/PORTING.md` (step-by-step checklist). Reference port: Maze Voice in
 https://github.com/sd88me/mpc-vst-maze, `vst/` (vst.json, layout.conf; build.sh just calls `tools/build_port.sh`).
 Device: reached over SSH as root. BusyBox userland (`head -n 5`, no `grep -b`), and the IP is DHCP, so ask
-the user for it. **Ask before restarting MPC** (`systemctl restart acvs`), because it takes the screen down.
+the user for it. **Ask before restarting MPC** (`systemctl restart acvs`, or `inmusic-mpc` where the device has no `acvs` service),
+because it takes the screen down.
 Stop any separately attached audio engines first.
 
 ## Pipeline
@@ -25,7 +26,7 @@ Stop any separately attached audio engines first.
 2. **Generate + build**: `tools/build_port.sh <port>/vst.json` (steps 2-3 in one; Docker). `gen_vst.py` makes the
    params table from the port's parameter list (`tools/params.py`; VST index = order), the skin folder `<vendor> - VST - <name>/`
    (from vst.json's `layout`, else a studio auto-layout) and `pluginlist-entry.xml`. The compile uses
-   `arm32v7/gcc:12` (glibc ≤ 2.39), `-fvisibility=hidden -shared -fPIC`, and links `wrapper/vst2_wrap.c` from this repo.
+   `arm32v7/gcc:11-bullseye` (glibc 2.31; MPC OS 2.x has 2.32, so `catalog_check.py` rejects anything above 2.32), `-fvisibility=hidden -shared -fPIC`, and links `wrapper/vst2_wrap.c` from this repo.
 3. **Bench**: `tools/bench.sh build/x.so <ip>` must PASS before release (docs/BENCH.md).
 4. **Offline test first**: `tools/test_port.sh <port>/vst.json` builds `tools/host_test.c` with the port's sources and
    adapter on x86 under ASan/UBSan and must print PASSED: two instances, names, set/get, option select + nudge,
@@ -33,9 +34,9 @@ Stop any separately attached audio engines first.
 5. **Deploy (staged)**: `.so` → `/sdcard/Synths/<vendor> - VST - <name>/x.so.new` then `mv` (one folder: skin, `.so` and data); skin via `tar | ssh tar -C /sdcard/Synths -xf -`
    (**don't scp paths with spaces**: escaping created a folder with literal backslashes once). Verify md5.
 6. **Register** (needs MPC restart, **ask the user first**, and stop attached voice engines such as dx7_host/maze_host first):
-   stop acvs → back up `MPC.settings` → insert the `<PLUGIN …/>` line before `</KNOWNPLUGINS>` (first time:
+   stop acvs (or inmusic-mpc) → back up `MPC.settings` → insert the `<PLUGIN …/>` line before `</KNOWNPLUGINS>` (first time:
    add a whole `<VALUE name="pluginList-arm"><KNOWNPLUGINS>…</KNOWNPLUGINS></VALUE>` before `</PROPERTIES>`)
-   → start acvs → check force_shadow.so is still in MPC's environ. An `.so` update alone (same path) needs no settings
+   → start the service again → check force_shadow.so is still in MPC's environ. An `.so` update alone (same path) needs no settings
    edit and no restart: remove every instance of the plugin, then insert it again (verified 2026-09-24). A skin-only change needs **no restart**: swap the folder, then re-insert the
    plugin or reload the project.
 7. The user tests on the device: plugin list → insert → play → edit screen → Q-Links → save/reload project.
@@ -79,7 +80,7 @@ Switches/buttons/menus/sliders/labels (`btnBypass`, `comboBox`, `slider`, `Label
 ## MIDI-generating plugins (sequencers/arps)
 MPC OS ignores VST MIDI output (`audioMasterProcessEvents` goes nowhere). Instead, open an ALSA seq port from
 the plugin (`poc/midiport.c`: `snd_seq_open` → `snd_seq_create_simple_port` READ|SUBS_READ → `snd_seq_event_output_direct`,
-link `-lasound`; build needs `apt install libasound2-dev` in the arm32v7/gcc:12 container). MPC hot-detects the
+link `-lasound`; build needs `apt install libasound2-dev` in the arm32v7/gcc:11-bullseye container). MPC hot-detects the
 port with no restart; the user enables Track on it in Preferences → MIDI. Sync from `audioMasterGetTime` ppqPos/tempo.
 Name ports plainly (e.g. client "<Plugin>", port "MIDI Out"): no "(Mockba)" suffix; the user wants MockbaMod
 references kept out of mpc-vst.
