@@ -36,6 +36,11 @@ static void send(AEffect *c, int d1, int s1, int d2, int s2, int two) {   /* up 
     EV ev = {two ? 2 : 1, 0, {&m1, &m2}};
     c->d(c, 25, 0, 0, &ev, 0);
 }
+static void send3(AEffect *c, const int *d, const int *st, int n) {   /* n (<= 3) events, in the order given */
+    ME m[3]; struct { int32_t n; intptr_t r; void *ev[3]; } ev = {n, 0, {0}};
+    for (int i = 0; i < n; i++) { ME t = {1, sizeof(ME), d[i], 0, 0, 0, {(unsigned char)st[i], 60, 100, 0}}; m[i] = t; ev.ev[i] = &m[i]; }
+    c->d(c, 25, 0, 0, &ev, 0);
+}
 static void sample_accurate_tests(void) {
     AEffect *c = VSTPluginMain(host);
     float L[256], R[256], *o[2] = {L, R};
@@ -47,6 +52,13 @@ static void sample_accurate_tests(void) {
     }
     send(c, 50, 0x80, 10, 0x90, 1); c->pr(c, 0, o, 128);   /* out of order: sorted by frame */
     CHECK(first_nonzero(L, 128) == 10 && last_nonzero(L, 128) == 49, "events out of order: on at 10, off at 50 -> frames %d..%d", first_nonzero(L, 128), last_nonzero(L, 128));
+    {   /* events on one frame keep their order, whatever else is queued: an off then an on at 7 (a retrigger) must not end silent */
+        const int d[3] = {2, 7, 7}, st[3] = {0x90, 0x80, 0x90};
+        send(c, 0, 0x90, 0, 0, 0); c->pr(c, 0, o, 128);   /* sounding */
+        send3(c, d, st, 3); c->pr(c, 0, o, 128);
+        CHECK(first_nonzero(L, 128) == 0 && L[7] != 0 && last_nonzero(L, 128) == 127, "same-frame off then on at 7 stays in order (retrigger sounds: frames 0..%d)", last_nonzero(L, 128));
+        send(c, 0, 0x80, 0, 0, 0); c->pr(c, 0, o, 128);
+    }
     send(c, 40, 0x90, 0, 0, 0); c->pr(c, 0, o, 100);   /* a host block that is not 128 frames */
     CHECK(first_nonzero(L, 100) == 40, "100-frame block: note-on at 40 starts at frame %d", first_nonzero(L, 100));
     send(c, 0, 0x80, 0, 0, 0); c->pr(c, 0, o, 128);
