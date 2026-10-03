@@ -5,6 +5,8 @@
 # Call it from the addin's repo, pinning this repo to one commit in BOTH places:
 #   uses: sd88me/mpc-vst-plugins/.github/workflows/addin-release.yml@<sha>
 #   with: { tools_ref: <sha>, ... }
+# It has no permissions: block of its own: it creates the draft release with the caller's GITHUB_TOKEN, so the calling
+# job must grant   permissions: { contents: write }
 name: Addin draft release
 
 on:
