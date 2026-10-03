@@ -38,6 +38,11 @@ The catalog, its site and the installer app are live (see Done). Still open, in 
 - [ ] **Update notices honour `param_compat`** (a major bump warns that saved projects will change).
 - [ ] **Announce to the community** and collect what people ask for before building more.
 
+## Patches (installer app)
+- [ ] **"Advanced" tab for device patches** (`tools/mpc_patch`, and the ForceHD exec patch from #150 if it is shared and reviewed). Proposal in
+      `docs/PATCHES.md`: a manifest, the script stays the unit (`status` / `install` / `uninstall`), typed confirmation, staged rollout.
+      Needs a non-interactive install flag and a machine-readable `status` in the existing script, and a device test of the undo path.
+
 ## Verification
 - [ ] **Stock, unmodded MPC and other models:** the ALSA MIDI-out port (`poc/midiport.c`) without MockbaMod,
       and `tools/probe_device.sh` after firmware updates. Needs the hardware.
