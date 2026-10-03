@@ -25,7 +25,12 @@ static intptr_t host(AEffect*e,int32_t op,int32_t i,intptr_t v,void*p,float o){
     return 0;
 }
 #define CHECK(c, ...) do { printf("%s ", (c) ? "ok  " : "FAIL"); printf(__VA_ARGS__); printf("\n"); if (!(c)) fails++; } while (0)
-static void run(AEffect *a, int blocks) { float L[128], R[128], *o[2] = {L, R}; for (int k = 0; k < blocks; k++) a->pr(a, 0, o, 128); }
+/* Effects (numInputs == 2) read in[0]/in[1], so they need real input buffers; instruments take NULL in. */
+static void run(AEffect *a, int blocks) {
+    float L[128], R[128], I0[128] = {0}, I1[128] = {0}, *o[2] = {L, R}, *in[2] = {I0, I1};
+    float **ip = a->ni >= 2 ? in : 0;
+    for (int k = 0; k < blocks; k++) a->pr(a, ip, o, 128);
+}
 
 int main(void) {
     AEffect *a = VSTPluginMain(host), *b = VSTPluginMain(host);
@@ -72,15 +77,25 @@ int main(void) {
 
     ME m = {1, sizeof(ME), 0, 0, 0, 0, {0x90, 60, 100, 0}}; EV ev = {1, 0, {&m, 0}};
     a->d(a, 25, 0, 0, &ev, 0);
-    float L[128], R[128], *o[2] = {L, R}; double e = 0;
-    for (int k = 0; k < 40; k++) { a->pr(a, 0, o, 128); for (int i = 0; i < 128; i++) e += L[i] * L[i] + R[i] * R[i]; }
+    int fx = a->ni >= 2;   /* effect: feed a 440 Hz sine and check it passes through; instrument: play note 60 */
+    float L[128], R[128], I0[128], I1[128], *o[2] = {L, R}, *in[2] = {I0, I1}; double e = 0;
+    for (int k = 0; k < 40; k++) {
+        if (fx) for (int i = 0; i < 128; i++) I0[i] = I1[i] = 0.25f * sinf(2.0f * 3.14159265f * 440.0f * (k * 128 + i) / 44100.0f);
+        a->pr(a, fx ? in : 0, o, 128);
+        for (int i = 0; i < 128; i++) e += L[i] * L[i] + R[i] * R[i];
+    }
     double rms = sqrt(e / (40 * 256));
-    printf("%s note 60 -> rms %.4f\n", rms > 1e-5 ? "ok  " : "warn", rms);   /* an effect or a silent patch may be legitimately 0 */
+    printf("%s %s -> rms %.4f\n", rms > 1e-5 ? "ok  " : "warn", fx ? "audio in" : "note 60", rms);   /* a silent patch may be legitimately 0 */
 
-    {   /* instance b never got a note: the legacy process() must add silence, leaving 1.0 */
-        float L1[128], R1[128], *o1[2] = {L1, R1}; int kept = 1;
+    if (a->ni >= 2) {   /* an effect called with no input buffers (a plugin scanner's probe) must not crash: the input is silence */
+        float L0[128], R0[128], *o0[2] = {L0, R0};
+        a->pr(a, 0, o0, 128); a->pr(a, 0, o0, 100);
+        CHECK(1, "effect survives processReplacing with a NULL input");
+    }
+    {   /* instance b never got a note (nor audio): process() must add silence, leaving 1.0 */
+        float L1[128], R1[128], Z0[128] = {0}, Z1[128] = {0}, *o1[2] = {L1, R1}, *zin[2] = {Z0, Z1}; int kept = 1;
         for (int i = 0; i < 128; i++) L1[i] = R1[i] = 1.0f;
-        ((void (*)(AEffect *, float **, float **, int32_t))b->p)(b, 0, o1, 128);
+        ((void (*)(AEffect *, float **, float **, int32_t))b->p)(b, b->ni >= 2 ? zin : 0, o1, 128);
         for (int i = 0; i < 128; i++) kept &= fabsf(L1[i] - 1.0f) < 0.01f && fabsf(R1[i] - 1.0f) < 0.01f;
         CHECK(kept, "process() accumulates into the output instead of overwriting it");
     }

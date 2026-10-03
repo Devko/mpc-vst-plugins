@@ -271,11 +271,14 @@ static int16_t f2s(float f) { f *= 32768.0f; return f >= 32767.0f ? 32767 : f <=
 static void run_block(AEffect *e, float **in, float **out, int32_t n, int accumulate) {
     wrap_t *w = e->object;
     housekeeping(e, n);
+    /* A conforming host passes real input to an effect, but a plugin scanner (and the device's own load
+     * probe) may call processReplacing with in == NULL; treat a missing input channel as silence. */
+    int have_in = in && in[0] && in[1];
     int32_t i = 0;
     while (i < n) {
         int aligned = w->inpos == 0 && w->pos >= DSP_BLOCK && n - i >= DSP_BLOCK;
         if (aligned) {
-            for (int j = 0; j < DSP_BLOCK; j++) { w->inb[2 * j] = f2s(in[0][i + j]); w->inb[2 * j + 1] = f2s(in[1][i + j]); }
+            for (int j = 0; j < DSP_BLOCK; j++) { w->inb[2 * j] = have_in ? f2s(in[0][i + j]) : 0; w->inb[2 * j + 1] = have_in ? f2s(in[1][i + j]) : 0; }
             g_api->process(w->dsp, w->inb, w->block, DSP_BLOCK);
             for (int j = 0; j < DSP_BLOCK; j++) {
                 float l = w->block[2 * j] * (1.0f / 32768.0f), r = w->block[2 * j + 1] * (1.0f / 32768.0f);
@@ -287,7 +290,7 @@ static void run_block(AEffect *e, float **in, float **out, int32_t n, int accumu
         float l = 0, r = 0;
         if (w->pos < DSP_BLOCK) { l = w->block[w->pos * 2] * (1.0f / 32768.0f); r = w->block[w->pos * 2 + 1] * (1.0f / 32768.0f); w->pos++; }
         if (accumulate) { out[0][i] += l; out[1][i] += r; } else { out[0][i] = l; out[1][i] = r; }
-        w->inb[2 * w->inpos] = f2s(in[0][i]); w->inb[2 * w->inpos + 1] = f2s(in[1][i]);
+        w->inb[2 * w->inpos] = have_in ? f2s(in[0][i]) : 0; w->inb[2 * w->inpos + 1] = have_in ? f2s(in[1][i]) : 0;
         if (++w->inpos == DSP_BLOCK) { g_api->process(w->dsp, w->inb, w->block, DSP_BLOCK); w->pos = 0; w->inpos = 0; }
         i++;
     }
