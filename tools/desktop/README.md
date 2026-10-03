@@ -42,6 +42,11 @@ one MPC stop and start around the whole batch when the installers allow it.
    `MPC.settings.bak-<what>-<date>` that nothing deletes. The page counts them and deletes all but the newest N (default 10, at least 1:
    the newest is never deleted, and only files named like that are touched). MPC is not stopped. `mpc-store.sh prune [--keep N]` does the
    same on the device.
+7. **Advanced: device patches** (step 7, collapsed, read only for now; `docs/PATCHES.md`): lists the patches in `patches.json` (published next to
+   `catalog.json`) and, when you open the step or press "Check the device", asks the device which are applied. A patch changes the device itself,
+   not a plugin. The app downloads the script, checks it against the manifest's sha256, copies it to a private folder on the device, runs only its
+   `status` command and removes the copy. It does not apply or undo anything; the page says how to run the script yourself. Nothing is asked of the
+   device at connect time, and not while a job runs. Tests: `patches_test.go`, and `ui_test/ui_patches.py` (a browser test with the API stubbed).
 
 **Addins** (catalog kind `addin`: libraries MPC loads when it starts, `docs/ADDINS.md`) go through the same steps. A catalog addin or a
 dropped addin zip installs to `/data/mpc-addins/<id>` with its own `install.sh -y -n`, inside the same single MPC stop and start, whatever
