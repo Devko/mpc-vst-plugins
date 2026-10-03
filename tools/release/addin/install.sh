@@ -31,7 +31,7 @@ fi
 for f in "$ADDIN_SO" $ADDIN_CONF $ADDIN_FILES; do [ -f "$f" ] || die "$f is missing next to install.sh"; done
 
 SVC=$(mpc_service)
-UNIT=$(unit_with_preload "$SVC")
+UNIT=$(unit_with_preload "$SVC" "$(ours "$SVC")")   # not our own drop-in: it repeats the unit's list
 echo "Installing $ADDIN_NAME${ADDIN_VERSION:+ $ADDIN_VERSION}:"
 echo "  $DIR/"
 if edits_in_place "$SVC" "$UNIT"; then echo "  LD_PRELOAD in $UNIT gains $ADDIN_SO (a backup is kept)"

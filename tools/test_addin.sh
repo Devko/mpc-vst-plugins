@@ -93,7 +93,9 @@ grep -qF "$A" "$T/root/usr/lib/systemd/system/inmusic-mpc.service" && grep -q "r
 # 7. the unit is on a read-only root (as on the devices): the shared drop-in repeats its list, then the addins
 fresh; unit 'Environment=LD_PRELOAD=/usr/lib/x.so:/usr/lib/y.so'; ro a-w
 U0=$(cat "$T/root/usr/lib/systemd/system/acvs.service")
-run a install.sh; run b install.sh
+run a install.sh; run b install.sh; out=$(cat "$T/out")
+case "$out" in *"the list from $T/root/usr/lib/systemd/system/acvs.service, then the addins"*) ok "the second install names the unit's list, not the drop-in" ;;
+  *) bad "second install's summary: $(echo "$out" | tr "\n" "/")" ;; esac
 grep -qx "Environment=LD_PRELOAD=/usr/lib/x.so:/usr/lib/y.so:$A:$B" "$DROP" && grep -qx "# base: /usr/lib/x.so:/usr/lib/y.so" "$DROP" \
   && [ "$(cat "$T/root/usr/lib/systemd/system/acvs.service")" = "$U0" ] && ok "read-only unit: the drop-in carries its list" || bad "read-only: $(cat "$DROP" 2>&1)"
 ro u+w; unit 'Environment=LD_PRELOAD=/usr/lib/x.so:/usr/lib/z.so'; ro a-w   # a firmware update changes the unit
