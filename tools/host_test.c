@@ -87,6 +87,11 @@ int main(void) {
     double rms = sqrt(e / (40 * 256));
     printf("%s %s -> rms %.4f\n", rms > 1e-5 ? "ok  " : "warn", fx ? "audio in" : "note 60", rms);   /* a silent patch may be legitimately 0 */
 
+    if (a->ni >= 2) {   /* an effect called with no input buffers (a plugin scanner's probe) must not crash: the input is silence */
+        float L0[128], R0[128], *o0[2] = {L0, R0};
+        a->pr(a, 0, o0, 128); a->pr(a, 0, o0, 100);
+        CHECK(1, "effect survives processReplacing with a NULL input");
+    }
     {   /* instance b never got a note (nor audio): process() must add silence, leaving 1.0 */
         float L1[128], R1[128], Z0[128] = {0}, Z1[128] = {0}, *o1[2] = {L1, R1}, *zin[2] = {Z0, Z1}; int kept = 1;
         for (int i = 0; i < 128; i++) L1[i] = R1[i] = 1.0f;
