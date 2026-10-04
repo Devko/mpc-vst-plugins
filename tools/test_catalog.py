@@ -437,8 +437,8 @@ class BuildTest(Base):
     ENTRY = {"id": "test-synth", "name": "Test Synth", "author": "A", "repo": "acme/test-synth", "kind": "instrument",
              "license": "MIT", "summary": "s"}
 
-    def rel(self, tag, aid, pre=False, name="x-mpc-armv7.zip"):
-        return {"tag_name": tag, "prerelease": pre, "draft": False, "published_at": "2026-09-29T00:00:00Z", "body": "notes",
+    def rel(self, tag, aid, pre=False, name="x-mpc-armv7.zip", at="2026-09-29T00:00:00Z"):
+        return {"tag_name": tag, "prerelease": pre, "draft": False, "published_at": at, "body": "notes",
                 "assets": [{"id": aid, "name": name, "browser_download_url": "https://x/" + name, "download_count": 3}]}
 
     def test_build_keeps_good_versions_and_reports_bad(self):
@@ -454,6 +454,19 @@ class BuildTest(Base):
         self.assertTrue(p["versions"][1]["yanked"])
         self.assertEqual(p["downloads"], 9)   # all time: every published zip, including the yanked 1.0.0 and the invalid 1.2.0
         self.assertEqual(sorted((x["tag"] for x in problems)), ["v1.2.0", "v1.3.0-b"])
+
+    def test_a_failure_with_a_newer_passing_release_is_superseded(self):
+        bad = lambda v: self.tamper(self.build(v), "portable/Acme - VST - Test Synth/test_synth.so", lambda d: d + b"x")
+        gh = FakeGitHub({"acme/test-synth": [self.rel("v1.3.0", 4, at="2026-10-03T00:00:00Z"),
+                                              self.rel("v1.2.0", 3, at="2026-10-02T12:00:00Z"),
+                                              self.rel("v1.1.0", 2, at="2026-10-02T09:00:00Z"),
+                                              self.rel("v1.0.0", 1, at="2026-10-01T00:00:00Z")]},
+                        {1: bad("1.0.0"), 2: bad("1.1.0"), 3: self.build("1.2.0"), 4: bad("1.3.0")})
+        _, problems = catalog_build.build([self.ENTRY], gh, os.path.join(self.tmp, "c"), set())
+        self.assertEqual({x["tag"]: x["superseded"] for x in problems}, {"v1.0.0": True, "v1.1.0": True, "v1.3.0": False})
+        # the passing release is yanked: nothing it would supersede counts as fixed
+        _, problems = catalog_build.build([self.ENTRY], gh, os.path.join(self.tmp, "c"), {"test-synth@1.2.0"})
+        self.assertFalse(any(x["superseded"] for x in problems))
 
     def test_tested_json_attaches_to_matching_version(self):
         gh = FakeGitHub({"acme/test-synth": [self.rel("v1.0.0", 1)]}, {1: self.build("1.0.0")})
@@ -480,12 +493,32 @@ import catalog_issues  # noqa: E402
 
 
 class IssuesTest(unittest.TestCase):
-    def test_plan_dedupes_and_skips_open(self):
+    T = "Catalog: a %s failed validation"
+
+    def test_plan_dedupes_and_skips_known_titles(self):
         pr = [{"id": "a", "tag": "v1", "error": "x"}, {"id": "a", "tag": "v1", "error": "y"},
-              {"id": "a", "tag": "v2", "error": "z"}, {"id": "b", "tag": None, "error": "404"}]
-        got = catalog_issues.plan(pr, {"Catalog: a v2 failed validation"})
-        self.assertEqual([t for t, _ in got], ["Catalog: a v1 failed validation", "Catalog: b cannot be read"])
+              {"id": "a", "tag": "v2", "error": "z"}, {"id": "a", "tag": "v3", "error": "w"},
+              {"id": "b", "tag": None, "error": "404"}]
+        issues = [{"number": 1, "title": self.T % "v2", "state": "OPEN"}, {"number": 2, "title": self.T % "v3", "state": "CLOSED"}]
+        got, close = catalog_issues.plan(pr, issues)
+        self.assertEqual([t for t, _ in got], [self.T % "v1", "Catalog: b cannot be read"])   # v3 was closed: not reopened
         self.assertIn("- x", got[0][1]); self.assertIn("- y", got[0][1])
+        self.assertEqual(close, [])
+
+    def test_superseded_fixed_and_duplicate_issues_close(self):
+        pr = [{"id": "a", "tag": "v1", "error": "x", "superseded": True}, {"id": "a", "tag": "v4", "error": "y"},
+              {"id": "c", "tag": None, "error": "cannot list releases: 502"}]
+        issues = [{"number": n, "title": t, "state": st} for n, t, st in [
+            (10, self.T % "v1", "OPEN"),             # superseded: closed
+            (11, self.T % "v2", "OPEN"),             # no longer reported: closed
+            (12, self.T % "v4", "OPEN"), (13, self.T % "v4", "OPEN"),   # still failing; 13 is a duplicate
+            (14, "Catalog: c v1 failed validation", "OPEN"),   # c could not be read this time: left alone
+            (15, "Catalog: add a plugin please", "OPEN"),       # not one of ours
+            (16, self.T % "v3", "CLOSED")]]
+        got, close = catalog_issues.plan(pr, issues)
+        self.assertEqual([t for t, _ in got], ["Catalog: c cannot be read"])
+        self.assertEqual([n for n, _ in close], [10, 11, 13])
+        self.assertIn("newer release", close[0][1])
 
 
 import catalog_site  # noqa: E402
