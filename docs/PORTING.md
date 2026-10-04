@@ -91,6 +91,11 @@ for the pattern). This applies to every future port, not just ones that hit the 
       draws it wrongly (misaligned half-frames); reduce the frame count or size. (Reported by another port author; not yet
       reproduced on our device. `catalog_check.py` warns about such images.)
 - [ ] Q-Links: 1–8 = knob bank 1, 9–16 = bank 2; nested pages via several `qlinks` lines.
+- [ ] Option lists and `"display": "int"` params step one option or whole number per Q-Link event and per data wheel
+      click (`settle()`). If a short one races by under a Q-Link, `"qlink_ticks": N` on that param (opt-in, off by default)
+      counts N events per step: 6 suited a 9-option list on a Key 37. It costs N wheel clicks per step too, and on a Force
+      a counted Q-Link felt sticky and uneven on whole numbers (NOTES.md "Q-Link slow-down prototypes on a Force"), so
+      use it per param, only where it is wanted, and try it on the device.
 - [ ] Choice lists: `enum_h`/`enum_v` (all options on screen) or `popup` (a field; a tap opens a drawn list, a
       pick closes it). Not `menu`: MPC's native picker opens empty for a VST2. A `popup` adds a hidden
       `<key>__open` param after the port's own (gen_vst.py), kept by `wrapper/vst2_wrap.c`. A hand-written
@@ -100,6 +105,9 @@ for the pattern). This applies to every future port, not just ones that hit the 
       artwork drawn in Inkscape) set `"art": "html"` and restyle with `art_css=` (SKIN_STUDIO "Artwork renderers").
 - [ ] Controls that only matter in one mode (per oscillator type, sync on/off): `when=<param>:<option>` on their
       layout lines, so each mode shows its own set in the same space (SKIN_STUDIO "Mode panels").
+- [ ] Instruments-browser tile: `"tile": "art/tile.png"` (270x110 PNG) in vst.json puts the artwork tile in the Sounds >
+      INSTRUMENTS browser and ships a Default preset so the tile opens the plugin (`tools/xpl.py`; NOTES.md
+      "Instruments-browser tiles"). Without it the plugin is a folder tile in the browser.
 
 ## 4. Device
 - [ ] The plugin is one folder, `/sdcard/Synths/<vendor> - VST - <name>/`: the `.so`, `Plugin Skins/`, `version.xml` and any data next to the `.so`.

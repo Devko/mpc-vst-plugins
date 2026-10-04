@@ -151,12 +151,51 @@ int main(void) {
         int n = PARAMS[en].nopts;
         a->setP(a, en, 1.0f); a->d(a, 7, en, 0, d, 0);
         CHECK(!strcmp(d, PARAMS[en].opts[n - 1]), "option %s -> \"%s\" (want \"%s\")", PARAMS[en].key, d, PARAMS[en].opts[n - 1]);
-        a->setP(a, en, (n - 1.5f) / (n - 1));   /* a Q-Link nudge down from the last option: one step */
+        a->setP(a, en, (n - 1.5f) / (n - 1));   /* half an option down from the last: one option down (settle() rounds toward the move) */
         CHECK(fabsf(a->getP(a, en) - (float)(n - 2) / (n - 1)) < 1e-3f, "nudge steps one option (%.3f)", a->getP(a, en));
-        step_tests(a, en, "option", n - 1);
+        if (PARAMS[en].qlink_ticks <= 1) step_tests(a, en, "option", n - 1);   /* counted params: below */
+        /* Q-Link ticks, as MPC sends them (a small delta from the current option): without qlink_ticks each one
+         * steps an option; with it, one option per qlink_ticks events the same way, and a turn back starts over */
+        int ticks = PARAMS[en].qlink_ticks > 1 ? PARAMS[en].qlink_ticks : 1;
+        float tick = 0.1f / (n - 1);
+        a->setP(a, en, 0);
+        for (int k = 0; k < ticks - 1; k++) a->setP(a, en, a->getP(a, en) + tick);
+        CHECK(a->getP(a, en) < 1e-3f, "%d ticks stay put (%.3f)", ticks - 1, a->getP(a, en));
+        a->setP(a, en, a->getP(a, en) + tick);
+        CHECK(fabsf(a->getP(a, en) - 1.0f / (n - 1)) < 1e-3f, "tick %d steps one option (%.3f)", ticks, a->getP(a, en));
+        a->setP(a, en, 0);                      /* picked outright: clears what was counted */
+        if (ticks > 1) {
+            for (int k = 0; k < ticks - 1; k++) a->setP(a, en, a->getP(a, en) + tick);
+            a->setP(a, en, a->getP(a, en) - tick);
+            for (int k = 0; k < ticks - 1; k++) a->setP(a, en, a->getP(a, en) + tick);
+            CHECK(a->getP(a, en) < 1e-3f, "a turn back starts the count over (%.3f)", a->getP(a, en));
+        }
+        if (n >= 3) {   /* a jump of half an option or more (automation, a drag) settles toward the move (settle()) */
+            a->setP(a, en, 0);
+            a->setP(a, en, (n - 1 - 0.3f) / (n - 1));
+            CHECK(fabsf(a->getP(a, en) - 1.0f) < 1e-3f, "a large jump up lands on the option above (%.3f)", a->getP(a, en));
+            a->setP(a, en, 0.6f / (n - 1));
+            CHECK(a->getP(a, en) < 1e-3f, "a large jump down lands on the option below (%.3f)", a->getP(a, en));
+            a->setP(a, en, 0);
+        }
+    }
+    for (int i = 0; i < NPARAMS; i++) {   /* an integer with its own Q-Link rate: qlink_ticks events per step */
+        const param_t *p = &PARAMS[i];
+        if (p->nopts || !p->int_display || p->qlink_ticks <= 1 || p->max - p->min < 2) continue;
+        float range = p->max - p->min, tick = 0.1f / range;
+        char d0[256]; a->setP(a, i, 0); a->d(a, 7, i, 0, d0, 0);
+        for (int k = 0; k < p->qlink_ticks - 1; k++) a->setP(a, i, a->getP(a, i) + tick);
+        a->d(a, 7, i, 0, d, 0);
+        CHECK(!strcmp(d, d0), "%s: %d ticks stay on \"%s\" (\"%s\")", p->key, p->qlink_ticks - 1, d0, d);
+        a->setP(a, i, a->getP(a, i) + tick);
+        CHECK(fabsf(a->getP(a, i) * range - 1) < 0.05f, "%s: tick %d reaches the next step (%.3f)", p->key, p->qlink_ticks, a->getP(a, i) * range);
+        a->setP(a, i, 0.5f);
+        CHECK(fabsf(a->getP(a, i) - 0.5f) <= 0.5f / range + 1e-3f, "%s: a direct set lands (%.3f)", p->key, a->getP(a, i));
+        a->setP(a, i, PARAMS[i].def);
+        break;
     }
     for (int i = 0; i < NPARAMS; i++)   /* the first whole-number param */
-        if (!PARAMS[i].nopts && PARAMS[i].int_display && PARAMS[i].max - PARAMS[i].min >= 2) { step_tests(a, i, "int", (int)(PARAMS[i].max - PARAMS[i].min)); break; }
+        if (!PARAMS[i].nopts && PARAMS[i].int_display && PARAMS[i].qlink_ticks <= 1 && PARAMS[i].max - PARAMS[i].min >= 2) { step_tests(a, i, "int", (int)(PARAMS[i].max - PARAMS[i].min)); break; }
     if (pop >= 0) {
         int t = PARAMS[pop].popup_of, n = PARAMS[t].nopts;
         a->setP(a, pop, 1); CHECK(a->getP(a, pop) > 0.5f, "popup %s opens", PARAMS[pop].key);
