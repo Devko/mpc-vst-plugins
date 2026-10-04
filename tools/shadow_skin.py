@@ -1049,8 +1049,10 @@ def to_mpc2x(tui):
 
     Seen in 2.15.1's stock skins (AIR Amp Sim, Decimator; docs/NOTES.md): the tab is `version 1` with its page inline as
     `componentDefinition`, definitions are `version 2` without `repeats`/`hideQLinkBounds`, `Knob` data is `version 1`
-    (no `invert`/`dragOrientation`) and `Button` data is `version 1` (no `gestureBehaviour`). Nothing above version 2
-    remains. Experimental: not yet confirmed on a device."""
+    (no `invert`/`dragOrientation`), `Button` data is `version 1` (no `gestureBehaviour`) and actions are `version 1` (no
+    `handle remapping`, which is always empty in Akai's own skins). Checked role by role against 110 stock 2.15.1 skins:
+    every role in the six released ports' skins then has a version 2.15.1 itself uses. Experimental: touch behaviour on
+    2.x not yet confirmed on a device."""
     pd = tui["pageData"]
     cdefs = pd["componentDefinitions"]
     defs = {d["key"]: d for d in cdefs["localComponentDefinitions"]}
@@ -1079,6 +1081,9 @@ def to_mpc2x(tui):
                 elif cd.get("type") == "Button" and dd.get("version") == 2:
                     dd["version"] = 1
                     dd.pop("gestureBehaviour", None)
+            if o.get("version") == 2 and "onAction" in o and "handler" in o:   # an action: 2.x only has version 1
+                o["version"] = 1
+                o.pop("handle remapping", None)
             if o.get("version") == 4 and "componentsData" in o:     # a page or widget definition
                 o["version"] = 2
                 o.pop("repeats", None)

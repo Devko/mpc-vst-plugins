@@ -53,8 +53,11 @@ def _gen_like_tui():
     bg = {"version": 1, "focussed": {"version": 1, "colour": "0", "image": ""},
           "unfocussed": {"version": 1, "colour": "0", "image": ""}}
 
+    action = {"version": 2, "onAction": "Mouse Down", "handler": "Q-Link", "handleName": "Data",
+              "additionalData": "", "handle remapping": {"version": 1, "map": []}}
+
     def definition(kids):
-        return {"version": 4, "actions": [], "backgroundData": bg, "ignoreMousePresses": False,
+        return {"version": 4, "actions": [dict(action)], "backgroundData": bg, "ignoreMousePresses": False,
                 "disableCoarseDataWheel": False, "repeats": False, "hideQLinkBounds": False, "componentsData": kids}
     widget = definition([
         child("Knob", {"version": 5, "knobType": "FilmStrip", "filmStrip": "k.png", "numFrames": 127,
@@ -124,6 +127,11 @@ class ToMpc2x(unittest.TestCase):
                                 "handleName": "Data"})
         self.assertEqual(button, {"version": 1, "onImage": "a.png", "offImage": "b.png", "buttonId": 1,
                                   "numButtonsInGroup": 1, "handleName": "Data"})
+
+    def test_actions_are_version_1_without_handle_remapping(self):
+        acts = self.pd["tabs"][0]["componentDefinition"]["actions"]
+        self.assertEqual(acts, [{"version": 1, "onAction": "Mouse Down", "handler": "Q-Link", "handleName": "Data",
+                                 "additionalData": ""}])
 
     def test_a_tab_pointing_at_a_missing_definition_is_an_error(self):
         t = _gen_like_tui()
