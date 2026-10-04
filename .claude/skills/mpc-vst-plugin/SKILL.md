@@ -29,7 +29,7 @@ Stop any separately attached audio engines first.
    `arm32v7/gcc:11-bullseye` (glibc 2.31; MPC OS 2.x has 2.32, so `catalog_check.py` rejects anything above 2.32), `-fvisibility=hidden -shared -fPIC`, and links `wrapper/vst2_wrap.c` from this repo.
 3. **Bench**: `tools/bench.sh build/x.so <ip>` must PASS before release (docs/BENCH.md).
 4. **Offline test first**: `tools/test_port.sh <port>/vst.json` builds `tools/host_test.c` with the port's sources and
-   adapter on x86 under ASan/UBSan and must print PASSED: two instances, names, set/get, option select + nudge,
+   adapter on x86 under ASan/UBSan and must print PASSED: two instances, names, set/get, option select + nudge, stepping (wheel, Q-Link, sweep, reversal),
    popup open/close, note→audio, chunk round-trip. Hand-written wrappers keep their own host test.
 5. **Deploy (staged)**: `.so` → `/sdcard/Synths/<vendor> - VST - <name>/x.so.new` then `mv` (one folder: skin, `.so` and data); skin via `tar | ssh tar -C /sdcard/Synths -xf -`
    (**don't scp paths with spaces**: escaping created a folder with literal backslashes once). Verify md5.
@@ -42,8 +42,11 @@ Stop any separately attached audio engines first.
 7. The user tests on the device: plugin list → insert → play → edit screen → Q-Links → save/reload project.
 
 ## Gotchas
-- Integer DSP params: set `"display": "int"`. The wrapper then rounds and keeps the unrounded knob position, so slow
-  Q-Link turns accumulate (else they stick between two values). List-tile highlights need `<key>_on` from the DSP.
+- Integer DSP params: set `"display": "int"`. The wrapper then rounds, and `settle()` moves an option list or a whole-number
+  param one step per data wheel click or Q-Link event (else it sticks between two values), and a drag or sweep without flicker.
+  MPC sends a wheel click and a Q-Link event alike (the read-back value plus 0.01 / 1/128 of the range: docs/NOTES.md "Stepping of
+  option lists and whole numbers"), so a short range races under a Q-Link; counting several events per step is a per-param opt-in
+  where it is wanted. List-tile highlights need `<key>_on` from the DSP.
   The orange box on a control is the transparent-able Focus ring, not Q-Link bounds. Details: docs/NOTES.md
   "Skin design lessons from the jv880 redesign".
 - AEffect magic `'VstP'` 0x56737450 (the forum PoC's value is wrong).

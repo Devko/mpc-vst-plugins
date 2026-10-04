@@ -32,6 +32,48 @@ static void run(AEffect *a, int blocks) {
     for (int k = 0; k < blocks; k++) a->pr(a, ip, o, 128);
 }
 
+/* How MPC nudges a stepped param (an option list, a "display": "int" range), measured on a Force (docs/NOTES.md "Input probe")
+ * and an MPC One: the data wheel and a Q-Link send the read-back value plus a small delta (0.01 / 1/128 of the range); a drag or
+ * sweep keeps sending positions from where it started. Each wheel click or Q-Link event must move one step, a sweep must not
+ * flicker, and a reversal must go the other way. span = steps from the minimum to the maximum. */
+static void step_tests(AEffect *a, int i, const char *kind, int span) {
+    const char *key = PARAMS[i].key;
+    float mn = span;
+    a->setP(a, i, 0);
+    int ok = 1;
+    for (int k = 1; k <= 6; k++) {   /* data wheel: +0.01 from the read-back value */
+        a->setP(a, i, a->getP(a, i) + 0.01f);
+        if (fabsf(a->getP(a, i) * span - (k < span ? k : span)) > 0.05f) ok = 0;
+    }
+    CHECK(ok, "%s %s: six data wheel clicks step six (%.2f)", kind, key, a->getP(a, i) * span);
+    if (span <= 64) {   /* a Q-Link event is 1/128 of the range: still one step each (opt-in counting is qlink_ticks) */
+        a->setP(a, i, 0); ok = 1;
+        for (int k = 1; k <= 6; k++) {
+            a->setP(a, i, a->getP(a, i) + 1.0f / 128);
+            if (fabsf(a->getP(a, i) * span - (k < span ? k : span)) > 0.05f) ok = 0;
+        }
+        CHECK(ok, "%s %s: six Q-Link events step six (%.2f)", kind, key, a->getP(a, i) * span);
+    }
+    a->setP(a, i, 0); ok = 1;
+    float prev = 0, last = 0;
+    for (int k = 1; 0.3f * k <= span; k++) {   /* a sweep up from where it started: 0.3 step per event */
+        a->setP(a, i, 0.3f * k / span);
+        float v = a->getP(a, i) * span;
+        if (v < prev - 0.05f) ok = 0;
+        prev = v; last = 0.3f * k;
+    }
+    CHECK(ok && fabsf(prev - ceilf(last - 0.001f)) < 0.05f, "%s %s: a sweep up goes steadily, no flicker (ends at %.2f)", kind, key, prev);
+    ok = 1;
+    for (int k = 1; last - 0.3f * k >= 0; k++) {   /* and back down */
+        a->setP(a, i, (last - 0.3f * k) / span);
+        float v = a->getP(a, i) * span;
+        if (v > prev + 0.05f) ok = 0;
+        prev = v;
+    }
+    CHECK(ok && prev < mn, "%s %s: a sweep back down goes steadily, no flicker (ends at %.2f)", kind, key, prev);
+    a->setP(a, i, 0);
+}
+
 int main(void) {
     AEffect *a = VSTPluginMain(host), *b = VSTPluginMain(host);
     CHECK(a && b && a != b, "two instances");
@@ -65,7 +107,10 @@ int main(void) {
         CHECK(!strcmp(d, PARAMS[en].opts[n - 1]), "option %s -> \"%s\" (want \"%s\")", PARAMS[en].key, d, PARAMS[en].opts[n - 1]);
         a->setP(a, en, (n - 1.5f) / (n - 1));   /* a Q-Link nudge down from the last option: one step */
         CHECK(fabsf(a->getP(a, en) - (float)(n - 2) / (n - 1)) < 1e-3f, "nudge steps one option (%.3f)", a->getP(a, en));
+        step_tests(a, en, "option", n - 1);
     }
+    for (int i = 0; i < NPARAMS; i++)   /* the first whole-number param */
+        if (!PARAMS[i].nopts && PARAMS[i].int_display && PARAMS[i].max - PARAMS[i].min >= 2) { step_tests(a, i, "int", (int)(PARAMS[i].max - PARAMS[i].min)); break; }
     if (pop >= 0) {
         int t = PARAMS[pop].popup_of, n = PARAMS[t].nopts;
         a->setP(a, pop, 1); CHECK(a->getP(a, pop) > 0.5f, "popup %s opens", PARAMS[pop].key);

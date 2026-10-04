@@ -27,6 +27,10 @@ Building on parameter-driven visibility (`IndexedEnabling`, NOTES "Conditional v
       VST2** (NOTES.md "Native picker (menu overlay): not available to VST2", 2026-09-24) under its real
       component name, not a new option — `popup` stays the way to do a list. Not separately verified.
 ## Porting and tooling
+- [ ] **Q-Link feel on option lists and whole numbers.** A Q-Link event is one step on a Force (docs/NOTES.md "Stepping of option lists
+      and whole numbers"), which is quick on a short range; the data wheel is right. Three prototypes of slowing it failed (NOTES). First
+      thing to try: how the stock plugins (AIR, Akai) respond to the same Q-Link on a stepped param, by logging what MPC sends them
+      and what they read back, then match that.
 - [ ] **A reference port on `engine.h` + `params.json`** (e.g. `poc/synth.c` turned into a full example), so
       the repo shows a port that needs no adapter.
 

@@ -884,6 +884,32 @@ A user batch-installed plugins to the Force's SSD with the desktop installer: al
 - **Desktop app bug found while looking (not the cause), fixed:** `readInfo` (`tools/desktop/device.go`) took the mount point from `df ... $NF`, so `/media/SSD - Force` became `Force`; the `/proc/mounts` lookup then found nothing (it writes spaces as `\040`) and the filesystem and options came back empty, which also skipped the symlink and read-only checks. It now reads `df -kP` fields 6+ and matches the escaped name.
 - **noexec check (host tests only, not run on a Force):** the app flags a location mounted `noexec` (`Root.NoExec`, a note on the location, install refused with the reason); `install.sh` prints a warning (it still installs, so a hand-made exec mount is not blocked). Tests: `TestNoexecMountWithSpacesInItsNameIsFlaggedAndRefused` (fake BusyBox-style `df` line and an escaped `/proc/mounts` line; fails with the old parsing), `tools.test_catalog` (70 OK), `install.sh` fragment run against a fake `df` and `/proc/mounts` with and without `noexec`.
 
+## Stepping of option lists and whole numbers: `settle()` (2026-10-04, offline; from #130 and the Force input probe)
+Until now an integer param kept an unrounded "shadow" position so a slow Q-Link turn accumulated, and an option list stepped one
+option per event. Two measurements say that cannot serve both inputs: on a Force (MPC OS 3.9.1, "Input probe" above) a Q-Link event
+is the read-back value plus 1/128 of the range and a data wheel click the read-back value plus 0.01, one event per detent, so the
+wrapper cannot tell them apart; on an MPC One (#130) the wheel on a 1..8 param "only trembled" with the shadow (0.07 of a step per
+click, 14 clicks per step) and a drag or Q-Link sweep, measured from where it started, flickered between two values. `settle()`
+(wrapper/vst2_wrap.c, code from #130 by poloq-instruments) rounds toward the way the value moves: from the host's last position
+while it moves continuously, else from the current value; `shadow[]` is gone. Result: one step per wheel click or Q-Link event, a
+sweep up or down without flicker. Cost: a short whole-number range (1..8) crosses its range in about seven Q-Link events on a Force,
+where the shadow took about 18 per step. Counting several events per step is #90's opt-in `qlink_ticks`, because the wheel then needs
+as many clicks. Test: `poc/steptest` with the stepping section of `tools/host_test.c` (six wheel clicks, six Q-Link events, a sweep
+up and back, for an option list and an integer); on the previous wrapper the same checks fail. Not yet re-checked with a hand on a
+Q-Link or the wheel after this change.
+
+**Checked on a Force (MPC OS 3.9.1, 2026-10-04), probe build of poc/inputprobe with this wrapper:** `S` is what MPC sent, `E` what the engine got.
+- Q-Link on `int` (1..8): each event is +0.055 from the read-back value and steps one whole number (4 events: 5, 6, 7, 8), the known
+  cost. On `opt` (9 options) each event steps one option (8 events: 1 to 8).
+- Data wheel: +0.07 (`int`) and +0.08/+0.12 (`opt`) per click, one step per click (0 to 5 in six clicks).
+- A slow touch drag (0.2 to 0.3 step per event) goes up and back down steadily: engine values 1,2,2,3,3,3,3,4,4,4,4,5,5,5, then
+  back to 1 with the reversal taking effect at once. No flicker.
+- **A fast drag (0.5 to 0.9 step per event) flickered once:** positions 7.66, 7.22, 6.66, 6.11 gave 7, 7, 6, 7, then 5, 4, 3, 2, 1.
+  When two events are half a step or more apart, `settle()` ignores the host's last position and takes the direction from the
+  value: 6.11 against a value of 6 reads as "up". The same numbers are what a wheel reversal sends (pos = value - 0.07 after an up
+  click, 0.86 above the previous position), so the two cannot be told apart from one event; the 0.5 limit is the compromise that keeps
+  wheel reversals right. Known limit: a fast drag over a short range can step one the wrong way at a time.
+
 ## 2026-10-03: patches step (read only) in the installer app, offline only
 Design in `docs/PATCHES.md`. Built so far: the drum-pad patch script v4 (`status` ends with a `STATE` line; `install --confirmed` skips the typed question; `status` unmounts the bind mount of `/` that it opened, which v1-v3 left mounted: found by reading the script, fixed and checked with shimmed `mount`/`umount`/`mountpoint`), `catalog/patches.json` + `tools/patch_check.py` (the site build publishes it only if it validates), and step 7 of the app (list and `status` only; no apply). Checked on the host only: `tools/test_patches.py` (13 tests: the script contract against a synthetic stand-in for the MPC binary with its checksums rewritten, the checker, the site build), `go test -race` in `tools/desktop` (new `patches_test.go`, six mutations each fail a test), and `tools/desktop/ui_test/ui_patches.py` (Chromium, API stubbed). **Not run:** `tools/mpc_patch/test_script.sh` with Akai's real MPC (not in the repo), the app against a real Force, or any apply/undo from the app (not built).
 
@@ -895,3 +921,19 @@ The patches step (read only) showed what it should on that device: "This firmwar
 
 ### 2026-10-04: restore of an unknown MPC build and reinstall of the patch, verified on a Force (script v5)
 Force, Settings: MPC OS 3.9.1, MockbaMod. The device had an unrecognised MPC build (checksum `7cf96599ec61b1079688f253f3b65b9f`, see the entry above; what made it is not known) and a saved full backup whose md5 was the stock `592eebc8e1ce0797dc8c98e7002143b8`. With the project saved, the user ran script v5 (`tools/mpc_patch/mpc-drum-pad-patch.sh` at commit `0adeb93`) on the device, over SSH as root: `uninstall` (typed `RESTORE`) printed `restored stock MPC from the full backup`; `install` (typed `PATCH`) printed `patched OK`; the final `status` ended with `state=patched` and the patched checksum `f899e581cba179a831212083f9a55ae0`; and step 7 of the desktop app (v0.3.5) then showed the patch as **Applied**. All four checks passed, reported by the user (the output was not pasted, so the exact lines were not captured here). So on one device and one firmware build the restore-from-backup path of `uninstall`, the reinstall, the `STATE` line with `checksum=` and the app's row all work. Not covered: another firmware, a backup that is not stock (refused in the offline tests only), a device with no backup (offline only), and Apply/Undo from the app (not built).
+
+### Q-Link slow-down prototypes on a Force (MPC OS 3.9.1, 2026-10-04): none kept
+Tried on top of `settle()` with the probe build (all offline-tested, then felt on the Force). A Q-Link event is the read-back value plus a
+whole number of 1/128 of the range, exact to float precision; a slow turn sends a repeating 1, 2, 3 units.
+- **Count units, suppress the event (4 units per step):** wheel and drags unaffected, but the knob does not follow between steps and
+  the cadence is uneven (1, 2, 3 units per event): "sticky/jumpy". A touch drag event that happened to be a whole number of 1/128 within
+  0.03 (8.03) was counted as a Q-Link burst and jumped two steps up in a downward drag; the test needs to be exact (0.002).
+- **Smooth the knob (return a fractional read-back, 8 units per step):** works on an option list (MPC adopts the read-back: 41 events,
+  a step per 8 units) but not on a whole number: MPC kept its own count (S 1.05, 1.11, 1.05, 1.11 against read-backs 1.00, 1.12), the
+  event after the first looked like a drag and cleared the count, so a slow turn stayed on 1 for 153 events; fast turns jumped out of it.
+  The old unrounded "shadow" worked because it returned exactly what MPC had sent; a scaled read-back does not.
+- **Touch drag:** `settle()`'s ceil/floor makes the end values reachable only at the very end of the travel and the first event of a
+  drag cannot be told from a wheel click (same numbers), so it can step one the wrong way. Plain rounding for continuous drags fixed the
+  ends, but a selection on a step must clear the stored drag position or the next wheel click does nothing.
+Not tried: what MPC does with a read-back on a multiple of 1/128 for a whole number, and how the stock plugins handle the same Q-Link
+(ROADMAP). Per-param counting stays an opt-in in #90 (`qlink_ticks`) with this caveat.
