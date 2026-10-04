@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -272,5 +273,20 @@ func TestPatchesEndpointNeverRunsATamperedScript(t *testing.T) {
 	}
 	if _, err := os.Stat(logFile); err == nil {
 		t.Error("a script that fails its checksum must never reach the device")
+	}
+}
+
+// The manifest's "backup" is a folder; the device state used to share that JSON key and turned it into true on the page.
+func TestRowJSONKeepsTheManifestBackupFolderAndTheDeviceFlagApart(t *testing.T) {
+	var p Patch
+	p.ID, p.Backup = "x", "/sdcard/MPC-backup"
+	b, err := json.Marshal(PatchRow{Patch: p, State: "stock", HasBackup: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	json.Unmarshal(b, &m)
+	if m["backup"] != "/sdcard/MPC-backup" || m["hasBackup"] != true {
+		t.Errorf(`"backup" must stay the folder and "hasBackup" the flag: %s`, b)
 	}
 }

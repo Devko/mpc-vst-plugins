@@ -1,6 +1,6 @@
-# Design: an "Advanced" patches tab in the installer app (proposal, nothing built yet)
+# Design: an "Advanced" patches step in the installer app (built up to a read-only list)
 
-Status 2026-10-03: proposal. Verified facts go in `NOTES.md`; this file says what we would build and what is still unknown.
+Status 2026-10-04: the design below is the plan; steps 1 and 2 of "Order of work" are built and merged (#154, #156), so the app has a read-only step 7 (in the desktop app from v0.3.5). **Apply and Undo from the app are not built.** Verified facts go in `NOTES.md`; this file says what we build and what is still unknown.
 
 ## Why
 Some community work is not a plugin: it changes the device itself. Today that is `tools/mpc_patch` (16-pad drum layout, patches Akai's
