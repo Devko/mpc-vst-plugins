@@ -37,8 +37,7 @@ Stop any separately attached audio engines first.
    stop acvs (or inmusic-mpc) → back up `MPC.settings` → insert the `<PLUGIN …/>` line before `</KNOWNPLUGINS>` (first time:
    add a whole `<VALUE name="pluginList-arm"><KNOWNPLUGINS>…</KNOWNPLUGINS></VALUE>` before `</PROPERTIES>`)
    → start the service again → check force_shadow.so is still in MPC's environ. An `.so` update alone (same path) needs no settings
-   edit and no restart: remove every instance of the plugin, then insert it again (verified 2026-09-24). A skin-only change needs **no restart**: swap the folder, then re-insert the
-   plugin or reload the project.
+   edit and no restart: remove every instance of the plugin, then insert it again (verified 2026-09-24). A changed skin is **not** reloaded by re-inserting the plugin (MPC keeps skins in memory; verified 2026-10-04): it needs an MPC restart, so ask first. MPC finds a skin by folder name (`<vendor> - VST - <product>`), even when the `.so` loads from another folder.
 7. The user tests on the device: plugin list → insert → play → edit screen → Q-Links → save/reload project.
 
 ## Gotchas
