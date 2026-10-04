@@ -876,6 +876,11 @@ Patched checksum `7cf96599ec61b1079688f253f3b65b9f`. The script recognises the p
 earlier version and upgrades it. Offline: `test_matcher.sh` (qemu-user, 8 names match, 15 others fall through) and
 `test_script.sh` (BusyBox 1.36, 23 cases incl. upgrade from `f899e581...`; working copies are removed between cases to keep a
 tmpfs from filling) all pass. Not yet run on a device in this form.
+  Rebased on main's script v5 on 2026-10-04 (script v6): the same name table, regenerated with `build_script.py`, the patched
+  checksum `7cf96599...` unchanged, v5's patched build (`f899e581...`) is recognised as an earlier version and upgraded;
+  `catalog/patches.json` re-pinned to this script (`tools/patch_check.py` OK). `test_matcher.sh` (qemu-user) passes: the eight names
+  match and `Lucky`, `Lucky Dips`, `Machinemodule Tap` and the others fall through. `tools/test_patches.py` has one failure
+  (`test_confirmed_install_needs_no_typed_word_then_undo`) with this host's dash, identical on main, not caused by this change.
 
 ## Sample-accurate note starts (opt-in, 2026-10-03; offline only here, device numbers from issue #137)
 `effProcessEvents` used to hand each event to `engine->midi()` and drop `VstMidiEvent.deltaFrames`, so every note started at
