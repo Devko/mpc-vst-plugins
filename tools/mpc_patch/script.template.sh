@@ -5,7 +5,9 @@
 #
 #   sh mpc-drum-pad-patch.sh status       what state the device is in (changes nothing)
 #   sh mpc-drum-pad-patch.sh install      patch it (asks you to type PATCH first)
-#   sh mpc-drum-pad-patch.sh uninstall    put the original bytes back
+#   sh mpc-drum-pad-patch.sh install --confirmed   the same without the question (for a tool that already asked you)
+#   sh mpc-drum-pad-patch.sh uninstall    put the original bytes back (also from a build this script does not know, if its
+#                                         saved full backup is the stock program: it asks you to type RESTORE first)
 #   sh mpc-drum-pad-patch.sh help
 # Run it ON the device as root (ssh root@<device-ip>), after copying the file there (scp).
 #
@@ -44,7 +46,7 @@ PATCH_DATA='@@PATCH@@'
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 md5() { md5sum "$1" | cut -d' ' -f1; }
-usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 if [ -n "$TEST" ]; then F=$TEST; else F=$MNT/usr/bin/MPC; fi
 
@@ -111,20 +113,28 @@ restore_stock() {   # needs the file writable
 }
 
 cmd_status() {
-    need_root_device; open_root
+    need_root_device
+    was_mounted=0; [ -z "$TEST" ] && mountpoint -q "$MNT" 2>/dev/null && was_mounted=1
+    open_root
     cur=$(md5 "$F"); st=$(state_of "$cur")
+    [ -z "$TEST" ] && [ $was_mounted = 0 ] && umount "$MNT" 2>/dev/null   # status looked only: do not leave the bind mount of / behind
     echo "MPC checksum: $cur"
     case "$st" in
         stock) echo "State: stock MPC OS 3.9.1.2, not patched." ;;
         patched) echo "State: PATCHED (plugin names: @@NAMES@@)." ;;
         old-patch) echo "State: patched with an earlier version of this patch (Machinedrum-only, or an older name table); 'install' upgrades it." ;;
-        *) echo "State: not MPC OS 3.9.1.2 (or modified some other way). This script will not touch it." ;;
+        *) echo "State: not MPC OS 3.9.1.2, or a build this script did not make. 'install' will not touch it."
+           [ -f "$FULL" ] && echo "       A full backup from an earlier install is in $BK: 'uninstall' can put the stock program back from it (it checks the backup first)." ;;
     esac
     [ -f "$FULL" ] && echo "Backup: $FULL present" || echo "Backup: no full backup in $BK"
     [ -f "$REG" ] && echo "Original bytes: $REG present" || echo "Original bytes: not saved yet"
+    # the last line is for programs (the installer app): state=stock|patched|old-patch|unsupported, supported=1 when install may run
+    sup=1; [ "$st" = unknown ] && { sup=0; st=unsupported; }
+    bk=0; { [ -f "$FULL" ] || [ -f "$REG" ]; } && bk=1
+    echo "STATE state=$st supported=$sup backup=$bk checksum=$cur"
 }
 
-cmd_install() {
+cmd_install() {   # $1: --confirmed skips the typed question; a caller that shows the same warnings and asks for the word itself passes it
     need_root_device; open_root
     cur=$(md5 "$F"); st=$(state_of "$cur")
     case "$st" in
@@ -143,9 +153,13 @@ cmd_install() {
   - You use this at your own risk. It is not an Akai product.
 EOF
     if [ "$st" = old-patch ]; then echo " - This device has an earlier version of this patch; it is replaced by this one."; fi
-    printf "\nType PATCH to continue: "
-    if [ -n "$TEST" ]; then read -r a; else read -r a < /dev/tty 2>/dev/null || read -r a; fi
-    [ "$a" = PATCH ] || die "cancelled; nothing was changed"
+    if [ "${1:-}" = --confirmed ]; then
+        echo "Confirmed by the caller."
+    else
+        printf "\nType PATCH to continue: "
+        if [ -n "$TEST" ]; then read -r a; else read -r a < /dev/tty 2>/dev/null || read -r a; fi
+        [ "$a" = PATCH ] || die "cancelled; nothing was changed"
+    fi
     mkdir -p "$BK" || die "cannot create $BK"
     if [ "$st" = old-patch ]; then
         [ -f "$REG" ] || die "the earlier patch's saved original bytes ($REG) are missing; cannot upgrade safely. Restore stock firmware first."
@@ -170,13 +184,33 @@ EOF
     writable ro
 }
 
-cmd_uninstall() {
+# A build this script does not know (for example an earlier development version of the patch). It is only ever replaced by the full
+# backup an earlier install saved, and only if that backup's checksum is the stock program's; the result is checked the same way.
+restore_unknown() {
+    cur=$1
+    [ -f "$FULL" ] || die "MPC is neither stock nor a build this script made (checksum $cur) and there is no full backup in $BK; not touching it"
+    echo "MPC is a build this script does not know (checksum $cur). Checking the saved full backup..."
+    [ "$(md5 "$FULL")" = "$STOCK_MD5" ] || die "the full backup $FULL is not the stock MPC (checksum $(md5 "$FULL")); not touching anything"
+    echo "The backup is the stock MPC OS 3.9.1.2 program. It will replace /usr/bin/MPC (112 MB), then MPC restarts: save your project first."
+    if [ "${2:-}" != --confirmed ]; then
+        printf "Type RESTORE to continue: "
+        if [ -n "$TEST" ]; then read -r a; else read -r a < /dev/tty 2>/dev/null || read -r a; fi
+        [ "$a" = RESTORE ] || die "cancelled; nothing was changed"
+    fi
+    writable rw
+    cat "$FULL" > "$F"
+    if [ "$(md5 "$F")" = "$STOCK_MD5" ]; then echo "restored stock MPC from the full backup"
+    else echo "ERROR: checksum is not stock; copy $FULL over /usr/bin/MPC"; fi
+    writable ro
+}
+
+cmd_uninstall() {   # $1: --confirmed skips the typed question that a restore from the full backup asks
     need_root_device; open_root
     cur=$(md5 "$F"); st=$(state_of "$cur")
     case "$st" in
         stock) echo "Already stock. Nothing to do."; exit 0 ;;
         patched|old-patch) ;;
-        *) die "MPC is neither stock nor a build this script made (checksum $cur); not touching it" ;;
+        *) restore_unknown "$cur" "${1:-}"; return ;;
     esac
     [ -f "$REG" ] || [ -f "$FULL" ] || die "no backup found in $BK; cannot restore"
     writable rw
@@ -186,8 +220,8 @@ cmd_uninstall() {
 
 case "${1:-help}" in
     status) cmd_status ;;
-    install) cmd_install ;;
-    uninstall) cmd_uninstall ;;
+    install) case "${2:-}" in ""|--confirmed) cmd_install "${2:-}" ;; *) usage 1 ;; esac ;;
+    uninstall) case "${2:-}" in ""|--confirmed) cmd_uninstall "${2:-}" ;; *) usage 1 ;; esac ;;
     help|-h|--help) usage 0 ;;
     *) usage 1 ;;
 esac
