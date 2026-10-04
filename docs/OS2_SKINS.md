@@ -118,7 +118,10 @@ it back with the same file list and an updated `SHA256SUMS` line (the permission
   the cause is unknown (no crash lines in the log), so do not swap skin files on a live unit without telling the owner.
 - The 2.x user's stock-skin tar (A) arrived 2026-10-04 and is analysed above. The first test skin he installed had actions at
   version 2; a corrected one (`Dexed-DX7-1.0.4-os2test2`) with actions at version 1 was built, so his touch checks must be
-  repeated with it (tap a knob: does its Q-Link select; double-tap: does the overlay open; do toggles flip?). Still awaiting those.
+  repeated with it (tap a knob: does its Q-Link select; double-tap: does the overlay open; do toggles flip?). Still awaiting those from the 2.x tester.
+- **Force (3.x), 2026-10-04:** the corrected skin (`os2test2`, all roles in the 2.15.1 shape, actions at version 1) was swapped into Dexed's
+  folder on the Force (no MPC restart). It draws as before and touch works as before (tapping knobs, double-tap pop-ups, toggles, all tabs).
+  So on 3.x the older shape costs nothing visible. Only Dexed, one device of each kind.
 - A social post asking for 2.x model and OS reports was published; a Discord post with the options above was drafted.
 
 ## Do not
