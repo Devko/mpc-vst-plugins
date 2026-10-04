@@ -39,9 +39,11 @@ The catalog, its site and the installer app are live (see Done). Still open, in 
 - [ ] **Announce to the community** and collect what people ask for before building more.
 
 ## Patches (installer app)
-- [ ] **"Advanced" tab for device patches** (`tools/mpc_patch`, and the ForceHD exec patch from #150 if it is shared and reviewed). Proposal in
+- [ ] **"Advanced" step for device patches** (`tools/mpc_patch`, and the ForceHD exec patch from #150 if it is shared and reviewed). Plan in
       `docs/PATCHES.md`: a manifest, the script stays the unit (`status` / `install` / `uninstall`), typed confirmation, staged rollout.
-      Needs a non-interactive install flag and a machine-readable `status` in the existing script, and a device test of the undo path.
+      Built (2026-10-03/04, offline): the script contract (`STATE` line with checksum, `install --confirmed`, restore of an unknown build from a
+      verified stock backup), `catalog/patches.json`, and a read-only step 7 in the app. **Still to do:** Apply and Undo from the app, a run of
+      the app and the restore on a real Force, the ForceHD patch (not yet received or reviewed).
 
 ## Verification
 - [ ] **Stock, unmodded MPC and other models:** the ALSA MIDI-out port (`poc/midiport.c`) without MockbaMod,
@@ -51,7 +53,7 @@ The catalog, its site and the installer app are live (see Done). Still open, in 
 - [x] Community catalog and installer (2026-10-02): https://sd88me.github.io/mpc-vst-plugins/ lists the community's plugins
       (registry in `catalog/plugins/`, releases read from GitHub nightly, every zip checked, per-version "Tested on", all-time
       downloads, Atom feed), with guides and a one-line shell install (`mpc-store.sh`). The MPC plugin installer app
-      (Windows, Mac, Linux; `tools/desktop`, v0.3.1) installs, removes and prunes over SSH with one MPC restart. Plugins
+      (Windows, Mac, Linux; `tools/desktop`, 0.3.x) installs, removes and prunes over SSH with one MPC restart. Plugins
       from several authors are listed, and build-yourself ports (Monomodule, Machinemodule) for engines that need your own
       firmware. Phases 0 to 4 of `docs/CATALOG.md` are done apart from the items above.
 - [x] Loads on MPC OS 2.x (2026-10-02): the shared tools and the ports build against glibc 2.31 (`arm32v7/gcc:11-bullseye`; the

@@ -92,6 +92,11 @@ A plugin only shows up in MPC once it is in MPC's plugin list. Folders you copie
 ## Clean up old backups
 Every install, removal and sync makes a copy of MPC's settings file on the device, and nothing deletes them, so they pile up (they are small). In the app, open **Clean up old backups** (step 6 on the page; click **Show**), choose how many of the newest to keep (10 is a good number) and press **Delete older backups…**. The newest backup is never deleted, MPC is not restarted, and nothing but the backups is touched.
 
+## Advanced: device patches
+At the bottom of the app, step 7 (**Advanced: device patches**, collapsed) lists community patches that change the device itself, not a plugin. An example is the 16-pad drum layout for some plugins, which changes Akai's own MPC program. **This is not for most people**, and the app only looks: open the step (or press **Check the device**) and it asks the device which patches are applied. It cannot apply or undo a patch yet; each row links to a guide for running the script yourself over SSH.
+
+A row can say **This firmware is not supported**. That is the patch refusing, on purpose: it only works on one exact build of MPC OS, checked by a checksum, and the row shows your device's checksum and what the patch supports. If an earlier install left a backup of the stock program, the patch's guide explains how to restore it first.
+
 ## If a plugin disappears after a restart
 MPC keeps its whole plugin list in one place: the `pluginList-arm` list in its settings file, `MPC.settings`. Every way of installing plugins edits that same list, so one method can undo another. The plugin's files usually are still on the card; only its line in the list is gone. The usual causes:
 
