@@ -24,7 +24,7 @@ def handle(route):
         m = mode["v"]
         if m == "none": ok({"patches": [], "note": "No device patches are published yet.", "connected": True})
         elif m == "fail": ok({"error": "cannot read the patch list: HTTP 500"}, 502)
-        else: ok({"patches": [dict(base, state=m, supported=m != "unsupported", backup=m == "patched", detail="checksum x" if m == "error" else "")], "note": "", "connected": True})
+        else: ok({"patches": [dict(base, state=m, supported=m != "unsupported", hasBackup=m == "patched", detail="checksum x" if m == "error" else "")], "note": "", "connected": True})
     else: ok({"error": "unexpected " + p}, 500)
 fails = []
 def check(name, cond):
@@ -47,6 +47,7 @@ try:
         for st, label in [("stock", "Not applied"), ("patched", "Applied"), ("old-patch", "Older version applied"), ("unsupported", "not supported"), ("error", "Could not check")]:
             mode["v"] = st; pg.click("#patchcheck"); time.sleep(0.5)
             t = pg.locator("#patchlist").inner_text(); tl = t.lower()
+            check("state %s: the backup folder is shown as a path, never as true" % st, "a backup goes to /sdcard/MPC-backup" in t)
             check("state %s shows %r" % (st, label), label.lower() in tl and "16-pad drum layout" in t and "/usr/bin/MPC" in t and "MPC restarts" in t)
         check("no apply or undo button in the list", pg.locator("#patchlist button").count() == 0)
         check("guide link goes to the repo", (pg.locator("#patchlist a").get_attribute("href") or "").endswith("/blob/main/tools/mpc_patch/README.md"))

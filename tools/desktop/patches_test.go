@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -47,6 +48,42 @@ func TestPatchesURLIsNextToTheCatalog(t *testing.T) {
 	}
 	if patchesURLFor("not a url") != "" {
 		t.Error("garbage gives no url")
+	}
+}
+
+func TestParseStateLineReadsTheChecksum(t *testing.T) {
+	st, ok := parseStateLine([]string{"STATE state=unsupported supported=0 backup=1 checksum=7cf96599ec61b1079688f253f3b65b9f"})
+	if !ok || st.Checksum != "7cf96599ec61b1079688f253f3b65b9f" || !st.Backup {
+		t.Errorf("checksum: %v %+v", ok, st)
+	}
+	if st, ok := parseStateLine([]string{"STATE state=stock supported=1 backup=0 checksum=not-a-hash"}); !ok || st.Checksum != "" {
+		t.Errorf("a malformed checksum is dropped: %v %+v", ok, st)
+	}
+	if st, ok := parseStateLine([]string{"STATE state=stock supported=1 backup=0"}); !ok || st.Checksum != "" {
+		t.Errorf("older scripts have no checksum: %v %+v", ok, st)
+	}
+}
+
+func TestUnsupportedRowSaysWhy(t *testing.T) {
+	fd := newFakeDevice(t)
+	d, err := Dial("127.0.0.1", "secret", fd.cfg())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	var p Patch
+	p.ID, p.Supports.Arch, p.Supports.OS, p.Supports.MPCMD5 = "x", "armv7l", "MPC OS 3.9.1.2", []string{"592eebc8e1ce0797dc8c98e7002143b8"}
+	script := "#!/bin/sh\necho 'MPC checksum: 7cf96599ec61b1079688f253f3b65b9f'\necho 'STATE state=unsupported supported=0 backup=1 checksum=7cf96599ec61b1079688f253f3b65b9f'\n"
+	rows := PatchRows(d, []Patch{p}, func(Patch) ([]byte, error) { return []byte(script), nil })
+	for _, want := range []string{"7cf96599ec61b1079688f253f3b65b9f", "MPC OS 3.9.1.2", "592eebc8e1ce0797dc8c98e7002143b8", "backup from an earlier install"} {
+		if rows[0].State != "unsupported" || !strings.Contains(rows[0].Detail, want) {
+			t.Errorf("the detail must mention %q: %+v", want, rows[0])
+		}
+	}
+	// no backup: no advice about restoring
+	script = strings.Replace(script, "backup=1", "backup=0", 1)
+	if rows := PatchRows(d, []Patch{p}, func(Patch) ([]byte, error) { return []byte(script), nil }); strings.Contains(rows[0].Detail, "backup") {
+		t.Errorf("no backup, no restore advice: %+v", rows[0])
 	}
 }
 
@@ -236,5 +273,20 @@ func TestPatchesEndpointNeverRunsATamperedScript(t *testing.T) {
 	}
 	if _, err := os.Stat(logFile); err == nil {
 		t.Error("a script that fails its checksum must never reach the device")
+	}
+}
+
+// The manifest's "backup" is a folder; the device state used to share that JSON key and turned it into true on the page.
+func TestRowJSONKeepsTheManifestBackupFolderAndTheDeviceFlagApart(t *testing.T) {
+	var p Patch
+	p.ID, p.Backup = "x", "/sdcard/MPC-backup"
+	b, err := json.Marshal(PatchRow{Patch: p, State: "stock", HasBackup: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	json.Unmarshal(b, &m)
+	if m["backup"] != "/sdcard/MPC-backup" || m["hasBackup"] != true {
+		t.Errorf(`"backup" must stay the folder and "hasBackup" the flag: %s`, b)
 	}
 }

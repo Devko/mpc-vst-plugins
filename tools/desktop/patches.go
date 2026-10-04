@@ -27,6 +27,7 @@ const maxPatchScript = 1 << 20
 var patchClient = &http.Client{Timeout: time.Minute}
 
 var sha256Re = regexp.MustCompile(`^[0-9a-f]{64}$`)
+var md5Re = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 // Patch is one entry of patches.json, published next to catalog.json.
 type Patch struct {
@@ -147,9 +148,10 @@ type PatchState struct {
 	State     string `json:"state"` // stock | patched | old-patch | unsupported
 	Supported bool   `json:"supported"`
 	Backup    bool   `json:"backup"`
+	Checksum  string `json:"checksum,omitempty"` // md5 of the device's MPC program, when the script says (v5 and later)
 }
 
-// parseStateLine reads the last "STATE state=.. supported=0|1 backup=0|1" line of a script's output.
+// parseStateLine reads the last "STATE state=.. supported=0|1 backup=0|1 [checksum=<md5>]" line of a script's output.
 func parseStateLine(lines []string) (PatchState, bool) {
 	for i := len(lines) - 1; i >= 0; i-- {
 		l := strings.TrimSpace(lines[i])
@@ -167,7 +169,11 @@ func parseStateLine(lines []string) (PatchState, bool) {
 		default:
 			return PatchState{}, false
 		}
-		return PatchState{State: kv["state"], Supported: kv["supported"] == "1", Backup: kv["backup"] == "1"}, true
+		st := PatchState{State: kv["state"], Supported: kv["supported"] == "1", Backup: kv["backup"] == "1"}
+		if md5Re.MatchString(kv["checksum"]) {
+			st.Checksum = kv["checksum"]
+		}
+		return st, true
 	}
 	return PatchState{}, false
 }
@@ -201,7 +207,7 @@ type PatchRow struct {
 	Patch
 	State     string `json:"state"` // "not-checked" until the device is connected, then the script's state, "unsupported" or "error"
 	Supported bool   `json:"supported"`
-	Backup    bool   `json:"backup"`
+	HasBackup bool   `json:"hasBackup"` // a saved copy of the stock program is on the device (not Patch.Backup, the manifest's backup folder: same key would hide it)
 	Detail    string `json:"detail,omitempty"`
 }
 
@@ -219,7 +225,10 @@ func PatchRows(dev *Device, patches []Patch, fetch func(Patch) ([]byte, error)) 
 			if err == nil {
 				var st PatchState
 				if st, err = dev.PatchStatus(script); err == nil {
-					r.State, r.Supported, r.Backup = st.State, st.Supported, st.Backup
+					r.State, r.Supported, r.HasBackup = st.State, st.Supported, st.Backup
+					if st.State == "unsupported" {
+						r.Detail = unsupportedDetail(p, st)
+					}
 				}
 			}
 			if err != nil {
@@ -229,4 +238,26 @@ func PatchRows(dev *Device, patches []Patch, fetch func(Patch) ([]byte, error)) 
 		rows = append(rows, r)
 	}
 	return rows
+}
+
+// unsupportedDetail says why the script would not touch the device, so a bare "not supported" is never all the page shows.
+func unsupportedDetail(p Patch, st PatchState) string {
+	var b strings.Builder
+	if st.Checksum != "" {
+		b.WriteString("This device's MPC program has the checksum " + st.Checksum + ", which is not a build this patch knows")
+	} else {
+		b.WriteString("The patch script does not recognise this device's MPC program")
+	}
+	if p.Supports.OS != "" {
+		b.WriteString(" (it supports " + p.Supports.OS)
+		if len(p.Supports.MPCMD5) > 0 {
+			b.WriteString(", checksum " + strings.Join(p.Supports.MPCMD5, " or "))
+		}
+		b.WriteString(")")
+	}
+	b.WriteString(".")
+	if st.Backup {
+		b.WriteString(" A backup from an earlier install is on the device: its guide explains how to restore the stock program from it with the script's uninstall.")
+	}
+	return b.String()
 }
