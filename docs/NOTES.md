@@ -870,6 +870,74 @@ Unit: MPC Live (first generation), MPC OS 2.15.1, Buildroot 2021.02, BusyBox use
 - **Format versions (counts of `"version": N` over every stock `Plugin Skins/TUI.json`).** 2.15.1: 1 = 10884, 2 = 3030, 3 = 45 (no 4 or 5). Force, OS base 5.0.17: 1 = 9259, 2 = 5929, 3 = 224, 4 = 388, 5 = 76. Our generator (`tools/shadow_skin.py`) writes component definitions at version 4 (94 in the Dexed skin), tabs at 3, film-strip knob data at 5, `Q-Links.json` at 4: the same shape as the Force's stock Decimator skin. Hypothesis: 2.x does not accept versions above its own. **Open:** the 2.x shape of those objects; needs a stock `TUI.json` (and one with knobs) from a 2.x unit. The same stock AIR Compressor skin lays out identically on 2.15.1 (MPC Live) and on the Force, so screen size is not the issue.
 - Akai's support pages (read 2026-10-03) say standalone MPC does not support third-party plugins at all, list the standalone models, and say new built-in plugins need newer OS versions (Native Instruments 3.5+, Spitfire 3.7.1+). Forum posts say 2.15.x is no longer updated by Akai. None of this covers skin formats.
 
+### 2026-10-03: addins installed end to end on a device (zip install.sh, mpc-store.sh, desktop app)
+Both addins (remote 0.1.0 → 0.2.0, usb-audio 0.1.0) were installed, upgraded and removed through all three paths. The zip's `install.sh`/`uninstall.sh`, `mpc-store.sh install/update/remove` and the desktop app (drop both zips, one confirmation, remove one in step 4, the other stays) each passed. A batch of two addins restarts MPC once; an upgrade keeps an edited setting (`max_fps`); removal leaves the firmware's own `LD_PRELOAD` list and no drop-in. With both loaded, notes sent through the remote's MCP `play_notes` come out of the USB audio interface (main out about -25 dBFS, silent inputs about -98); all 17 MCP tools answer on the device. Found:
+- `mpc-store.sh`'s `stop_mpc` ended with `pidof MPC && die`. As a function's last command it returns 1 when MPC has stopped, so `set -e` ended the script after stopping MPC (the EXIT trap started it again, so nothing was installed). Fixed.
+- The addin `install.sh` summary named the shared drop-in as "the list", not the unit that sets it. Fixed.
+- Remote addin: its capture opened `/dev/dri/card0`, and DRM makes the first opener of a card with no master the master. When it got there before MPC, MPC failed with "Failed to initialise display" and systemd gave up after its restart limit (`systemctl reset-failed acvs` and start). **Any addin or tool that opens the DRM card must `DRM_IOCTL_DROP_MASTER` right after opening it.** While MPC boots, the card scans out the console framebuffer (3840x800), not MPC's 1280x800. Fixed in 0.2.0.
+- Remote addin: Chromium shows a multipart part only once the next part arrives, so a stream that sends frames only on change must resend the last frame when the screen goes idle; without that the page is blank until something changes. Fixed in 0.2.0.
+
+### 2026-10-03: MPC leaks `temp_*.img` files in /var/tmp/filmstrips at every start
+Each MPC start writes `temp_*.img` files (one start: 71 files, 178 MB; the largest 11 MB) to `/var/tmp/filmstrips` (the overlay's upper dir is on /data) and never deletes them. A day of restart-heavy testing left 2.5 GB of them and filled /data. Files no process holds open can be deleted. Delete them through `/var/tmp/filmstrips`: deleting them from the upper dir directly doesn't give the space back until `echo 2 > /proc/sys/vm/drop_caches`. Not a plugin or addin bug, but anything that restarts MPC often (installers, tests) adds to it.
+
+### 2026-10-03: the Plugin Manager's TESTING.md passes on an MPC Key 37 (addins and the browser tile)
+poloq-instruments/mpc-vst-manager#1 (addin support) run end to end on the Key 37 (MPC OS 3.9.1, install target `/storage/Synths`), with the two
+addin catalog entries from #144 added to a copy of the live catalog (`CATALOG_URL` compiled to a `file://` path on the device, since the
+device can't reach this computer's firewall-blocked HTTP server). All seven rows pass: Acid installed, loaded and removed through the manager
+(one restart each way, `MPC.settings.bak-acid-*` written each time); MPC Remote 0.2.1 installed from the Addins pill to
+`/data/mpc-addins/remote`, listed in the `90-mpc-addins.conf` drop-in and in MPC's own `LD_PRELOAD` after the restart, answering on 6720 with
+a screen capture, then removed (folder, drop-in line and port gone). The manager's offline suite gained a fake device for the Key 37's layout.
+Also verified: a vst.json `"tile"` (#90's tooling) shows in the INSTRUMENTS browser and opens its Default preset, which loads the plugin on
+the track. Presets are indexed at MPC start only: a tile installed without a restart is drawn but its tap does nothing until the next start,
+and the install's own restart covers it. Taps were injected over the network with the remote addin's standalone: a touch needs a hold of
+about 300 ms to register, the first touch after a project opens is often dropped, and a field popup (PLUGIN) opens on a double-tap.
+
+### 2026-10-03: the commander addin loads on the Key 37 without an MPC restart (pre-install check)
+mpc-addin-commander 0.1.0 (the plugins MPC loads, served to a desktop app; a sequencer port for transport and MIDI; a project snapshot)
+was checked on the Key 37 (MPC OS 3.9.1) before any install, by preloading its `.so` into a copy of `/usr/bin/dbus-monitor` renamed `MPC`
+in `/tmp` (the addin gates on the executable's name, so this starts it without touching the real MPC; BusyBox applets can't be used for
+this: a copy named `MPC` says "applet not found"). Verified: it starts and serves on its port; `GET /project` reads `recentProject1` from
+`/media/az01-internal/Settings/MPC/MPC.settings`, inflates the `.xpj` with the device's `libz.so.1` (loaded at run time) and reports the
+real project's tempo, current sequence and 36 tracks with mixer state and plugins (stock instruments show as format `MPC`, e.g. `MPC:Hype`;
+track kinds seen: 0 drum, 3 plugin, 6 audio, 7 return, 8 submix, 9 output, 10 input). **MPC hot-detects a new sequencer client and
+connects it both ways by itself**: within a second of the port appearing, MPC's client 129 had new ports "MPC Commander Out/In" connected to
+the addin's `Out`/`In` (`/proc/asound/seq/clients`), with no restart and no preference change (`MidiDevices.AutoEnableForTracks=1`). Whether
+MPC also sends clock/MMC on such a port without the sync output being enabled in preferences is not verified yet. A leftover check process
+keeps its sequencer client (and MPC's mirror ports) until killed: find it through `/proc/*/exe`, never by the name `MPC`. Release tooling
+found: `release_addin.py`/`release.py` read the glibc requirement by scanning the file for `GLIBC_x.y` strings, so a `dlvsym` version
+name in `.rodata` counted as a requirement; both now parse the ELF version-needs section (41ebc53). The real install (restart) is pending.
+
+### 2026-10-03: the commander addin installed on the Key 37: plugins, MIDI and transport verified
+Installed with the zip's `install.sh` (one restart; `MPC.settings` backed up first), then restarted once more to swap
+in a fix. Inside MPC with Matt1 open: both NAM instances listed with all 60 params, values and display text; a `set`
+from the computer changed NAM's Bass and MPC showed the new value; a note played into the addin's `In` port with
+`aplaymidi` arrived as `midi_in`. Transport, learned on the device:
+- MPC connects a new sequencer client both ways by itself and lists it as "MPC Commander In" (MPC's output to it) and
+  "MPC Commander Out" (MPC's input from it) in `MidiDevices.Table`, with track on and sync on the output side.
+- With clock sync out on the port, MPC sends MIDI clock (24 per beat at the project tempo). After a restart it sent
+  none until the sync preferences were set again.
+- MPC's Play sends no MIDI start: it sends an MMC locate (`F0 7F 00 06 44 06 01 hh mm ss ff F7`, a time code
+  position with no sub-frame byte, 12 bytes) then MMC play, and pauses its clock while stopped. A clock-only follower would miss start.
+- Play and stop sent from the computer as MMC (with MIDI real-time alongside) did nothing until **Receive MMC** was on;
+  then MPC obeyed both and reported each change back over MMC. Preference changes are not written to
+  `MPC.settings` right away (still 0 there afterwards), so the file can't be used to check them.
+
+### 2026-10-03: MPC obeys an MMC locate from the commander app
+With Receive MMC on for the addin's port and the transport stopped, an MMC locate sent from the app
+(`F0 7F 7F 06 44 06 01 hh mm ss ff sf F7`, 30 fps) moves MPC's playhead: after a locate to 0:00:10.05 (bar 5 at
+94.19 bpm in 4/4) MPC's next Play reported its start as `F0 7F 00 06 44 06 01 00 00 0A 05 F7`, and after a locate
+to zero as all zeros. MPC's own locate is the 12-byte form without the sub-frame byte, so a decoder that wants the
+13-byte form misses it (the commander addin takes both since then).
+
+### 2026-10-03: recording from the commander app; what a restart drops
+- Record from the app works: the MMC record strobe then play (`F0 7F 7F 06 06 F7`, `F0 7F 7F 06 02 F7`) put MPC in
+  record, and MPC reported it back over MMC (the addin's transport showed `recording: true`); MMC stop ended it.
+- MPC ignores transport (MMC and real-time alike) while its New Project dialog is up, which it shows at startup
+  when `MpcEditor.Show.NewProjectDialogAtStartup` is 1. Open or create a project first.
+- Receive MMC set in the preferences was never written to `MPC.settings` (`receiveMMC` stayed 0), so a restart
+  turned it off again. Setting `receiveMMC` to 1 in the file with MPC stopped keeps it across restarts. The port's
+  per-device entry in `MidiDevices.Table` has its own `sync` flag per direction.
+
 ## 2026-10-03: drum-pad patch name table gains Machinemodule and Lucky Dip (script v3)
 `matcher.S` now lists `Machinemodule` (the renamed Machinedrum Module; the old name stays for older installs) and `Lucky Dip`.
 Patched checksum `7cf96599ec61b1079688f253f3b65b9f`. The script recognises the previous published build (`f899e581...`) as an
@@ -910,6 +978,15 @@ A user batch-installed plugins to the Force's SSD with the desktop installer: al
 - Workaround: install to the internal drive or an SD card (`/sdcard/Synths`).
 - **Desktop app bug found while looking (not the cause), fixed:** `readInfo` (`tools/desktop/device.go`) took the mount point from `df ... $NF`, so `/media/SSD - Force` became `Force`; the `/proc/mounts` lookup then found nothing (it writes spaces as `\040`) and the filesystem and options came back empty, which also skipped the symlink and read-only checks. It now reads `df -kP` fields 6+ and matches the escaped name.
 - **noexec check (host tests only, not run on a Force):** the app flags a location mounted `noexec` (`Root.NoExec`, a note on the location, install refused with the reason); `install.sh` prints a warning (it still installs, so a hand-made exec mount is not blocked). Tests: `TestNoexecMountWithSpacesInItsNameIsFlaggedAndRefused` (fake BusyBox-style `df` line and an escaped `/proc/mounts` line; fails with the old parsing), `tools.test_catalog` (70 OK), `install.sh` fragment run against a fake `df` and `/proc/mounts` with and without `noexec`.
+
+## 2026-10-03: network addins bind to 127.0.0.1 by default; the hardened installer on a device (Key 37)
+Remote 0.2.2 and Commander 0.1.1 (both built with the installer from 83c6cbd) installed with `install.sh -y -n`, then one
+restart. Commander upgraded over 0.1.0 and kept the device's `bind=0.0.0.0`; Remote went on fresh and listened on
+`127.0.0.1:6720` only (`netstat -ltn`). From a computer on the LAN, port 6720 refused the connection, and through
+`ssh -N -L 16720:127.0.0.1:6720 root@<device>` `/info` and `/screen.png` answered. The shared drop-in gained its
+`# lib: 2` line. `sh /data/mpc-addins/remote/uninstall.sh -y` then took Remote out of `LD_PRELOAD`, restarted MPC and
+removed the folder (nothing else was in it); Commander and the usb-audio addin kept running. The install message of an
+upgrade says the addin listens on the device only even when the kept settings say `bind=0.0.0.0`.
 
 ## Stepping of option lists and whole numbers: `settle()` (2026-10-04, offline; from #130 and the Force input probe)
 Until now an integer param kept an unrounded "shadow" position so a slow Q-Link turn accumulated, and an option list stepped one
