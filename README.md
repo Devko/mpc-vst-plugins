@@ -134,7 +134,9 @@ design.
 - **No text entry** on the page.
 - **Plugin MIDI out is ignored by MPC.** Generators work around it by opening their own MIDI port, which MPC picks up
   like a new device. This is confirmed on a modded Force but not yet on a stock unit.
-- **Timing resolution:** notes land on 128-sample blocks (about 3 ms).
+- **Timing resolution:** notes land on 128-sample blocks (about 3 ms), because the wrapper ignores the in-block position MPC
+  sends with sequenced notes. An instrument whose engine renders any 1..128 frames can opt in to sample-accurate starts
+  (`"defines": {"SAMPLE_ACCURATE": 1}`, docs/NOTES.md "Sample-accurate note starts").
 - A plugin crash takes MPC down with it, so risky work belongs in a separate process.
 
 What's next is in [docs/ROADMAP.md](docs/ROADMAP.md).
@@ -179,12 +181,17 @@ What is known, details in [docs/NOTES.md](docs/NOTES.md)):
   nothing in the log. Replacing the plugin's `Plugin Skins` folder with a stock one (AIR Compressor) made the stock
   page appear for our plugin, so 2.x does load skins from a plugin folder and the problem is inside our `TUI.json`.
 - **Likely cause (not proven): the file format is too new.** Every JSON object in a skin carries a `version`. The stock
-  `TUI.json` files on the 2.15.1 unit use versions 1 and 2 only; the Force's stock skins (OS base 5.0.17) use 1 to 5. Our generator (`tools/shadow_skin.py`) writes the Force
+  `TUI.json` files on the 2.15.1 unit use versions 1 to 3 (10884, 3030 and 45 uses); the Force's stock skins (OS base 5.0.17) use 1 to 5. Our generator (`tools/shadow_skin.py`) writes the Force
   shape: component definitions version 4, tabs 3, film-strip knobs 5, `Q-Links.json` 4. The 2.x parser may drop a
   file with versions it does not know.
-- **Not known yet:** what the older shape looks like (field names, whether film-strip knobs exist), and whether other
-  2.x versions or models behave the same. We need a stock `TUI.json` from a 2.x unit to compare; stock Akai skins are
-  never committed to this repo.
+- **What a 2.x skin looks like.** A stock 2.15.1 skin puts the page inline in the tab (tab `version 1`, page definition
+  `version 2`), and its film-strip `Knob` and `Button` data are `version 1` (fewer fields than ours). Ours point the tab
+  at a named definition (tab 3, definition 4) and write knob data 5 and button data 2. `Q-Links.json` is the same on
+  both (version 4), so it is not the cause. An offline conversion of the Dexed skin by those rules uses only versions 1
+  and 2 and has the same tab layout as a stock skin; it has not been tried on a device yet.
+- **Not known yet:** whether a converted skin is accepted by 2.x, what the dropped fields did (`gestureBehaviour`,
+  `invert`, `dragOrientation`), and whether other 2.x versions or models behave the same. Stock Akai skins are analysed
+  offline and never committed to this repo.
 
 **Help us:** tell us your model, your MPC OS version (Settings), whether a plugin's page appeared, and what the
 screen shows. If you are comfortable in a terminal and on 2.x, the output of this read-only command is very useful:

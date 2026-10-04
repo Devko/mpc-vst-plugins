@@ -140,6 +140,7 @@ here first and move to its own repo (recommended, for community ownership) once 
 - [x] Guide pages Install, Build, Workflow and Add yours (2026-09-29): Markdown in `catalog/pages/*.md`, rendered by `tools/catalog_site.py`
       with a shared menu; checked in headless Chromium at desktop and phone width.
 - [x] (2026-09-29; live, `feed.xml` and `catalog.tsv` both served, checked 2026-10-02) Atom feed `feed.xml`; "Tested on" from optional `tested.json` in the plugin repo; contributor docs in `catalog/README.md`.
+- [x] (2026-10-03) `catalog/patches.json`, the device patches the installer app lists in its read-only step 7, is validated by `tools/patch_check.py` and published by `tools/catalog_site.py` next to `catalog.json` (`docs/PATCHES.md`).
 - [ ] Announce to the community; collect what people actually ask for before building Phase 4.
 
 ### Distribution: build-yourself (2026-09-29)

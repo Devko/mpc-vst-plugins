@@ -72,17 +72,17 @@ class ScriptContract(unittest.TestCase):
         return dict(kv.split("=") for kv in lines[0].split()[1:])
 
     def test_status_reports_each_state_and_changes_nothing(self):
-        self.assertEqual(self.state(), {"state": "stock", "supported": "1", "backup": "0"})
+        self.assertEqual(self.state(), {"state": "stock", "supported": "1", "backup": "0", "checksum": self.stock_md5})
         self.assertEqual(self.md5(self.work), self.stock_md5)
         bad = os.path.join(self.dir, "bad.bin")
         open(bad, "wb").write(b"not an MPC")
-        self.assertEqual(self.state(bad), {"state": "unsupported", "supported": "0", "backup": "0"})
+        self.assertEqual(self.state(bad), {"state": "unsupported", "supported": "0", "backup": "0", "checksum": self.md5(bad)})
 
     def test_confirmed_install_needs_no_typed_word_then_undo(self):
         code, out = self.run_script("install", "--confirmed")  # stdin is empty: a prompt would cancel
         self.assertEqual(code, 0, out)
         self.assertEqual(self.md5(self.work), self.patched_md5)
-        self.assertEqual(self.state(), {"state": "patched", "supported": "1", "backup": "1"})
+        self.assertEqual(self.state(), {"state": "patched", "supported": "1", "backup": "1", "checksum": self.patched_md5})
         code, out = self.run_script("uninstall")
         self.assertEqual(code, 0, out)
         self.assertEqual(self.md5(self.work), self.stock_md5)
@@ -100,6 +100,64 @@ class ScriptContract(unittest.TestCase):
         self.assertNotEqual(code, 0)
         self.assertIn("Refusing", out)
         self.assertEqual(open(bad, "rb").read(), b"not an MPC")
+
+    # an unknown build (say an earlier development version of the patch) with the full backup of the stock program saved by an install
+    def unknown_build(self, backup_content="stock"):
+        with open(self.work, "r+b") as f:
+            f.seek(100)
+            f.write(b"some other build")
+        self.assertNotIn(self.md5(self.work), (self.stock_md5, self.patched_md5))
+        os.makedirs(self.bk, exist_ok=True)
+        if backup_content == "stock":
+            shutil.copy(self.stock, os.path.join(self.bk, "MPC-3.9.1.2.orig"))
+        elif backup_content == "wrong":
+            shutil.copy(self.work, os.path.join(self.bk, "MPC-3.9.1.2.orig"))
+
+    def test_status_of_an_unknown_build_names_its_checksum_and_the_way_back(self):
+        self.unknown_build()
+        st = self.state()
+        self.assertEqual((st["state"], st["supported"], st["backup"], st["checksum"]), ("unsupported", "0", "1", self.md5(self.work)))
+        _, out = self.run_script("status")
+        self.assertIn("uninstall", out)
+
+    def test_install_still_refuses_an_unknown_build(self):
+        self.unknown_build()
+        before = self.md5(self.work)
+        code, out = self.run_script("install", "--confirmed")
+        self.assertNotEqual(code, 0)
+        self.assertIn("Refusing", out)
+        self.assertEqual(self.md5(self.work), before)
+
+    def test_uninstall_restores_an_unknown_build_from_a_verified_backup(self):
+        self.unknown_build()
+        code, out = self.run_script("uninstall", "--confirmed")
+        self.assertEqual(code, 0, out)
+        self.assertIn("restored stock MPC from the full backup", out)
+        self.assertEqual(self.md5(self.work), self.stock_md5)
+
+    def test_that_restore_asks_for_the_typed_word_first(self):
+        self.unknown_build()
+        before = self.md5(self.work)
+        code, out = self.run_script("uninstall")  # empty stdin: cancelled
+        self.assertNotEqual(code, 0)
+        self.assertIn("cancelled", out)
+        self.assertEqual(self.md5(self.work), before)
+
+    def test_a_backup_that_is_not_stock_is_never_copied_over_the_program(self):
+        self.unknown_build("wrong")
+        before = self.md5(self.work)
+        code, out = self.run_script("uninstall", "--confirmed")
+        self.assertNotEqual(code, 0)
+        self.assertIn("not the stock MPC", out)
+        self.assertEqual(self.md5(self.work), before)
+
+    def test_no_backup_means_nothing_is_touched(self):
+        self.unknown_build(None)
+        before = self.md5(self.work)
+        code, out = self.run_script("uninstall", "--confirmed")
+        self.assertNotEqual(code, 0)
+        self.assertIn("no full backup", out)
+        self.assertEqual(self.md5(self.work), before)
 
     def test_unknown_flag_is_refused(self):
         code, _ = self.run_script("install", "--nope")
