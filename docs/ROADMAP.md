@@ -41,9 +41,10 @@ The catalog, its site and the installer app are live (see Done). Still open, in 
 ## Patches (installer app)
 - [ ] **"Advanced" step for device patches** (`tools/mpc_patch`, and the ForceHD exec patch from #150 if it is shared and reviewed). Plan in
       `docs/PATCHES.md`: a manifest, the script stays the unit (`status` / `install` / `uninstall`), typed confirmation, staged rollout.
-      Built (2026-10-03/04, offline): the script contract (`STATE` line with checksum, `install --confirmed`, restore of an unknown build from a
-      verified stock backup), `catalog/patches.json`, and a read-only step 7 in the app. **Still to do:** Apply and Undo from the app, a run of
-      the app and the restore on a real Force, the ForceHD patch (not yet received or reviewed).
+      Built (2026-10-03/04): the script contract (`STATE` line with checksum, `install --confirmed`, restore of an unknown build from a
+      verified stock backup), `catalog/patches.json`, and a read-only step 7 in the app. Seen on a Force 2026-10-04: the app's row, the
+      restore and the reinstall (NOTES 2026-10-04). **Still to do:** Apply and Undo from the app (then a Force test), and the ForceHD patch
+      (not yet received or reviewed).
 
 ## Verification
 - [ ] **Stock, unmodded MPC and other models:** the ALSA MIDI-out port (`poc/midiport.c`) without MockbaMod,
