@@ -74,6 +74,52 @@ static void step_tests(AEffect *a, int i, const char *kind, int span) {
     a->setP(a, i, 0);
 }
 
+#ifdef SAMPLE_PROBE   /* poc/sampleprobe: a note-on switches a constant level on from the next frame it renders */
+extern int sampleprobe_bad;
+static int first_nonzero(const float *L, int n) { for (int i = 0; i < n; i++) if (L[i] != 0) return i; return -1; }
+static int last_nonzero(const float *L, int n) { for (int i = n - 1; i >= 0; i--) if (L[i] != 0) return i; return -1; }
+static void send(AEffect *c, int d1, int s1, int d2, int s2, int two) {   /* up to two events, in the order given */
+    ME m1 = {1, sizeof(ME), d1, 0, 0, 0, {(unsigned char)s1, 60, 100, 0}}, m2 = {1, sizeof(ME), d2, 0, 0, 0, {(unsigned char)s2, 60, 100, 0}};
+    EV ev = {two ? 2 : 1, 0, {&m1, &m2}};
+    c->d(c, 25, 0, 0, &ev, 0);
+}
+static void send3(AEffect *c, const int *d, const int *st, int n) {   /* n (<= 3) events, in the order given */
+    ME m[3]; struct { int32_t n; intptr_t r; void *ev[3]; } ev = {n, 0, {0}};
+    for (int i = 0; i < n; i++) { ME t = {1, sizeof(ME), d[i], 0, 0, 0, {(unsigned char)st[i], 60, 100, 0}}; m[i] = t; ev.ev[i] = &m[i]; }
+    c->d(c, 25, 0, 0, &ev, 0);
+}
+static void sample_accurate_tests(void) {
+    AEffect *c = VSTPluginMain(host);
+    float L[256], R[256], *o[2] = {L, R};
+    static const int ds[] = {0, 1, 17, 64, 100, 127};
+    for (unsigned k = 0; k < sizeof ds / sizeof ds[0]; k++) {
+        send(c, ds[k], 0x90, 0, 0, 0); c->pr(c, 0, o, 128);
+        CHECK(first_nonzero(L, 128) == ds[k], "SAMPLE_ACCURATE: note-on at deltaFrames %d starts at frame %d", ds[k], first_nonzero(L, 128));
+        send(c, 0, 0x80, 0, 0, 0); c->pr(c, 0, o, 128);
+    }
+    send(c, 50, 0x80, 10, 0x90, 1); c->pr(c, 0, o, 128);   /* out of order: sorted by frame */
+    CHECK(first_nonzero(L, 128) == 10 && last_nonzero(L, 128) == 49, "events out of order: on at 10, off at 50 -> frames %d..%d", first_nonzero(L, 128), last_nonzero(L, 128));
+    {   /* events on one frame keep their order, whatever else is queued: an off then an on at 7 (a retrigger) must not end silent */
+        const int d[3] = {2, 7, 7}, st[3] = {0x90, 0x80, 0x90};
+        send(c, 0, 0x90, 0, 0, 0); c->pr(c, 0, o, 128);   /* sounding */
+        send3(c, d, st, 3); c->pr(c, 0, o, 128);
+        CHECK(first_nonzero(L, 128) == 0 && L[7] != 0 && last_nonzero(L, 128) == 127, "same-frame off then on at 7 stays in order (retrigger sounds: frames 0..%d)", last_nonzero(L, 128));
+        send(c, 0, 0x80, 0, 0, 0); c->pr(c, 0, o, 128);
+    }
+    send(c, 40, 0x90, 0, 0, 0); c->pr(c, 0, o, 100);   /* a host block that is not 128 frames */
+    CHECK(first_nonzero(L, 100) == 40, "100-frame block: note-on at 40 starts at frame %d", first_nonzero(L, 100));
+    send(c, 0, 0x80, 0, 0, 0); c->pr(c, 0, o, 128);
+    send(c, 200, 0x90, 0, 0, 0); c->pr(c, 0, o, 128);   /* past the end: at the start of the next block */
+    int silent = first_nonzero(L, 128) < 0; c->pr(c, 0, o, 128);
+    CHECK(silent && first_nonzero(L, 128) == 0, "deltaFrames 200 in a 128-frame block: silent, then frame 0 of the next");
+    send(c, 0, 0x80, 0, 0, 0); c->pr(c, 0, o, 128);
+    send(c, -5, 0x90, 0, 0, 0); c->pr(c, 0, o, 128);   /* negative: treated as 0 */
+    CHECK(first_nonzero(L, 128) == 0, "negative deltaFrames starts at frame 0");
+    CHECK(sampleprobe_bad == 0, "render() always got 1..128 frames (%d bad calls)", sampleprobe_bad);
+    c->d(c, 1, 0, 0, 0, 0);
+}
+#endif
+
 int main(void) {
     AEffect *a = VSTPluginMain(host), *b = VSTPluginMain(host);
     CHECK(a && b && a != b, "two instances");
@@ -144,6 +190,9 @@ int main(void) {
         for (int i = 0; i < 128; i++) kept &= fabsf(L1[i] - 1.0f) < 0.01f && fabsf(R1[i] - 1.0f) < 0.01f;
         CHECK(kept, "process() accumulates into the output instead of overwriting it");
     }
+#ifdef SAMPLE_PROBE
+    sample_accurate_tests();
+#endif
     void *ch = 0; intptr_t n = a->d(a, 23, 0, 0, &ch, 0);
     if (n > 0) {
         b->d(b, 24, 0, n, ch, 0);
