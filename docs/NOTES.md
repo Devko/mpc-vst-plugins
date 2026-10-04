@@ -679,8 +679,8 @@ its own header, and the tab bar cuts off at about layout y 712):
 inserting mid-list shifts every later saved value (docs/RELEASING.md, versioning).
 
 **Offline preview needs Pillow.** `tools/studio.py preview` imports `PIL`; on a bare WSL install it is missing and
-there is no `pip`. Preview is what to look at before deploying; without it, deploy the skin alone (skin-only
-changes need no restart, re-insert the plugin) and read the screenshot.
+there is no `pip`. Preview is what to look at before deploying; without it, deploy the skin alone (a changed skin
+needs an MPC restart, see the 2026-10-04 note) and read the screenshot.
 
 **Integer param display beats truncation everywhere.** Any port with integer DSP params should set
 `"display": "int"` on them (gen_vst.py `int_display`): it fixes the formatting *and* enables the rounding and
@@ -1061,3 +1061,13 @@ Not tried: what MPC does with a read-back on a multiple of 1/128 for a whole num
 - **Seven tabs** show as five plus a ">" pager; page 2 shows "<" and the last five.
 - **Instruments-browser tiles** (verified 2026-10-01, Key 37, 3.9.1.2). Sounds > INSTRUMENTS draws a plugin as a 270x110 artwork tile when its plugin folder holds `Plugin Skins/browser_images/soundsmode.png` (`.jpg` is tried second); the page builder resolves every plugin in the plugin list to its folder (`<location>/Instruments/<folder>/Plugin Skins`, then `<location>/<folder>/Plugin Skins`) and looks there. The file is read when the page is drawn: no restart. Akai's own instruments map through a name table to firmware `soundsbrowser/sounds-<name>.png` instead (an earlier note here claimed no lookup happens for VSTs; wrong, the file was in the wrong place). Tapping the tile opens the plugin's preset page, which lists `<plugin folder>/Presets/*.xpl` (indexed at MPC startup: new files need a restart); with no presets the tap does nothing. An `.xpl` is `<pluginstate>` with the plugin's `<PLUGIN .../>` description, `<preset>Name</preset>` and a `<state>` holding a JUCE fxb chunk set (`CcnK`/`FBCh`, the uid, the wrapper's chunk) in JUCE's base64 variant (`<size>.` + 6-bit groups, low bits first); `tools/xpl.py` writes one with an empty chunk (the engine's defaults) and `gen_vst.py` ships it with the tile for a vst.json `"tile"`, `file=` using `%payload-path%` that install.sh fills in (whether MPC matches the preset by uid alone is untested). Stock DrumSynth folders also hold a 64x64 `browser_images/trackedit.png`; its use is unverified. Presets saved on the device go to `MPC Documents/Plugin Presets/Instruments/<folder>/`.
 - **Toggle and knob names** (MPC draws them from the param names) are a fixed 15-17 px and ignore `label_scale`, so a layout at 1.3 had small names under big values and a toggle's name overran its 120 px box. `scale_names=1` in layout.conf makes them 21 px × label_scale and grows the toggle box and its Q-Link bounds with them (checked on the device at 1.3); it is opt-in so no existing skin re-renders.
+
+### 2026-10-04: a changed skin needs an MPC restart; skins are found by folder name (Key 37, MPC OS 3.9.1)
+- Re-inserting the plugin does **not** reload a changed skin: MPC keeps skins in memory and only a restart showed the new one. This
+  corrects the 2026-09-24 note and the skill's earlier "skin-only change needs no restart". Browser tiles and `.so` updates are
+  unchanged (see above).
+- MPC finds a skin by folder name (`<vendor> - VST - <product>`, beside the plugin folder), even when the `.so` loads from another folder.
+- The filmstrip cache (2026-10-03 note above) filled the 2.5 GB `/data` partition after a day of restarts (1,201 files, 2.4 GB): the next
+  MPC start wrote empty cache files and an addin install failed with "No space left on device" (its `.new` staging kept the live install
+  intact). The running MPC had none of the files open and deleting them freed the space. Whether a reboot clears the folder is not known.
+- Credit: found by jacob-sabella (PR #162, closed; written up here).
