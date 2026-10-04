@@ -152,6 +152,7 @@ What's next is in [docs/ROADMAP.md](docs/ROADMAP.md).
 - [docs/SKIN_STUDIO.md](docs/SKIN_STUDIO.md): laying out and previewing pages.
 - [docs/BENCH.md](docs/BENCH.md): the on-device CPU check. [docs/RELEASING.md](docs/RELEASING.md): release zips.
 - [docs/ROADMAP.md](docs/ROADMAP.md): repo features still to do.
+- [docs/OS2_SKINS.md](docs/OS2_SKINS.md): the MPC OS 2.x skin findings, the open decision and the experiment plan.
 
 ### Device details
 
