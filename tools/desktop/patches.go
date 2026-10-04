@@ -207,7 +207,7 @@ type PatchRow struct {
 	Patch
 	State     string `json:"state"` // "not-checked" until the device is connected, then the script's state, "unsupported" or "error"
 	Supported bool   `json:"supported"`
-	Backup    bool   `json:"backup"`
+	HasBackup bool   `json:"hasBackup"` // a saved copy of the stock program is on the device (not Patch.Backup, the manifest's backup folder: same key would hide it)
 	Detail    string `json:"detail,omitempty"`
 }
 
@@ -225,7 +225,7 @@ func PatchRows(dev *Device, patches []Patch, fetch func(Patch) ([]byte, error)) 
 			if err == nil {
 				var st PatchState
 				if st, err = dev.PatchStatus(script); err == nil {
-					r.State, r.Supported, r.Backup = st.State, st.Supported, st.Backup
+					r.State, r.Supported, r.HasBackup = st.State, st.Supported, st.Backup
 					if st.State == "unsupported" {
 						r.Detail = unsupportedDetail(p, st)
 					}
