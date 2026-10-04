@@ -110,3 +110,23 @@ checks that (1) a wrong sha256 is refused before anything is copied, (2) `status
 - **Support load:** "my Force will not start" lands on us. The backup and `uninstall` path must be tested on a device before stage (c), and the README must say how to restore by hand.
 - **Rules for authors:** nothing of Akai's in a script (only changed bytes and checksums, as in `tools/mpc_patch`); a licence; a `status` and an `uninstall`.
 - **Device facts to check:** whether the app can run an interactive script over a plain `exec` session (no tty) on a Force; whether two patches can touch the same file.
+
+## Handoff (2026-10-04): where this stands and how to resume
+
+**State.** Merged to `main`: the design, the script contract (`tools/mpc_patch/mpc-drum-pad-patch.sh` v5), `catalog/patches.json` + `tools/patch_check.py`, the site publishing `patches.json`, and the read-only step 7 in `tools/desktop`. Desktop **v0.3.5** is published (built from `d6b2444`) and was tried on a Force: the row, the restore of an unknown MPC build from the verified backup, and the reinstall all worked (NOTES 2026-10-04). The manifest pins script v5 at commit `0adeb93`; any script edit needs a new commit, a re-pin of `url` and `sha256`, and `python3 tools/patch_check.py` (CI fails a stale hash on purpose).
+
+**Next, in this order.**
+1. **Apply and Undo from the app** (step 3 of "Order of work"): `POST /api/patch` with `{id, action, typed}`, the server checks the typed word (`PATCH` to apply, `RESTORE` for the unknown-build restore, per the script), runs `install --confirmed` / `uninstall --confirmed` over the existing job/stream machinery, never from install, update, register or the batch. Needs the fake-device tests listed under "Tests", a mutation check of each refusal, and a run on a real Force before release. It changes Akai's program, so agree the wording of the confirm box with the owner first.
+2. **Timo's ForceHD exec patch** (issue #150, reply posted 2026-10-03, no answer yet). Before listing it: read the script, get a licence, find out what it edits (fstab? a bind mount? a service?), how it survives a firmware update and how to undo it by hand, and whether it can cover a plugin folder inside `Synths` (our layout) rather than only a `vst` folder. It must meet the script contract above.
+3. **Support more firmware builds** only with the exact stock binary in hand; never add an unseen checksum to the known list (the unknown-build restore exists so that nobody has to).
+
+**Known gaps.** The refusals of the restore (backup not stock, no backup) and `install --confirmed` are tested offline only; `tools/mpc_patch/test_script.sh` has not been run with Akai's real MPC (it is not in the repo); other firmware than the one tested is untried.
+
+**Gotchas from this work.**
+- Two JSON fields with the same key in one struct (`Patch.Backup`, a folder, and the device's flag) silently shadowed each other: the page printed "a backup goes to true". The flag is `hasBackup` now. A stubbed browser test cannot catch this, so keep a Go test on the real JSON.
+- `status` used to leave `mount --bind / /tmp/mpc-patch-root` mounted; v4 unmounts it when it opened it. The app runs `status` only when step 7 is opened or "Check the device" is pressed, never at connect or during a job.
+- The patch script's `uninstall` of a known build writes the saved regions and falls back to the full backup; of an unknown build it only ever copies the full backup, and only after its md5 matches the stock program.
+- Releases: the desktop workflow (`desktop.yml`, "Run workflow", inputs `version` and `changes` separated by `|`) builds a **draft**; it cannot be re-run for a version whose draft or release still exists, so delete the draft first. The agent sessions cannot publish or delete releases; the owner does that on the Releases page. The site (`catalog.yml`) redeploys by itself on a push to `main` that touches `catalog/**`; a GitHub Pages deploy cannot be checked from the agent session (github.io is blocked), so open `https://sd88me.github.io/mpc-vst-plugins/patches.json` by hand.
+- The device is shared with the owner's live setup: every device step in this work was run by the owner, with the project saved, from commands we wrote. Keep it that way.
+
+**To resume.** Read this file, NOTES 2026-10-03 and 2026-10-04, `tools/mpc_patch/README.md`, then run `go test -race ./...` in `tools/desktop`, `python3 tools/test_patches.py`, `python3 tools/patch_check.py` and `python3 tools/desktop/ui_test/ui_patches.py` (needs Playwright and a Chromium) to see the baseline.
