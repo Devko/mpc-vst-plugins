@@ -921,3 +921,19 @@ The patches step (read only) showed what it should on that device: "This firmwar
 
 ### 2026-10-04: restore of an unknown MPC build and reinstall of the patch, verified on a Force (script v5)
 Force, Settings: MPC OS 3.9.1, MockbaMod. The device had an unrecognised MPC build (checksum `7cf96599ec61b1079688f253f3b65b9f`, see the entry above; what made it is not known) and a saved full backup whose md5 was the stock `592eebc8e1ce0797dc8c98e7002143b8`. With the project saved, the user ran script v5 (`tools/mpc_patch/mpc-drum-pad-patch.sh` at commit `0adeb93`) on the device, over SSH as root: `uninstall` (typed `RESTORE`) printed `restored stock MPC from the full backup`; `install` (typed `PATCH`) printed `patched OK`; the final `status` ended with `state=patched` and the patched checksum `f899e581cba179a831212083f9a55ae0`; and step 7 of the desktop app (v0.3.5) then showed the patch as **Applied**. All four checks passed, reported by the user (the output was not pasted, so the exact lines were not captured here). So on one device and one firmware build the restore-from-backup path of `uninstall`, the reinstall, the `STATE` line with `checksum=` and the app's row all work. Not covered: another firmware, a backup that is not stock (refused in the offline tests only), a device with no backup (offline only), and Apply/Undo from the app (not built).
+
+### Q-Link slow-down prototypes on a Force (MPC OS 3.9.1, 2026-10-04): none kept
+Tried on top of `settle()` with the probe build (all offline-tested, then felt on the Force). A Q-Link event is the read-back value plus a
+whole number of 1/128 of the range, exact to float precision; a slow turn sends a repeating 1, 2, 3 units.
+- **Count units, suppress the event (4 units per step):** wheel and drags unaffected, but the knob does not follow between steps and
+  the cadence is uneven (1, 2, 3 units per event): "sticky/jumpy". A touch drag event that happened to be a whole number of 1/128 within
+  0.03 (8.03) was counted as a Q-Link burst and jumped two steps up in a downward drag; the test needs to be exact (0.002).
+- **Smooth the knob (return a fractional read-back, 8 units per step):** works on an option list (MPC adopts the read-back: 41 events,
+  a step per 8 units) but not on a whole number: MPC kept its own count (S 1.05, 1.11, 1.05, 1.11 against read-backs 1.00, 1.12), the
+  event after the first looked like a drag and cleared the count, so a slow turn stayed on 1 for 153 events; fast turns jumped out of it.
+  The old unrounded "shadow" worked because it returned exactly what MPC had sent; a scaled read-back does not.
+- **Touch drag:** `settle()`'s ceil/floor makes the end values reachable only at the very end of the travel and the first event of a
+  drag cannot be told from a wheel click (same numbers), so it can step one the wrong way. Plain rounding for continuous drags fixed the
+  ends, but a selection on a step must clear the stored drag position or the next wheel click does nothing.
+Not tried: what MPC does with a read-back on a multiple of 1/128 for a whole number, and how the stock plugins handle the same Q-Link
+(ROADMAP). Per-param counting stays an opt-in in #90 (`qlink_ticks`) with this caveat.
