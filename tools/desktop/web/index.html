@@ -155,6 +155,16 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
 </details>
 </section>
 
+<section id="s7" class="off">
+<details id="d7" class="collapse">
+  <summary><h2><span class="n">7</span>Advanced: device patches</h2><span class="hint">Show</span></summary>
+  <p class="sub"><b>Not for most people.</b> A patch changes the device itself (for example Akai's own MPC program), not a plugin. This list only <b>looks</b>: it asks the device which patches are applied and changes nothing. Applying or undoing a patch from this app is not available yet. To use one now, follow its guide and run its script yourself over SSH.</p>
+  <div class="row"><button id="patchcheck" type="button" disabled>Check the device</button></div>
+  <p class="small" id="patchinfo">Connect, then open this step to check.</p>
+  <ul class="list" id="patchlist"></ul>
+</details>
+</section>
+
 <div id="selbar" hidden role="region" aria-label="Selected plugins"><span><b id="selcount"></b> <button class="linkbtn" type="button" id="selclear">Clear</button></span><button class="primary" id="go2" type="button">Install…</button></div>
 
 <footer>Community-provided software. Installing runs a script as root on your device and edits MPC's settings (a backup is made first). Downloads are checked against the catalog's checksums before anything is copied.</footer>
@@ -186,7 +196,8 @@ function el(tag, cls, t) { var e = document.createElement(tag); if (cls) e.class
 
 function setConnected(c, info, problems) {
   S.connected = c; S.problems = problems || [];
-  $("s2").classList.toggle("off", !c); $("s3").classList.toggle("off", !c); $("s4").classList.toggle("off", !c); $("s5").classList.toggle("off", !c); $("s6").classList.toggle("off", !c);
+  $("s2").classList.toggle("off", !c); $("s3").classList.toggle("off", !c); $("s4").classList.toggle("off", !c); $("s5").classList.toggle("off", !c); $("s6").classList.toggle("off", !c); $("s7").classList.toggle("off", !c);
+  S.patches = null; drawPatches();
   if (c) {
     var n = (info.installed || []).length;
     S.roots = info.roots || []; var pr = S.roots.filter(function (r) { return r.primary; })[0] || S.roots[0]; S.root = pr ? pr.path : "";
@@ -259,6 +270,7 @@ function drawCat() {
 }
 function rootNote(r) {
   var n = [];
+  if (r.noExec) n.push("Mounted noexec: MPC cannot load plugins from here (they are listed but only show Load Plugin). Use the internal drive or an SD card.");
   if (r.noSymlinks) n.push("Formatted " + r.fs + ", which cannot store symbolic links: a plugin that needs them (Crate Digger) cannot be installed here.");
   if (!r.inContent) n.push("MPC does not list this folder as a content location, so a plugin's screen may not show until you add it in MPC's settings.");
   if (!r.primary) n.push("If this drive is not in when MPC starts, its plugins drop out of MPC's plugin list until you register them again (step 5).");
@@ -313,6 +325,30 @@ function drawDev() {
   });
   if (!S.dev.length) ul.appendChild(el("li", "small", "No plugin folders found on the device."));
 }
+var PATCH_STATE = { "not-checked": "Not checked", "stock": "Not applied", "patched": "Applied", "old-patch": "Older version applied", "unsupported": "This firmware is not supported", "error": "Could not check" };
+function loadPatches() {
+  if (!S.connected) return;
+  $("patchcheck").disabled = true; text($("patchinfo"), "Asking the device…");
+  api("/api/patches").then(function (j) { S.patches = j; }).catch(function (e) { S.patches = { patches: [], note: e.message, error: true }; })
+    .then(function () { drawPatches(); });
+}
+function drawPatches() {
+  var ul = $("patchlist"); ul.textContent = "";
+  var j = S.patches;
+  $("patchcheck").disabled = !S.connected;
+  if (!j) { text($("patchinfo"), S.connected ? "Open this step or press Check the device." : "Connect, then open this step to check."); return; }
+  text($("patchinfo"), j.note || (j.patches.length ? "" : "No device patches are published yet."));
+  j.patches.forEach(function (p) {
+    var li = el("li"), h = el("div"); h.appendChild(el("b", null, p.title));
+    h.appendChild(el("span", "tag" + (p.state === "patched" ? " ok" : p.state === "error" || p.state === "unsupported" ? " up" : ""), PATCH_STATE[p.state] || p.state));
+    li.appendChild(h); li.appendChild(el("div", "small", p.summary));
+    var ch = "Changes " + p.modifies.join(", ") + (p.restarts_mpc ? "; MPC restarts" : "") + (p.backup ? "; a backup goes to " + p.backup : "") + ". Works on " + p.supports.os + ". By " + p.author + ".";
+    li.appendChild(el("div", "small", ch));
+    if (p.detail) li.appendChild(el("div", "small", p.detail));
+    if (p.docs) { var a = el("a", null, "Guide"); a.href = "https://github.com/sd88me/mpc-vst-plugins/blob/main/" + p.docs.replace(/^\/+/, ""); a.target = "_blank"; a.rel = "noopener"; a.style.color = "var(--accent)"; li.appendChild(a); }
+    ul.appendChild(li);
+  });
+}
 function loadBackups() {
   return api("/api/backups").then(function (j) { S.bk = j.backups; drawBk(); refresh(); }).catch(function (e) { S.bk = null; text($("bkinfo"), e.message); refresh(); });
 }
@@ -352,6 +388,8 @@ function refresh() {
   text($("selcount"), n + " plugin" + (n === 1 ? "" : "s") + " selected");
 }
 
+$("d7").addEventListener("toggle", function () { if ($("d7").open && S.connected && !S.patches) loadPatches(); });
+$("patchcheck").addEventListener("click", loadPatches);
 $("conn").addEventListener("submit", function (e) {
   e.preventDefault(); msg($("connmsg"), "Connecting…"); $("connect").disabled = true;
   api("/api/connect", { host: $("host").value, password: $("pw").value }).then(function (j) { $("pw").value = ""; setConnected(true, j.device, j.problems); })

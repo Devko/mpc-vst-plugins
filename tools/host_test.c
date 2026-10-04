@@ -25,7 +25,54 @@ static intptr_t host(AEffect*e,int32_t op,int32_t i,intptr_t v,void*p,float o){
     return 0;
 }
 #define CHECK(c, ...) do { printf("%s ", (c) ? "ok  " : "FAIL"); printf(__VA_ARGS__); printf("\n"); if (!(c)) fails++; } while (0)
-static void run(AEffect *a, int blocks) { float L[128], R[128], *o[2] = {L, R}; for (int k = 0; k < blocks; k++) a->pr(a, 0, o, 128); }
+/* Effects (numInputs == 2) read in[0]/in[1], so they need real input buffers; instruments take NULL in. */
+static void run(AEffect *a, int blocks) {
+    float L[128], R[128], I0[128] = {0}, I1[128] = {0}, *o[2] = {L, R}, *in[2] = {I0, I1};
+    float **ip = a->ni >= 2 ? in : 0;
+    for (int k = 0; k < blocks; k++) a->pr(a, ip, o, 128);
+}
+
+/* How MPC nudges a stepped param (an option list, a "display": "int" range), measured on a Force (docs/NOTES.md "Input probe")
+ * and an MPC One: the data wheel and a Q-Link send the read-back value plus a small delta (0.01 / 1/128 of the range); a drag or
+ * sweep keeps sending positions from where it started. Each wheel click or Q-Link event must move one step, a sweep must not
+ * flicker, and a reversal must go the other way. span = steps from the minimum to the maximum. */
+static void step_tests(AEffect *a, int i, const char *kind, int span) {
+    const char *key = PARAMS[i].key;
+    float mn = span;
+    a->setP(a, i, 0);
+    int ok = 1;
+    for (int k = 1; k <= 6; k++) {   /* data wheel: +0.01 from the read-back value */
+        a->setP(a, i, a->getP(a, i) + 0.01f);
+        if (fabsf(a->getP(a, i) * span - (k < span ? k : span)) > 0.05f) ok = 0;
+    }
+    CHECK(ok, "%s %s: six data wheel clicks step six (%.2f)", kind, key, a->getP(a, i) * span);
+    if (span <= 64) {   /* a Q-Link event is 1/128 of the range: still one step each (opt-in counting is qlink_ticks) */
+        a->setP(a, i, 0); ok = 1;
+        for (int k = 1; k <= 6; k++) {
+            a->setP(a, i, a->getP(a, i) + 1.0f / 128);
+            if (fabsf(a->getP(a, i) * span - (k < span ? k : span)) > 0.05f) ok = 0;
+        }
+        CHECK(ok, "%s %s: six Q-Link events step six (%.2f)", kind, key, a->getP(a, i) * span);
+    }
+    a->setP(a, i, 0); ok = 1;
+    float prev = 0, last = 0;
+    for (int k = 1; 0.3f * k <= span; k++) {   /* a sweep up from where it started: 0.3 step per event */
+        a->setP(a, i, 0.3f * k / span);
+        float v = a->getP(a, i) * span;
+        if (v < prev - 0.05f) ok = 0;
+        prev = v; last = 0.3f * k;
+    }
+    CHECK(ok && fabsf(prev - ceilf(last - 0.001f)) < 0.05f, "%s %s: a sweep up goes steadily, no flicker (ends at %.2f)", kind, key, prev);
+    ok = 1;
+    for (int k = 1; last - 0.3f * k >= 0; k++) {   /* and back down */
+        a->setP(a, i, (last - 0.3f * k) / span);
+        float v = a->getP(a, i) * span;
+        if (v > prev + 0.05f) ok = 0;
+        prev = v;
+    }
+    CHECK(ok && prev < mn, "%s %s: a sweep back down goes steadily, no flicker (ends at %.2f)", kind, key, prev);
+    a->setP(a, i, 0);
+}
 
 #ifdef SAMPLE_PROBE   /* poc/sampleprobe: a note-on switches a constant level on from the next frame it renders */
 extern int sampleprobe_bad;
@@ -106,7 +153,10 @@ int main(void) {
         CHECK(!strcmp(d, PARAMS[en].opts[n - 1]), "option %s -> \"%s\" (want \"%s\")", PARAMS[en].key, d, PARAMS[en].opts[n - 1]);
         a->setP(a, en, (n - 1.5f) / (n - 1));   /* a Q-Link nudge down from the last option: one step */
         CHECK(fabsf(a->getP(a, en) - (float)(n - 2) / (n - 1)) < 1e-3f, "nudge steps one option (%.3f)", a->getP(a, en));
+        step_tests(a, en, "option", n - 1);
     }
+    for (int i = 0; i < NPARAMS; i++)   /* the first whole-number param */
+        if (!PARAMS[i].nopts && PARAMS[i].int_display && PARAMS[i].max - PARAMS[i].min >= 2) { step_tests(a, i, "int", (int)(PARAMS[i].max - PARAMS[i].min)); break; }
     if (pop >= 0) {
         int t = PARAMS[pop].popup_of, n = PARAMS[t].nopts;
         a->setP(a, pop, 1); CHECK(a->getP(a, pop) > 0.5f, "popup %s opens", PARAMS[pop].key);
@@ -118,15 +168,25 @@ int main(void) {
 
     ME m = {1, sizeof(ME), 0, 0, 0, 0, {0x90, 60, 100, 0}}; EV ev = {1, 0, {&m, 0}};
     a->d(a, 25, 0, 0, &ev, 0);
-    float L[128], R[128], *o[2] = {L, R}; double e = 0;
-    for (int k = 0; k < 40; k++) { a->pr(a, 0, o, 128); for (int i = 0; i < 128; i++) e += L[i] * L[i] + R[i] * R[i]; }
+    int fx = a->ni >= 2;   /* effect: feed a 440 Hz sine and check it passes through; instrument: play note 60 */
+    float L[128], R[128], I0[128], I1[128], *o[2] = {L, R}, *in[2] = {I0, I1}; double e = 0;
+    for (int k = 0; k < 40; k++) {
+        if (fx) for (int i = 0; i < 128; i++) I0[i] = I1[i] = 0.25f * sinf(2.0f * 3.14159265f * 440.0f * (k * 128 + i) / 44100.0f);
+        a->pr(a, fx ? in : 0, o, 128);
+        for (int i = 0; i < 128; i++) e += L[i] * L[i] + R[i] * R[i];
+    }
     double rms = sqrt(e / (40 * 256));
-    printf("%s note 60 -> rms %.4f\n", rms > 1e-5 ? "ok  " : "warn", rms);   /* an effect or a silent patch may be legitimately 0 */
+    printf("%s %s -> rms %.4f\n", rms > 1e-5 ? "ok  " : "warn", fx ? "audio in" : "note 60", rms);   /* a silent patch may be legitimately 0 */
 
-    {   /* instance b never got a note: the legacy process() must add silence, leaving 1.0 */
-        float L1[128], R1[128], *o1[2] = {L1, R1}; int kept = 1;
+    if (a->ni >= 2) {   /* an effect called with no input buffers (a plugin scanner's probe) must not crash: the input is silence */
+        float L0[128], R0[128], *o0[2] = {L0, R0};
+        a->pr(a, 0, o0, 128); a->pr(a, 0, o0, 100);
+        CHECK(1, "effect survives processReplacing with a NULL input");
+    }
+    {   /* instance b never got a note (nor audio): process() must add silence, leaving 1.0 */
+        float L1[128], R1[128], Z0[128] = {0}, Z1[128] = {0}, *o1[2] = {L1, R1}, *zin[2] = {Z0, Z1}; int kept = 1;
         for (int i = 0; i < 128; i++) L1[i] = R1[i] = 1.0f;
-        ((void (*)(AEffect *, float **, float **, int32_t))b->p)(b, 0, o1, 128);
+        ((void (*)(AEffect *, float **, float **, int32_t))b->p)(b, b->ni >= 2 ? zin : 0, o1, 128);
         for (int i = 0; i < 128; i++) kept &= fabsf(L1[i] - 1.0f) < 0.01f && fabsf(R1[i] - 1.0f) < 0.01f;
         CHECK(kept, "process() accumulates into the output instead of overwriting it");
     }

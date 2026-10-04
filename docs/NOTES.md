@@ -13,7 +13,8 @@ from the Force and may differ on MPC Live/One/X/Key (e.g. `Force Documents` vs `
   `<PLUGIN name="X" descriptiveName="X" format="VST" category="Synth|Effect" manufacturer="V"
   version="1.0" file="/sdcard/vst/x.so" uid="<hex uniqueID>" isInstrument="0|1" fileTime="0"
   infoUpdateTime="0" numInputs="2" numOutputs="2" isShell="0"/>`
-- Device: armv7l, glibc 2.39 (build with an older glibc, e.g. `arm32v7/gcc:12` docker = 2.36).
+- Device: armv7l, glibc 2.39 on MPC OS 3.x (2.32 on MPC OS 2.x). Build with an older glibc: `arm32v7/gcc:11-bullseye` (2.31) is what
+  `build_port.sh` uses since 2026-10-02; `arm32v7/gcc:12` (2.36) binds some pthread symbols to `GLIBC_2.34` and does not load on 2.x.
 - Audio: 44100 Hz, 128-frame period; the engine interface (`wrapper/engine.h`) renders in exactly those blocks.
 - AEffect magic must be `'VstP'` (0x56737450). **The forum snippet's magic is wrong.**
 - Instruments: set `effFlagsIsSynth`, category 2, answer `effCanDo "receiveVstEvents"`;
@@ -818,6 +819,45 @@ uninstall from either backup, upgrade from the earlier patches, refusal of other
 layout, pads 1-n play voices 1-n). Needs plugin notes 0-15 for the pads (the tr-drums ports remap them). To add a plugin: add its exact
 plugin name to the table, rebuild (`asm.sh`, `make_patch.py <stock MPC>`, `build_script.py`) and run both tests.
 
+## Input probe: what MPC sends for a Q-Link turn, a data wheel click and a touch drag (2026-10-03, Force, MPC OS 3.9.1)
+`poc/inputprobe` is a silent plugin with a continuous knob (`cont`), a whole-number knob (`int`, 1..8), a 9-option list
+(`opt`) and a MARK button. It is built with `"defines": {"WRAP_TRACE": 1}`: the wrapper then calls `wrap_trace(kind, index,
+value)` from `setParameter` (kind 0) and `getParameter` (kind 1), and the probe's engine writes `/tmp/inputprobe.log`
+(`INPUTPROBE_LOG` moves it; it stops at 2 MB). `WRAP_TRACE` is off by default and costs nothing then. Why: #90 reports every
+Q-Link event as one 1/128 step from the value MPC last read back (Key 37), while #130 reports data wheel ticks as the
+current value plus a fraction of a step and drag/Q-Link sweeps measured from where they started (MPC One); the wrapper cannot tell
+a wheel click from a Q-Link event by the number alone, so the two stepping designs need real numbers per device.
+
+Log lines: `<ms> S <key> <host value> <value in the param's units>` (a raw setParameter), `<ms> G ...` (what getParameter
+returned, only when it changed), `<ms> E <key> <string>` (what the wrapper handed the engine after rounding/stepping),
+`<ms> MARK <n>` (the MARK button).
+
+Test (one control at a time, tap MARK before each step so the log splits cleanly): focus the control, then (1) one slow click or
+nudge, (2) five slow ones in a row, (3) one fast spin, (4) a reversal, (5) a touch drag across the control. Do it with the
+Q-Link knob of that control and with the data wheel. Read `S` values to get the delta per event (in the param's own units: option
+index, whole number, or the 0..1 value), and compare each `S` with the `G` just before it to see whether MPC measures from the
+read-back value or from where the gesture started. Results go here, with the device, MPC OS version and date.
+
+**Result (2026-10-03, Akai Force, MPC OS 3.9.1; one run, one device; Key 37 and MPC One not re-measured).** Every `S` is the
+value MPC last read back (`G`) plus a small delta: nothing is measured from where a gesture started, for either input. Deltas
+below are in 1/128 of the host's 0..1 range:
+- **Q-Link, `cont` and `int`:** exactly 1 per event, one event per click. A fast spin sends 1..3 per event; a reversal is the same
+  size, negative. (`int` 1..8: 1/128 of the range is 0.055 of a whole number.)
+- **Data wheel, `cont` and `int`:** exactly 1.28 (0.01) per event, one event per click; fast spin 1.28 and 2.56. Reversal negative.
+- **Touch drag, either control:** about 4 to 7 (0.04) per event, still from the last read-back, so a drag is a stream of larger nudges.
+- **`opt` (9 options), Q-Link:** 1 per event (0.0625 of an option), 1..3 on a fast turn, negative on a reversal.
+- **`opt`, data wheel:** 1.28 and 1.92 alternating (0.08 and 0.12 of an option) per event, one event per click; each event lands
+  between options, so today's wrapper steps one option per click. The first attempt produced no `setParameter` at all (the
+  wrapper logs before it acts, so MPC sent nothing); after a retry the wheel drove it. What changed between the two attempts
+  (focus or tile selection) was not recorded.
+- **Tap on an option tile:** one `S` on the exact option (a jump of up to 7 options).
+- **Distinguishing wheel from Q-Link by delta:** not reliable. A slow wheel click (1.28) is only 28% above a Q-Link click (1),
+  a fast Q-Link event (2..3) overlaps the wheel's 1.92 and 2.56, and a drag overlaps a fast spin. Treat both as "a small delta
+  from the read-back value".
+- **Consequence for #90 and #130:** counting several events per option (#90's `QLINK_TICKS` 3) also applies to wheel clicks, which
+  arrive one per detent: three clicks per option. Tick counting therefore has to be a per-param opt-in (`qlink_ticks`, default 1),
+  not a wrapper-wide default, until the wheel can be told apart.
+
 ## 2026-10-03: MPC OS 2.15.1: plugins load, skins do not draw (user reports on an MPC Live, plus other 2.x users; not reproduced by us)
 
 Unit: MPC Live (first generation), MPC OS 2.15.1, Buildroot 2021.02, BusyBox userland (no `ldd`, `file`; `head -n`, not `head -3`), `armv7l`. MPC runs as `inmusic-mpc.service`; there is no `acvs`.
@@ -827,7 +867,7 @@ Unit: MPC Live (first generation), MPC OS 2.15.1, Buildroot 2021.02, BusyBox use
 - **Skin location was not the cause.** The plugin's folder was under a `Synths` path listed in `SynthContentLocations` (SSD and internal SD both tried), `Plugin Skins/TUI.json` present. The edit page showed MPC's frame (header "Plugin 001", preset `<none>`) with an empty body; the log has no skin or JSON message. Q-Links showed and drove the parameters.
 - **2.x does read a skin from a plugin folder.** Copying the stock AIR Compressor `Plugin Skins` over the Dexed folder made the Compressor page appear as Dexed's edit page. So the fault is in our `TUI.json`, not in how MPC finds it.
 - **Imports exist.** Our `TUI.json` imports `/usr/share/Akai/Content/Synths/Generic/Generic Knob Overlay.json` and `Generic Menu Overlay.json`; both exist on 2.15.1 (also `Generic Slider.json`, `version.xml`).
-- **Format versions (counts of `"version": N` over every stock `Plugin Skins/TUI.json`).** 2.15.1: 1 = 10884, 2 = 3030, and 45 for a value cut off in the report (probably 3). Force, OS base 5.0.17: 1 = 9259, 2 = 5929, 3 = 224, 4 = 388, 5 = 76. Our generator (`tools/shadow_skin.py`) writes component definitions at version 4 (94 in the Dexed skin), tabs at 3, film-strip knob data at 5, `Q-Links.json` at 4: the same shape as the Force's stock Decimator skin. Hypothesis: 2.x does not accept versions above its own. **Open:** the 2.x shape of those objects; needs a stock `TUI.json` (and one with knobs) from a 2.x unit. The same stock AIR Compressor skin lays out identically on 2.15.1 (MPC Live) and on the Force, so screen size is not the issue.
+- **Format versions (counts of `"version": N` over every stock `Plugin Skins/TUI.json`).** 2.15.1: 1 = 10884, 2 = 3030, 3 = 45 (no 4 or 5). Force, OS base 5.0.17: 1 = 9259, 2 = 5929, 3 = 224, 4 = 388, 5 = 76. Our generator (`tools/shadow_skin.py`) writes component definitions at version 4 (94 in the Dexed skin), tabs at 3, film-strip knob data at 5, `Q-Links.json` at 4: the same shape as the Force's stock Decimator skin. Hypothesis: 2.x does not accept versions above its own. **Open:** the 2.x shape of those objects; needs a stock `TUI.json` (and one with knobs) from a 2.x unit. The same stock AIR Compressor skin lays out identically on 2.15.1 (MPC Live) and on the Force, so screen size is not the issue.
 - Akai's support pages (read 2026-10-03) say standalone MPC does not support third-party plugins at all, list the standalone models, and say new built-in plugins need newer OS versions (Native Instruments 3.5+, Spitfire 3.7.1+). Forum posts say 2.15.x is no longer updated by Akai. None of this covers skin formats.
 
 ## Sample-accurate note starts (opt-in, 2026-10-03; offline only here, device numbers from issue #137)
@@ -843,3 +883,72 @@ Default off: every existing port builds as before, because engines written for 1
 fixed-block cores) may not take other sizes. Test: `poc/sampleprobe` (note-on switches a constant level on from the next frame) with
 the `SAMPLE_PROBE` section of `tools/host_test.c`; with the define set to 0 the same checks fail, so they do test the wrapper.
 Still to do on a device: the first real port to opt in.
+
+- **A real 2.15.1 skin (stock Decimator `TUI.json` and `Q-Links.json`, sent by a user, read 2026-10-03; analysed in scratch, never committed).** `TUI.json`: tab `version 1` with the page inline as `componentDefinition` (`version 2`: `actions`, `backgroundData`, `ignoreMousePresses`, `disableCoarseDataWheel`, `componentsData`), no local definitions, children `version 2` with `bounds version 1`, knobs of the shared type `knobYellow` (from `AKAI Components/AKAI Generic Components.json`), imports by relative path (`../../Generic/...`, `../../AKAI Components/...`), one `Image` child for the artwork. Ours: tab `version 3` pointing at a local definition by `componentName` (plus `initialSize`, `scale`), definitions `version 4` (adds `repeats`, `hideQLinkBounds`), film-strip `Knob` data `version 5`, `Button` data `version 2` (adds `gestureBehaviour`), absolute imports. (`bounds version 2`, which adds `additionalInvalidatingHandles`, also exists on 2.15.1, so it is not a difference.) `Q-Links.json` is the same on 2.15.1 and on the Force (`version 4`, `Screen Mode Q-Links` `version 4`), so it is not the cause. A 2.15.1 skin with local definitions exists too (AIR Compressor `GUI-Popout.json`: `localComponentDefinitions`, `value.version 2`). **Film-strip knobs exist on 2.15.1 (AIR Amp Sim `TUI.json`, 2026-10-03):** type `Knob`, data `version 1` with only `knobType: FilmStrip`, `filmStrip`, `numFrames`, `handleName` (ours, version 5, also has `invert` and `dragOrientation`); `Button` data `version 1` has `onImage`, `offImage`, `buttonId`, `numButtonsInGroup`, `handleName`. `Image`, `Label` and `Focus` data are identical to ours. Local widget definitions are `value.version 2` (with `disableCoarseDataWheel`) or `1` (without it), never with `repeats` or `hideQLinkBounds`. **Offline conversion test (scratch, not in the repo):** Dexed 1.0.4's `TUI.json` converted by those rules (tab 3 to 1 with the page inlined, definitions 4 to 2 without `repeats`/`hideQLinkBounds`, `Knob` 5 to 1, `Button` 2 to 1) has only versions 1 and 2 (2009 and 1643 objects), and its tab and page-definition key sets equal the stock Amp Sim tab's. It loses `gestureBehaviour: Instant` on 79 buttons and `invert: false`, `dragOrientation: Vertical` on 3 knobs. **Not yet tried on a device.**
+
+
+## 2026-10-03: Force SSD is mounted `noexec`, plugins installed there only show "Load Plugin" (user report, Force, volume `/media/SSD - Force`)
+
+A user batch-installed plugins to the Force's SSD with the desktop installer: all listed under VST, each shows only "Load Plugin" when added to a track. The same plugins installed to the SD card load fine. The user's mount line:
+```
+/dev/sda1 on /media/SSD - Force type exfat (rw,nosuid,nodev,noexec,relatime,nosymfollow,fmask=0022,dmask=0022,iocharset=utf8,errors=remount-ro,uhelper=edisksd)
+```
+- **Cause: `noexec`.** MPC cannot `dlopen` a `.so` from that mount. Not the plugin build, not the glibc, and not the spaces in the volume name. This differs from the 2026-09-29 test, where an exFAT USB stick (`/dev/sda1`, no `noexec`) loaded and played, so the options depend on how the drive is mounted (here `uhelper=edisksd`, a drive in the Force's SSD slot): always check the mount line, not the filesystem.
+- Independent report (issue #150, Force Gen1, MPC OS 3.9.1): the ForceHD SSD is `noexec`; their patch makes only `/media/ForceHD/vst` executable and loads Dexed and Plaits from it. Not run by us.
+- Workaround: install to the internal drive or an SD card (`/sdcard/Synths`).
+- **Desktop app bug found while looking (not the cause), fixed:** `readInfo` (`tools/desktop/device.go`) took the mount point from `df ... $NF`, so `/media/SSD - Force` became `Force`; the `/proc/mounts` lookup then found nothing (it writes spaces as `\040`) and the filesystem and options came back empty, which also skipped the symlink and read-only checks. It now reads `df -kP` fields 6+ and matches the escaped name.
+- **noexec check (host tests only, not run on a Force):** the app flags a location mounted `noexec` (`Root.NoExec`, a note on the location, install refused with the reason); `install.sh` prints a warning (it still installs, so a hand-made exec mount is not blocked). Tests: `TestNoexecMountWithSpacesInItsNameIsFlaggedAndRefused` (fake BusyBox-style `df` line and an escaped `/proc/mounts` line; fails with the old parsing), `tools.test_catalog` (70 OK), `install.sh` fragment run against a fake `df` and `/proc/mounts` with and without `noexec`.
+
+## Stepping of option lists and whole numbers: `settle()` (2026-10-04, offline; from #130 and the Force input probe)
+Until now an integer param kept an unrounded "shadow" position so a slow Q-Link turn accumulated, and an option list stepped one
+option per event. Two measurements say that cannot serve both inputs: on a Force (MPC OS 3.9.1, "Input probe" above) a Q-Link event
+is the read-back value plus 1/128 of the range and a data wheel click the read-back value plus 0.01, one event per detent, so the
+wrapper cannot tell them apart; on an MPC One (#130) the wheel on a 1..8 param "only trembled" with the shadow (0.07 of a step per
+click, 14 clicks per step) and a drag or Q-Link sweep, measured from where it started, flickered between two values. `settle()`
+(wrapper/vst2_wrap.c, code from #130 by poloq-instruments) rounds toward the way the value moves: from the host's last position
+while it moves continuously, else from the current value; `shadow[]` is gone. Result: one step per wheel click or Q-Link event, a
+sweep up or down without flicker. Cost: a short whole-number range (1..8) crosses its range in about seven Q-Link events on a Force,
+where the shadow took about 18 per step. Counting several events per step is #90's opt-in `qlink_ticks`, because the wheel then needs
+as many clicks. Test: `poc/steptest` with the stepping section of `tools/host_test.c` (six wheel clicks, six Q-Link events, a sweep
+up and back, for an option list and an integer); on the previous wrapper the same checks fail. Not yet re-checked with a hand on a
+Q-Link or the wheel after this change.
+
+**Checked on a Force (MPC OS 3.9.1, 2026-10-04), probe build of poc/inputprobe with this wrapper:** `S` is what MPC sent, `E` what the engine got.
+- Q-Link on `int` (1..8): each event is +0.055 from the read-back value and steps one whole number (4 events: 5, 6, 7, 8), the known
+  cost. On `opt` (9 options) each event steps one option (8 events: 1 to 8).
+- Data wheel: +0.07 (`int`) and +0.08/+0.12 (`opt`) per click, one step per click (0 to 5 in six clicks).
+- A slow touch drag (0.2 to 0.3 step per event) goes up and back down steadily: engine values 1,2,2,3,3,3,3,4,4,4,4,5,5,5, then
+  back to 1 with the reversal taking effect at once. No flicker.
+- **A fast drag (0.5 to 0.9 step per event) flickered once:** positions 7.66, 7.22, 6.66, 6.11 gave 7, 7, 6, 7, then 5, 4, 3, 2, 1.
+  When two events are half a step or more apart, `settle()` ignores the host's last position and takes the direction from the
+  value: 6.11 against a value of 6 reads as "up". The same numbers are what a wheel reversal sends (pos = value - 0.07 after an up
+  click, 0.86 above the previous position), so the two cannot be told apart from one event; the 0.5 limit is the compromise that keeps
+  wheel reversals right. Known limit: a fast drag over a short range can step one the wrong way at a time.
+
+## 2026-10-03: patches step (read only) in the installer app, offline only
+Design in `docs/PATCHES.md`. Built so far: the drum-pad patch script v4 (`status` ends with a `STATE` line; `install --confirmed` skips the typed question; `status` unmounts the bind mount of `/` that it opened, which v1-v3 left mounted: found by reading the script, fixed and checked with shimmed `mount`/`umount`/`mountpoint`), `catalog/patches.json` + `tools/patch_check.py` (the site build publishes it only if it validates), and step 7 of the app (list and `status` only; no apply). Checked on the host only: `tools/test_patches.py` (13 tests: the script contract against a synthetic stand-in for the MPC binary with its checksums rewritten, the checker, the site build), `go test -race` in `tools/desktop` (new `patches_test.go`, six mutations each fail a test), and `tools/desktop/ui_test/ui_patches.py` (Chromium, API stubbed). **Not run:** `tools/mpc_patch/test_script.sh` with Akai's real MPC (not in the repo), the app against a real Force, or any apply/undo from the app (not built).
+
+### 2026-10-04: the first user of the patches step got "firmware not supported" on the machine the patch was built on (script v5)
+Force, Settings says MPC OS 3.9.1. The page showed "This firmware is not supported" with no reason. `status` on the device: `MPC checksum: 7cf96599ec61b1079688f253f3b65b9f`, state unsupported, `/sdcard/MPC-backup/MPC-3.9.1.2.orig` present (its md5 is the stock `592eebc8...`, checked on the device) and `orig-regions.txt` present. So the program is an unrecognised build, most likely an earlier development version of the patch (not confirmed; that checksum is not in the repo): neither stock, nor the current patch (`f899e581...`), nor the two known earlier builds. The app and the script were right; the problem was that `install` and `uninstall` both refused an unknown build, leaving a verified stock backup unusable, and the page gave no reason. Script v5: `uninstall` restores an unknown build from the full backup only when the backup's md5 is the stock one (typed `RESTORE` or `--confirmed`, result verified), `status` ends with `checksum=`; the app shows the checksum, what the patch supports and a pointer to the restore. Tests: `tools/test_patches.py` (the restore, its four refusals, the typed word, the checksum; each mutation-checked) and `patches_test.go`. **Not yet run on the Force:** the restore itself (it stops and restarts MPC and copies 112 MB over `/usr/bin/MPC`).
+
+### 2026-10-04: desktop v0.3.5 tried on the Force that has the unknown MPC build
+The patches step (read only) showed what it should on that device: "This firmware is not supported", the device's checksum `7cf96599ec61b1079688f253f3b65b9f`, the checksum and OS the patch supports, and the pointer to the saved backup. One bug in the same row: "a backup goes to true" (the manifest's `backup` folder and the device's has-backup flag shared the JSON key `backup`; the flag won). Fixed (`hasBackup`), with a test of the JSON. The restore from the verified backup has still not been run on the Force.
+
+### 2026-10-04: restore of an unknown MPC build and reinstall of the patch, verified on a Force (script v5)
+Force, Settings: MPC OS 3.9.1, MockbaMod. The device had an unrecognised MPC build (checksum `7cf96599ec61b1079688f253f3b65b9f`, see the entry above; what made it is not known) and a saved full backup whose md5 was the stock `592eebc8e1ce0797dc8c98e7002143b8`. With the project saved, the user ran script v5 (`tools/mpc_patch/mpc-drum-pad-patch.sh` at commit `0adeb93`) on the device, over SSH as root: `uninstall` (typed `RESTORE`) printed `restored stock MPC from the full backup`; `install` (typed `PATCH`) printed `patched OK`; the final `status` ended with `state=patched` and the patched checksum `f899e581cba179a831212083f9a55ae0`; and step 7 of the desktop app (v0.3.5) then showed the patch as **Applied**. All four checks passed, reported by the user (the output was not pasted, so the exact lines were not captured here). So on one device and one firmware build the restore-from-backup path of `uninstall`, the reinstall, the `STATE` line with `checksum=` and the app's row all work. Not covered: another firmware, a backup that is not stock (refused in the offline tests only), a device with no backup (offline only), and Apply/Undo from the app (not built).
+
+### Q-Link slow-down prototypes on a Force (MPC OS 3.9.1, 2026-10-04): none kept
+Tried on top of `settle()` with the probe build (all offline-tested, then felt on the Force). A Q-Link event is the read-back value plus a
+whole number of 1/128 of the range, exact to float precision; a slow turn sends a repeating 1, 2, 3 units.
+- **Count units, suppress the event (4 units per step):** wheel and drags unaffected, but the knob does not follow between steps and
+  the cadence is uneven (1, 2, 3 units per event): "sticky/jumpy". A touch drag event that happened to be a whole number of 1/128 within
+  0.03 (8.03) was counted as a Q-Link burst and jumped two steps up in a downward drag; the test needs to be exact (0.002).
+- **Smooth the knob (return a fractional read-back, 8 units per step):** works on an option list (MPC adopts the read-back: 41 events,
+  a step per 8 units) but not on a whole number: MPC kept its own count (S 1.05, 1.11, 1.05, 1.11 against read-backs 1.00, 1.12), the
+  event after the first looked like a drag and cleared the count, so a slow turn stayed on 1 for 153 events; fast turns jumped out of it.
+  The old unrounded "shadow" worked because it returned exactly what MPC had sent; a scaled read-back does not.
+- **Touch drag:** `settle()`'s ceil/floor makes the end values reachable only at the very end of the travel and the first event of a
+  drag cannot be told from a wheel click (same numbers), so it can step one the wrong way. Plain rounding for continuous drags fixed the
+  ends, but a selection on a step must clear the stored drag position or the next wheel click does nothing.
+Not tried: what MPC does with a read-back on a multiple of 1/128 for a whole number, and how the stock plugins handle the same Q-Link
+(ROADMAP). Per-param counting stays an opt-in in #90 (`qlink_ticks`) with this caveat.
