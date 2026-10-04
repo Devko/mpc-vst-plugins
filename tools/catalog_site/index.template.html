@@ -185,7 +185,8 @@ function card(p) {
     var cols = by ? '<td><a href="' + esc(safeUrl(x.source_url)) + '">tag ' + esc(x.tag) + '</a></td>' : '<td>' + size(x.size) + '</td><td title="sha256 ' + esc(x.sha256) + '">' + esc(x.sha256.slice(0, 10)) + '</td>';
     return '<tr class="' + (x.yanked ? "y" : "") + '"><td>v' + esc(x.version) + '</td><td>' + esc(x.date) + '</td><td>' + esc(x.channel) + (x.yanked ? ", yanked" : "") + '</td>' + cols + '</tr>';
   }).join("") + '</table></details>' : "";
-  var head = '<article class="card' + (by ? " by" : "") + '"><header><div><h2>' + esc(p.name) + '</h2><div class="by">by ' + esc(p.author) + '</div></div>' +
+  var shot = p.screenshot && safeUrl(p.screenshot) !== "#" ? '<a class="shot" href="' + esc(p.screenshot) + '"><img src="' + esc(p.screenshot) + '" alt="' + esc(p.name) + ' screenshot" loading="lazy"></a>' : "";
+  var head = '<article class="card' + (by ? " by" : "") + '">' + shot + '<header><div><h2>' + esc(p.name) + '</h2><div class="by">by ' + esc(p.author) + '</div></div>' +
     (v ? '<span class="ver" title="Latest ' + (by ? "tag" : esc(v.channel) + " release") + '">v' + esc(v.version) + (v.channel === "beta" ? " beta" : "") + '</span>' : '<span class="ver">' + (by ? "no tag" : "no release") + '</span>') + '</header>' +
     '<div class="tags">' + tags.join("") + '</div><p>' + esc(p.summary) + '</p>';
   if (by) {
