@@ -208,8 +208,8 @@ def widget_svg(w, art, params, base_dir):
         s, cw = 2 * r + 10, max(130, 2 * r + 10)
         x0, y0 = w["cx"] - cw // 2, w["cy"] - s // 2
         art.ops.append(art.knob_frame(w["cx"], w["cy"], r, 40, lk))
-        live += [live_text(x0, y0 + s // 2 + r + 2, cw, 20, name, 17, ss.INK),
-                 live_text(x0, y0 + s // 2 + r + 24, cw, 26, "40", 22, ss.INK_DIM)]
+        live += [live_text(x0, y0 + s // 2 + r + 2, cw, 20, name, 17, w.get("ink") or ss.INK),
+                 live_text(x0, y0 + s // 2 + r + 24, cw, 26, "40", 22, w.get("ink_dim") or ss.INK_DIM)]
     elif k == "meter" and lk and lk.get("look") == "native":
         # EXPERIMENTAL (docs/ROADMAP.md): static preview only -- the background image, then the peak image at a
         # fixed proportion (like studio.py preview, not a simulation of MPC's own unverified reveal logic)
@@ -265,7 +265,7 @@ def widget_svg(w, art, params, base_dir):
         dot = k == "readout" and w.get("style") == "dotmatrix"
         live.append(live_text(x + 8, y, rw - (44 if k == "popup" else 16), rh, first if k != "readout" else name,
                               26, ss.DISPLAY_INK if dot else (w.get("accent") or ss.ACCENT)))
-        if k == "popup":
+        if k == "popup" and w.get("field") != "none":
             cx, cy = w["cx"] + w["w"] // 2 - 22, w["cy"]
             art.ops.append('<path d="M%d %d L%d %d L%d %d Z" style="fill:#%s"/>' % (
                 cx - 8, cy - 4, cx + 8, cy - 4, cx, cy + 5, w.get("accent") or ss.ACCENT))
