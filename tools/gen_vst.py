@@ -17,6 +17,8 @@ vst.json (paths are relative to the vst.json's folder):
       "effect": true,                            # optional: an audio effect (2 inputs, category Effect); the engine provides process()
       "custom_skin": true,                       # optional: params.h + plugin-list entry only; the port makes the skin itself
       "defines": {"HAS_LFO_BPM": 1},             # optional extra #defines in params.h
+                                                 #   (HAS_DISPLAY_REV: the DSP changes values by itself; the wrapper polls its "display_rev" and
+                                                 #   refreshes the host; PARAM_TEXT_MAX: readout length, default 24 -- see wrapper/vst2_wrap.c)
       "build": {"root": "..", "sources": ["src/engine.c"], "cflags": ["-Isrc"], "libs": ["-lm"]}
     }
 The sources provide mpc_engine() (wrapper/engine.h). An engine from another ecosystem names its own
