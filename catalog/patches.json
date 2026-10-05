@@ -20,7 +20,7 @@
     },
     {
       "id": "drive-exec",
-      "title": "Drive exec: run plugins from a noexec drive (a Force's SSD)",
+      "title": "Drive exec: run plugins from a noexec drive (an MPC/Force's SSD)",
       "summary": "UNTESTED on a device by this project (testers wanted, see issue #150). MPC cannot load a plugin from a drive mounted noexec: it is listed but only shows Load Plugin. This makes one folder of the drive (Synths) executable, through a small boot-time service; the drive itself stays noexec.",
       "author": "timomacquis (adapted by sd88me)",
       "license": "MIT",

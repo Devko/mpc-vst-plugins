@@ -17,7 +17,7 @@ one MPC stop and start around the whole batch when the installers allow it.
    The device scan lists every writable `Synths` location (the internal drive, and `/media/*/Synths` for cards and drives; read-only mounts such as
    MPC's own content folder are skipped, and the same storage reached by two paths is listed once). Step 3 lets you pick where to install, the
    internal drive by default, and warns when MPC does not list the folder as a content location. A drive that cannot store symbolic links
-   (FAT, exFAT, NTFS) is refused for a package that needs them, and so is a drive without room. A drive mounted `noexec` (a Force's SSD is) is refused too: MPC cannot load a plugin from it, so the plugin would be listed but only show "Load Plugin".
+   (FAT, exFAT, NTFS) is refused for a package that needs them, and so is a drive without room. A drive mounted `noexec` (an MPC/Force's SSD is) is refused too: MPC cannot load a plugin from it, so the plugin would be listed but only show "Load Plugin".
 2. **Choose:** the catalog's newest stable release of every downloadable plugin, plus any zips you drop in. A search box, kind and
    developer filters, a sort, and a "show" filter (not on the device, on the device, updates available, only the ones you ticked) keep a
    long list manageable; what you ticked stays ticked while you filter, and a bar at the bottom shows the count and an Install button.
