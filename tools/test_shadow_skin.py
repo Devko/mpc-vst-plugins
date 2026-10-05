@@ -59,6 +59,28 @@ class QLinkBounds(unittest.TestCase):
         self.assertEqual(len(shadow_skin.qlink_column_bounds(self.TAB, list("abcd") + ["-"] * 4)), 1)
 
 
+class ListOrder(unittest.TestCase):
+    W = {"key": "slot", "cols": 2, "rows": 3}
+
+    def keys(self, **kw):
+        return [k.split("_")[-1] for k in shadow_skin.list_keys(dict(self.W, **kw))]
+
+    def test_default_numbers_across_each_row(self):
+        self.assertEqual(self.keys(), ["1", "2", "3", "4", "5", "6"])
+
+    def test_pads_number_from_the_bottom(self):
+        self.assertEqual(self.keys(order="pads"), ["5", "6", "3", "4", "1", "2"])
+
+    def test_cols_number_down_each_column_first(self):
+        # tiles are laid out row by row (left, right, left, right ...): the left column holds 1..rows, the right the next rows
+        self.assertEqual(self.keys(order="cols"), ["1", "4", "2", "5", "3", "6"])
+        self.assertEqual(sorted(self.keys(order="cols")), sorted(self.keys()))   # the same keys, only placed differently
+
+    def test_cols_with_three_columns(self):
+        w = {"key": "s", "cols": 3, "rows": 2, "order": "cols"}
+        self.assertEqual([k.split("_")[-1] for k in shadow_skin.list_keys(w)], ["1", "3", "5", "2", "4", "6"])
+
+
 class FilmStripFrames(unittest.TestCase):
     def test_rotary_knob_is_one_fewer_than_strip(self):
         self.assertEqual(shadow_skin.ROT_FRAMES, shadow_skin.FRAMES - 1)

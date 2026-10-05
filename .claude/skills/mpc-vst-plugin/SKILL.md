@@ -46,8 +46,11 @@ Stop any separately attached audio engines first.
   MPC sends a wheel click and a Q-Link event alike (the read-back value plus 0.01 / 1/128 of the range: docs/NOTES.md "Stepping of
   option lists and whole numbers"), so a short range races under a Q-Link; `"qlink_ticks": N` on a param (opt-in) counts N
   events per step (6 felt right on a Key 37), at the cost of N wheel clicks too, and feels sticky on a Force (docs/PORTING.md).
+  A LONG integer list (a bank list of up to 998) is the opposite case: one event is 1/128 of the range, so it skips eight entries at a
+  time; `"nudge_pct": 10` on that param makes any move up to 10% of the range one step (a bigger move still sets outright).
   List-tile highlights need `<key>_on` from the DSP (polled every 10 ms, so a tile can light from MIDI alone; `theme_tile_on=`
-  fills the lit tile, `list ... order=pads` numbers the rows from the bottom like a pad bank).
+  fills the lit tile, `list ... order=pads` numbers the rows from the bottom like a pad bank, `order=cols` numbers down each column first so a
+  two-column list reads and steps top to bottom).
   The orange box on a control is the transparent-able Focus ring, not Q-Link bounds. Details: docs/NOTES.md
   "Skin design lessons from the jv880 redesign".
 - AEffect magic `'VstP'` 0x56737450 (the forum PoC's value is wrong).

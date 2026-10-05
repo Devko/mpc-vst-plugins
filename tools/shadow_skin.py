@@ -33,7 +33,8 @@ Layout file:
                                                         arrows = <param>_prev / <param>_next;
                                                         label_align=center needs "art": "html")
     list    x= y= w= h= cols= rows= th= gap= key=<p>   (rows = params <p>_1..<p>_N: text + tap;
-                                                        order=pads numbers the rows from the bottom, like a pad bank)
+                                                        order=pads numbers the rows from the bottom, like a pad bank;
+                                                        order=cols numbers down each column first, so it reads top to bottom)
     art     file="drawing.svg" [x= y= w= h=] [fit=]    (an SVG drawing, e.g. from studio.py from-svg, or a .png/.jpg/.webp
                                                         image, drawn into the page background: the whole plugin area, or
                                                         the box; fit=contain|cover|stretch; browser renderer only)
@@ -277,8 +278,11 @@ def shade(hexcol, f):
 
 
 def list_keys(w):
-    """tile i's param: rows top-down, or bottom-up like a pad bank (order=pads: pad 1 is bottom left)"""
+    """tile i's param: rows top-down, or bottom-up like a pad bank (order=pads: pad 1 is bottom left), or down each column
+    first (order=cols: 1..rows in the left column, then the next column), so a list reads and steps top to bottom"""
     n, cols = w["cols"] * w["rows"], w["cols"]
+    if w.get("order") == "cols":
+        return ["%s_%d" % (w["key"], (i % cols) * w["rows"] + i // cols + 1) for i in range(n)]
     if w.get("order") == "pads":
         return ["%s_%d" % (w["key"], (w["rows"] - 1 - i // cols) * cols + i % cols + 1) for i in range(n)]
     return ["%s_%d" % (w["key"], i + 1) for i in range(n)]

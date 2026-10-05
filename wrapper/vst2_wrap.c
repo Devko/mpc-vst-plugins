@@ -256,15 +256,23 @@ static void setParameter(AEffect *e, int32_t i, float n) {
     }
     else if (p->int_display && p->max > p->min) {
         /* whole numbers: settled like options, or counted with "qlink_ticks" > 1 (a short range such as a MIDI
-         * channel). A move of half a step or more is a direct set (automation, a drag), not a tick. */
+         * channel). A move of half a step or more is a direct set (automation, a drag), not a tick, unless the param
+         * has "nudge_pct": a long list (a bank list of up to 998) a Q-Link event or wheel click would cross eight to ten
+         * entries of at a time (1/128 and 1/100 of the range), so any move up to that percent of the range counts as one
+         * tick, one step in its direction (one per qlink_ticks of them with both). MPC clamps the value it sends, so a
+         * move that lands on the minimum or maximum from within that distance is a tick too, not a jump to the end. */
         float span = p->max - p->min, pos = clamp01(n) * span, cur = get_norm(w, i) * span, steps;
-        if (p->qlink_ticks > 1 && fabsf(pos - roundf(pos)) > 0.001f && fabsf(pos - cur) < 0.5f) {
+        float tickmax = p->nudge_pct > 0 ? fmaxf(0.5f, span * p->nudge_pct / 100.0f) : 0.5f;
+        int edge = (pos < 0.001f || pos > span - 0.001f) && fabsf(pos - cur) >= 0.5f;
+        if ((p->qlink_ticks > 1 || p->nudge_pct > 0) && (fabsf(pos - roundf(pos)) > 0.001f || edge) && fabsf(pos - cur) < tickmax) {
             float d = pos - cur;
             w->last_pos[i] = pos;
-            if (d * w->qacc[i] < 0) w->qacc[i] = 0;
-            w->qacc[i] += d > 0 ? 1 : -1;
-            if (fabsf(w->qacc[i]) < p->qlink_ticks) return;   /* the host reads the same value back */
-            w->qacc[i] = 0;
+            if (p->qlink_ticks > 1) {
+                if (d * w->qacc[i] < 0) w->qacc[i] = 0;
+                w->qacc[i] += d > 0 ? 1 : -1;
+                if (fabsf(w->qacc[i]) < p->qlink_ticks) return;   /* the host reads the same value back */
+                w->qacc[i] = 0;
+            }
             steps = roundf(cur) + (d > 0 ? 1 : -1);
         } else {
             w->qacc[i] = 0;
