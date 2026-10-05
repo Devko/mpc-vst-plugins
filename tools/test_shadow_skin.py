@@ -59,6 +59,27 @@ class QLinkBounds(unittest.TestCase):
         self.assertEqual(len(shadow_skin.qlink_column_bounds(self.TAB, list("abcd") + ["-"] * 4)), 1)
 
 
+class StudioPreviewTabs(unittest.TestCase):
+    """studio.preview must read a skin in either shape: release.sh previews whatever the build wrote."""
+
+    def test_tab_components_reads_both_shapes(self):
+        import studio
+        kids = [{"componentData": {"type": "Image"}}]
+        named = {"tabName": "A", "componentName": "A|A"}
+        inline = {"tabName": "A", "componentDefinition": {"componentsData": kids}}
+        self.assertEqual(studio.tab_components(named, {"A|A": {"componentsData": kids}}), kids)
+        self.assertEqual(studio.tab_components(inline, {}), kids)
+
+    def test_a_generated_2x_skin_previews_like_a_3x_one(self):
+        tui = _gen_like_tui()
+        defs = {d["key"]: d["value"] for d in tui["pageData"]["componentDefinitions"]["localComponentDefinitions"]}
+        import studio
+        before = studio.tab_components(tui["pageData"]["tabs"][0], defs)
+        shadow_skin.to_mpc2x(tui)
+        after = studio.tab_components(tui["pageData"]["tabs"][0], {})
+        self.assertEqual([c["componentData"]["type"] for c in before], [c["componentData"]["type"] for c in after])
+
+
 class ListOrder(unittest.TestCase):
     W = {"key": "slot", "cols": 2, "rows": 3}
 
