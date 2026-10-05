@@ -43,8 +43,8 @@
       "license": "MIT",
       "docs": "tools/mpc_patch/hwremap/README.md",
       "script": {
-        "url": "https://raw.githubusercontent.com/sd88me/mpc-vst-plugins/82e1c322f8a511e9c8546e9ad1f891b4df54c1c4/tools/mpc_patch/hwremap/hwremap-patch.sh",
-        "sha256": "094216eb5722a501793dce5345a0bc2a46be1047f7623d7e422f80cd8a3dcde2"
+        "url": "https://raw.githubusercontent.com/sd88me/mpc-vst-plugins/0f8b5453be73ab9b9c666e6d0cdaab13d70e9804/tools/mpc_patch/hwremap/hwremap-patch.sh",
+        "sha256": "21f8639e1379b5351db5de804e710fd56fed5dd8410ed8ec7e177fe5ab1c4e4f"
       },
       "supports": {"os": "MPC OS 3.9 (MPC Live with Hakai, and Force stock 3.9.0, as tried by the remap's author)", "arch": "armv7l"},
       "modifies": ["/usr/bin/az01-launch-MPC", "/usr/lib/hwremap.so", "/data/hwremap/hwremap.so", "/etc/systemd/system/acvs.service.d/hwremap.conf", "/etc/systemd/system/inmusic-mpc.service.d/hwremap.conf", "/sdcard/hwremap.conf"],
