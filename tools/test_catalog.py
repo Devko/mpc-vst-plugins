@@ -539,6 +539,24 @@ class BuildTest(Base):
         self.assertEqual(p["downloads"], 9)   # all time: every published zip, including the yanked 1.0.0 and the invalid 1.2.0
         self.assertEqual(sorted((x["tag"] for x in problems)), ["v1.2.0", "v1.3.0-b"])
 
+    def test_a_newest_release_without_the_pattern_asset_is_reported_unless_the_repo_is_shared(self):
+        good = self.build("1.0.0")
+        entry = dict(self.ENTRY, asset_pattern="Synth-*-mpc-armv7.zip")
+        renamed = self.rel("v1.1.0", 2, name="synth-fixed.zip", at="2026-09-30T00:00:00Z")   # the author swapped the asset
+        old = self.rel("v1.0.0", 1, name="Synth-1.0.0-mpc-armv7.zip")
+        gh = FakeGitHub({"acme/test-synth": [renamed, old]}, {1: good})
+        cat, problems = catalog_build.build([entry], gh, os.path.join(self.tmp, "c"), set())
+        self.assertEqual([(x["tag"], x["error"]) for x in problems],
+                         [("v1.1.0", "expected one asset matching Synth-*-mpc-armv7.zip, found 0")])
+        # an older release from before the pattern existed stays silent
+        gh = FakeGitHub({"acme/test-synth": [self.rel("v1.1.0", 1, name="Synth-1.1.0-mpc-armv7.zip", at="2026-09-30T00:00:00Z"),
+                                              self.rel("v1.0.0", 2, name="legacy.zip")]}, {1: self.build("1.1.0")})
+        self.assertEqual(catalog_build.build([entry], gh, os.path.join(self.tmp, "c2"), set())[1], [])
+        # a repo shared by several entries: another plugin's release is not this one's problem
+        other = dict(self.ENTRY, id="other-synth", asset_pattern="Other-*-mpc-armv7.zip")
+        gh = FakeGitHub({"acme/test-synth": [renamed, old]}, {1: good})
+        self.assertEqual(catalog_build.build([entry, other], gh, os.path.join(self.tmp, "c3"), set())[1], [])
+
     def test_each_version_carries_its_os_compat(self):
         import json
         from test_skin_compat import tui_2x
