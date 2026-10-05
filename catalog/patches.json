@@ -43,7 +43,7 @@
       "license": "MIT",
       "docs": "tools/mpc_patch/hwremap/README.md",
       "script": {
-        "url": "https://raw.githubusercontent.com/sd88me/mpc-vst-plugins/95bc75d5d74f96fcd9797204f2325b456bd8c30d/tools/mpc_patch/hwremap/hwremap-patch.sh",
+        "url": "https://raw.githubusercontent.com/sd88me/mpc-vst-plugins/82e1c322f8a511e9c8546e9ad1f891b4df54c1c4/tools/mpc_patch/hwremap/hwremap-patch.sh",
         "sha256": "094216eb5722a501793dce5345a0bc2a46be1047f7623d7e422f80cd8a3dcde2"
       },
       "supports": {"os": "MPC OS 3.9 (MPC Live with Hakai, and Force stock 3.9.0, as tried by the remap's author)", "arch": "armv7l"},
