@@ -1052,6 +1052,21 @@ whole number of 1/128 of the range, exact to float precision; a slow turn sends 
 Not tried: what MPC does with a read-back on a multiple of 1/128 for a whole number, and how the stock plugins handle the same Q-Link
 (ROADMAP). Per-param counting stays an opt-in in #90 (`qlink_ticks`) with this caveat.
 
+## Engine-driven skins: long text, when= panels and meters switch without a tap (MPC One, 2026-10-01, poc/uiprobe)
+`poc/uiprobe` (62 params, 152 IndexedEnabling parts, `HAS_DISPLAY_REV` + `PARAM_TEXT_MAX 128`), nothing touched:
+- **Value text up to 80+ characters shows in full** on a wide readout. The 23-character limit was only the wrapper's own
+  copy (`copy_str(…, 24)`); `PARAM_TEXT_MAX` raises it per port.
+- **when= panels follow values the engine changes by itself** (a 4-state phase every 2 s, three rows with a 6-way
+  button state and two badges, 40 three-way values every 0.5 s), once the wrapper reports them with
+  `audioMasterAutomate` (it does now under `HAS_DISPLAY_REV`, for every non-text, non-trigger param whose value moved).
+- **`meter` redraws live** from an engine-driven value (a 2 s sawtooth), pauses and resumes with it.
+- **A dense page stays responsive**: the 40-value tab cycling every 0.5 s, with pads, scrolling and tab switches normal.
+So a skin can be a real app screen: status lines, state-dependent buttons/badges/banners and progress bars, all driven
+from a worker thread.
+Since 2026-10-04 the wrapper re-reads every text readout every 100 ms anyway (see the readout poll above), which covers
+status text on its own. `HAS_DISPLAY_REV` runs on that same poll and adds the rest: values that aren't text (states,
+meters) and the `when=` panels that hang on them. Rebased on that poll 2026-10-05; not re-run on the device since.
+
 ## 2026-10-01: MIDI-generator and control-surface facts from Chordsmith on an MPC Key 37
 - **Own port echoes back.** MPC enables a plugin's new ALSA port for track input (`MidiDevices.AutoEnableForTracks`), so every note-on and note-off a MIDI-generating plugin sends comes back into its own track moments later, on the channel it was sent on (verified: output on ch2 returns on ch2, keys stay on ch1). Count sent ons and offs per channel and note and swallow exactly those; filtering only "a note-on for a note still sounding" lets a re-chord's note-offs through as keys let go, which in a mode where every note is a root ran away into a cascade of chords.
 - **MPC merges an echo with a held key on the same channel and note**: the key's note-off never reaches the plugin and its chord hangs. Default a generator's output to a channel other than the keys' (ch2). The merged echo's note-on never reaches the plugin either (verified 2026-10-01: the chord's other three echoes came back, the held note's did not, and no note-off followed the key release), so a plugin cannot detect the clash from the echo itself: Chordsmith flags it when a sent note on the keys' channel, for a key still held, has no echo back after 250 ms while other echoes have been seen.
