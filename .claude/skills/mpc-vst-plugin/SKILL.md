@@ -179,6 +179,7 @@ Always `preview` before deploying. Enum `options=` are optional in layouts (they
   thread-CPU timed, verdict PASS/WARN/FAIL against the 2902 µs block (docs/BENCH.md). Nothing installed; MPC keeps running.
 - `tools/release.py`: one shareable zip (the `portable/<skin>/` plugin folder + install.sh/uninstall.sh + generated INSTALL.md + SHA256SUMS); the
   installer stops/restarts MPC, so installing a release on the user's device needs their go-ahead (docs/RELEASING.md).
+- `tools/screenshot.sh <ssh target> out.png [--plugin]`: a screenshot of what the device shows now (read-only DRM grab; NOTES.md).
 - `tools/probe_device.sh` (read-only): arch, CPU, audio workers, plugin formats. VST3 is **not** compiled into MPC OS
   (Force, 2026-09-24): don't build VST3 ports.
 
