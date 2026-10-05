@@ -327,7 +327,7 @@ function drawDev() {
   });
   if (!S.dev.length) ul.appendChild(el("li", "small", "No plugin folders found on the device."));
 }
-var PATCH_STATE = { "not-checked": "Not checked", "stock": "Not applied", "patched": "Applied", "old-patch": "Older version applied", "unsupported": "This firmware is not supported", "error": "Could not check" };
+var PATCH_STATE = { "not-checked": "Not checked", "stock": "Not applied", "patched": "Applied", "old-patch": "Older version applied", "partial": "Installed, not active", "unsupported": "This firmware is not supported", "error": "Could not check" };
 function loadPatches() {
   if (!S.connected) return;
   $("patchcheck").disabled = true; text($("patchinfo"), "Asking the device…");

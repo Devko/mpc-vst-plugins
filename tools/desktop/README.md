@@ -44,7 +44,7 @@ one MPC stop and start around the whole batch when the installers allow it.
    same on the device.
 7. **Advanced: device patches** (step 7, collapsed, read only for now; `docs/PATCHES.md`): lists the patches in `patches.json` (published next to
    `catalog.json`) and, when you open the step or press "Check the device", asks the device which are applied. A patch changes the device itself,
-   not a plugin. The app downloads the script, checks it against the manifest's sha256, copies it to a private folder on the device, runs only its
+   not a plugin; a row shows Not applied, Applied, Installed-not-active, or why it is not supported (for example the device's MPC checksum, or that no drive is mounted `noexec`). The app downloads the script, checks it against the manifest's sha256, copies it to a private folder on the device, runs only its
    `status` command and removes the copy. It does not apply or undo anything; the page says how to run the script yourself. Nothing is asked of the
    device at connect time, and not while a job runs. Tests: `patches_test.go`, and `ui_test/ui_patches.py` (a browser test with the API stubbed).
 
