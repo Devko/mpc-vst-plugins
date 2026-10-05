@@ -70,7 +70,7 @@ Versioned schema (`"schema": 1`) so the site and installers can evolve without b
 
 ### Validation (CI, per new version)
 Zip layout matches the spec; manifest matches the registry (`id`, `uid`, repo); `.so` is ARM ELF with
-GLIBC <= 2.32; `install.sh`/`uninstall.sh`/`plugin_list.awk` are identical to this repo's canonical copies (or a
+GLIBC <= 2.36 (above 2.32 it is listed as MPC OS 3.x only); `install.sh`/`uninstall.sh`/`plugin_list.awk` are identical to this repo's canonical copies (or a
 diff is flagged for manual review); checksums match; `uid` and `file=` name don't collide with any other catalog
 entry; license file present. This reuses code already in `tools/release.py`.
 

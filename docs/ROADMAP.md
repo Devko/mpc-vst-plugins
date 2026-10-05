@@ -66,7 +66,7 @@ The catalog, its site and the installer app are live (see Done). Still open, in 
       from several authors are listed, and build-yourself ports (Monomodule, Machinemodule) for engines that need your own
       firmware. Phases 0 to 4 of `docs/CATALOG.md` are done apart from the items above.
 - [x] Loads on MPC OS 2.x (2026-10-02): the shared tools and the ports build against glibc 2.31 (`arm32v7/gcc:11-bullseye`; the
-      build-yourself ports use a `debian:bullseye` cross image), and the catalog rejects anything above 2.32. The installers
+      build-yourself ports use a `debian:bullseye` cross image), and the catalog lists anything above 2.32 as MPC OS 3.x only (and rejects above 2.36, 2026-10-05). The installers
       use `acvs`, or `inmusic-mpc` where there is no `acvs`. NOTES 2026-10-01 has the report that led to this.
 - [x] Control looks and images, offline (2026-09-25): built-in looks (knobs moog/chicken/metal/cap, slider fader,
       toggles led/switch), turning knob images with a still base, filmstrip import (knobs, sliders, meters), slider

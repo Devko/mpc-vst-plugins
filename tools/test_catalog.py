@@ -253,6 +253,23 @@ class CatalogTest(Base):
         e, _, _ = catalog_check.check(self.build(glibc=b"GLIBC_2.38"))
         self.assertTrue(any("GLIBC" in x for x in e))
 
+    def test_glibc_above_2_32_is_listed_as_3x_only_up_to_2_36(self):
+        import json
+        from test_skin_compat import tui_2x
+        skin = json.dumps(tui_2x())
+        for glibc, errors, gens in ((b"GLIBC_2.30", False, ["2.x", "3.x"]), (b"GLIBC_2.32", False, ["2.x", "3.x"]),
+                                    (b"GLIBC_2.33", False, ["3.x"]), (b"GLIBC_2.34", False, ["3.x"]), (b"GLIBC_2.36", False, ["3.x"]),
+                                    (b"GLIBC_2.37", True, None)):
+            e, w, rec = catalog_check.check(self.build(glibc=glibc, tui=skin), catalog=True)
+            self.assertEqual(bool(e), errors, (glibc, e))
+            if errors:
+                self.assertTrue(any("limit is 2.36" in x for x in e), e)
+                continue
+            self.assertEqual(rec["os_compat"], gens, glibc)
+            self.assertEqual(any("listed as MPC OS 3.x only" in x for x in w), gens == ["3.x"], (glibc, w))
+            if gens == ["3.x"]:
+                self.assertTrue(any("needs glibc" in x for x in rec["os_compat_why"]), rec["os_compat_why"])
+
     def test_tampered_file_fails_checksum(self):
         z = self.tamper(self.build(), "portable/Acme - VST - Test Synth/test_synth.so", lambda d: d + b"x")
         e, _, _ = catalog_check.check(z)
