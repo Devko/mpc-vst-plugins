@@ -27,6 +27,9 @@ Building on parameter-driven visibility (`IndexedEnabling`, NOTES "Conditional v
       VST2** (NOTES.md "Native picker (menu overlay): not available to VST2", 2026-09-24) under its real
       component name, not a new option — `popup` stays the way to do a list. Not separately verified.
 ## Porting and tooling
+- [ ] **Catalog: MPC OS 2.x / 3.x compatibility field.** Derived by the release and catalog checks (glibc 2.32 or less, and the skin only uses
+      versions 2.15.1's own skins use); badge and filter on the site, badge and warning in the installer app; developers opt in with the
+      2.x skin shape. Plan and phases: [docs/OS2_SKINS.md](OS2_SKINS.md) ("Proposed direction").
 - [ ] **Q-Link feel on option lists and whole numbers.** A Q-Link event is one step on a Force (docs/NOTES.md "Stepping of option lists
       and whole numbers"), which is quick on a short range; the data wheel is right. Three prototypes of slowing it failed (NOTES). First
       thing to try: how the stock plugins (AIR, Akai) respond to the same Q-Link on a stepped param, by logging what MPC sends them

@@ -59,7 +59,38 @@ Options, to be chosen after the experiment:
    2.x device, so existing releases work on 2.x with no re-release (a Go port of `to_mpc2x`, with the same tests).
 3. Only authors who want 2.x support re-release.
 
-Leaning towards 2, pending the experiment. A Discord post asking the community for input was drafted on 2026-10-04.
+The project owner's preference (2026-10-05): an automatic catalog compatibility field plus the opt-in generator option, below; installer
+conversion stays a later option. A Discord post asking the community for input was drafted on 2026-10-04.
+
+## Proposed direction: a catalog compatibility field (2026-10-05, from the project owner)
+
+The default skin shape does not change. Instead the catalog says, per version and up front, whether a plugin works on MPC OS 2.x
+or only on 3.x, and the catalog works this out itself:
+
+- **Verified, not declared.** `os_compat` is `["2.x","3.x"]` or `["3.x"]`. It is `2.x` only when (a) the `.so` needs glibc 2.32 or less
+  (already a catalog rule) and (b) every role in the skin uses a version that 2.15.1's own skins use. The check reads the zip; a
+  developer cannot claim it.
+- **The table behind (b)** is a small data file in the repo (for example `tools/skin_roles_2x.json`): per role, and per component
+  type, the data versions and field names seen in the 110 stock 2.15.1 skins. It holds version numbers and field names only, never
+  a stock file, and it is rebuilt from a stock-skin tar (the commands are under "The experiment, A").
+- **Optional for developers.** A plugin built the way it is today is classed `3.x` and stays fully listed. A developer who wants the
+  badge builds the 2.x shape (`SHADOW_SKIN_MPC_OS=2`, PR #139, plus a `vst-release.yml` input) or writes it by hand, and the checker tells
+  them what is left if it is not compatible yet (for example a `Slider` at data version 4).
+- **Existing releases need no re-release to be classified.** `catalog_build.py` already opens each release zip; it computes the field for
+  versions that lack it, so everything already in the catalog gets a label.
+- **Where it shows.** The field flows like `max_glibc` does today: `release.py` writes it into `mpc-plugin.json`, `catalog_check.py` recomputes
+  it and fails on a mismatch, `catalog_build.py` puts it in `catalog.json` for each version, the site shows a badge and a filter,
+  and the installer app shows the badge and warns when it installs a `3.x` plugin to a device that looks like 2.x (glibc 2.32 or
+  less, or Buildroot 2021.02, which is a heuristic, so a warning and not a block).
+- **Say what was tested.** "Checked against 2.15.1's own skins" is not "tested on a 2.x unit". The badge says which, using the existing
+  tested-on field; a plugin shows plain "2.x" only after a 2.x device test is listed.
+- **Limits to state in the docs.** The table comes from one 2.x version (2.15.1); other 2.x versions are unchecked. A structural check
+  cannot prove that touch behaves the same.
+
+Phases: 1. the table, `skin_os_compat()` in `catalog_check.py`, the manifest and catalog field (no site or app change); 2. the site badge and
+filter; 3. the installer app badge and warning; 4. the generator option and workflow input (PR #139) and the developer docs.
+Install-time conversion in the installer app (the earlier option 2) stays possible later and does not conflict with this: it could turn a
+`3.x` plugin into a working one on a 2.x device, and the badge would then say so.
 
 ## Known gaps
 
