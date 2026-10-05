@@ -481,6 +481,7 @@ class BuildTest(Base):
         self.assertEqual(cat["plugins"][0]["versions"], [])
         self.assertIsNone(cat["plugins"][0]["latest"])
         self.assertIn("cannot list", problems[0]["error"])
+        self.assertTrue(problems[0]["unreadable"])
 
     def test_registry_rules(self):
         self.assertEqual(catalog_build.check_entry(self.ENTRY, "x/test-synth.json"), [])
@@ -507,7 +508,7 @@ class IssuesTest(unittest.TestCase):
 
     def test_superseded_fixed_and_duplicate_issues_close(self):
         pr = [{"id": "a", "tag": "v1", "error": "x", "superseded": True}, {"id": "a", "tag": "v4", "error": "y"},
-              {"id": "c", "tag": None, "error": "cannot list releases: 502"}]
+              {"id": "c", "tag": None, "error": "cannot list releases: 502", "unreadable": True}]
         issues = [{"number": n, "title": t, "state": st} for n, t, st in [
             (10, self.T % "v1", "OPEN"),             # superseded: closed
             (11, self.T % "v2", "OPEN"),             # no longer reported: closed
@@ -519,6 +520,18 @@ class IssuesTest(unittest.TestCase):
         self.assertEqual([t for t, _ in got], ["Catalog: c cannot be read"])
         self.assertEqual([n for n, _ in close], [10, 11, 13])
         self.assertIn("newer release", close[0][1])
+
+    def test_cannot_be_read_reopens_but_a_per_tag_title_never_does(self):
+        # a tagless title's repo can go from unreadable to readable (closing its issue) and back to
+        # unreadable (the problem returns): only an open issue protects it from reopening. A per-tag
+        # title is different: a tag can't be rebuilt, so a closed issue is final.
+        pr = [{"id": "a", "tag": "v1", "error": "x"}, {"id": "b", "tag": None, "error": "cannot list releases: 502",
+                                                        "unreadable": True}]
+        issues = [{"number": 1, "title": self.T % "v1", "state": "CLOSED"},
+                  {"number": 2, "title": "Catalog: b cannot be read", "state": "CLOSED"}]
+        got, close = catalog_issues.plan(pr, issues)
+        self.assertEqual([t for t, _ in got], ["Catalog: b cannot be read"])
+        self.assertEqual(close, [])
 
 
 import catalog_site  # noqa: E402

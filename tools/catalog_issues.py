@@ -8,7 +8,9 @@ the failure visible:
 - one issue per failing release (or unreadable plugin), keyed by title, so a problem that persists is reported once;
 - none for a release marked "superseded" (a newer release of the same plugin passes: an old tag can't be rebuilt, so
   it is history, not something to fix);
-- none for a title that has a closed issue: closing it is the answer, it is not opened again;
+- none for a per-tag title that has a closed issue: closing it is the answer, it is not opened again (a tag can't
+  be rebuilt). A tagless "cannot be read" title is different: its repo can go from unreadable to readable and back,
+  so it reopens if only closed issues exist for it;
 - an open issue whose problem is gone or superseded is closed with a comment, unless its plugin could not be read in
   this build (then nothing is known about its releases); a second open issue with the same title is closed as a
   duplicate.
@@ -29,7 +31,15 @@ def title(p):
 
 def unread(p):
     """The plugin's repo or releases could not be read: its other issues can't be judged in this build."""
-    return not p.get("tag") and p["error"].startswith("cannot")
+    return p.get("unreadable", False)
+
+
+def reopenable(t):
+    """A tagless title ("... cannot be read") names no fixed release: the repo can go from unreadable to
+    readable and back, so the problem can return after its issue is closed. Only an open issue with that
+    title then counts as known. A per-tag title is different: a tag can't be rebuilt, so a closed issue
+    is the final word and must never reopen."""
+    return t.endswith(" cannot be read")
 
 
 def plan(problems, issues):
@@ -39,11 +49,13 @@ def plan(problems, issues):
     for p in problems:
         if not p.get("superseded"):
             want.setdefault(title(p), []).append(p["error"])
-    known = {i["title"] for i in issues}
+    known_open = {i["title"] for i in issues if i["state"].upper() == "OPEN"}
+    known_closed = {i["title"] for i in issues} - known_open
+    blocked = known_open | {t for t in known_closed if not reopenable(t)}
     to_open = [(t, "The nightly catalog build excluded this release.\n\n" + "\n".join("- " + e for e in errs) +
                 "\n\nFix the release (or the registry entry). This issue is closed automatically once the release "
                 "passes or a newer release of this plugin passes.")
-               for t, errs in want.items() if t not in known]
+               for t, errs in want.items() if t not in blocked]
     superseded = {title(p) for p in problems if p.get("superseded")}
     skip_ids = {p["id"] for p in problems if unread(p)}
     to_close, seen = [], set()

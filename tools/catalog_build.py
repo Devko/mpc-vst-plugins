@@ -250,7 +250,8 @@ def tag_versions(e, src, yanked, tested, keep, problems):
     try:
         tags = src.list_tags(repo)
     except Exception as ex:  # repo missing, private or unreachable
-        problems.append({"id": e["id"], "tag": None, "error": "cannot read the repo or its tags (does it exist and is it public?): %s" % ex})
+        problems.append({"id": e["id"], "tag": None, "unreadable": True,
+                         "error": "cannot read the repo or its tags (does it exist and is it public?): %s" % ex})
         return []
     try:   # a built zip published on a release would break the licence position: shout, but keep the entry listed
         for rel in src.list_releases(repo):
@@ -262,7 +263,8 @@ def tag_versions(e, src, yanked, tested, keep, problems):
                                      "LICENCE RISK: release asset %s is published, but a build-yourself plugin embeds the user's own "
                                      "firmware and must never ship a built zip. Delete the asset." % a["name"]})
     except Exception as ex:
-        problems.append({"id": e["id"], "tag": None, "error": "cannot check releases for a published zip: %s" % ex})
+        problems.append({"id": e["id"], "tag": None, "unreadable": True,
+                         "error": "cannot check releases for a published zip: %s" % ex})
     semver = [(tuple(int(x) for x in m.groups()), t) for t in tags for m in [TAG_VERSION.fullmatch(t["name"])] if m]
     if not semver:
         problems.append({"id": e["id"], "tag": None, "error": "no vX.Y.Z tag found: tag a release to be listed"})
@@ -295,7 +297,8 @@ def tag_versions(e, src, yanked, tested, keep, problems):
 
 
 def build(entries, src, cache, yanked, keep=10, now=None):
-    """-> (catalog dict, problems list [{id, tag, error}])."""
+    """-> (catalog dict, problems list [{id, tag, error, unreadable?, superseded?}]). "unreadable" marks a repo or
+    release list that could not be read at all, as opposed to one that was read and found invalid."""
     os.makedirs(cache, exist_ok=True)
     plugins, problems = [], []
     for e in entries:
@@ -308,7 +311,7 @@ def build(entries, src, cache, yanked, keep=10, now=None):
             try:
                 releases = src.list_releases(e["repo"])
             except Exception as ex:  # a repo we can't read: keep going, report it
-                problems.append({"id": e["id"], "tag": None, "error": "cannot list releases: %s" % ex})
+                problems.append({"id": e["id"], "tag": None, "unreadable": True, "error": "cannot list releases: %s" % ex})
         tested = []
         if hasattr(src, "tested"):
             try:

@@ -131,8 +131,10 @@ here first and move to its own repo (recommended, for community ownership) once 
 - [x] (2026-10-03, offline tests and a dry run against the live registry) Failure handling: bad version excluded,
       previous good version kept, one issue per failing release on this repo (`tools/catalog_issues.py`). A failure
       that a newer passing, unyanked release supersedes gets no issue (an old tag can't be rebuilt); an open issue
-      closes itself when its problem is gone or superseded; a closed title is never reopened; duplicates close.
-      Issues on the plugin's own repo: not done.
+      closes itself when its problem is gone or superseded; a closed per-tag title is never reopened (a tag can't
+      be rebuilt, even if its release asset is later replaced); a closed "repo cannot be read" title reopens if the
+      repo breaks again, since that one isn't tied to a fixed tag; duplicates close. Issues on the plugin's own
+      repo: not done.
 - [x] (`.github/workflows/catalog.yml`, builds and uploads an artifact; Pages deploy comes with Phase 3) Workflow: nightly cron + `repository_dispatch`/`workflow_dispatch`; an optional one-line "ping" step ports
       can add to their release workflow for instant updates.
 - [x] (registry rules and licence list; 'latest release validates' runs in the full build) PR check for registry PRs: schema, repo exists, latest release validates, uid unique. Issue template
