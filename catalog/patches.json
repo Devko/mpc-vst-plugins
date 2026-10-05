@@ -21,7 +21,7 @@
     {
       "id": "forcehd-vst-exec",
       "title": "Run plugins from a noexec drive (the Force's SSD)",
-      "summary": "MPC cannot load a plugin from a drive mounted noexec: it is listed but only shows Load Plugin. This makes one folder of the drive (Synths) executable, through a small boot-time service; the drive itself stays noexec.",
+      "summary": "UNTESTED on a device by this project (testers wanted, see issue #150). MPC cannot load a plugin from a drive mounted noexec: it is listed but only shows Load Plugin. This makes one folder of the drive (Synths) executable, through a small boot-time service; the drive itself stays noexec.",
       "author": "timomacquis (adapted by sd88me)",
       "license": "MIT",
       "docs": "tools/mpc_patch/forcehd_exec/README.md",

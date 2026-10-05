@@ -1,5 +1,7 @@
 # Optional: run plugins from a `noexec` drive (the Force's SSD)
 
+> **UNTESTED on a device by this project.** The original (0.1.3) was run by its author on one Force; this adapted version and its uninstall have only been tested offline (real mounts on a tmpfs, see below). **Testers wanted** (issue #150): a Force with a `noexec` SSD, comfortable with SSH. Report what `status`, `install`, a reboot, loading a plugin from the drive and `uninstall` printed.
+
 **Not part of any plugin release.** `forcehd-vst-exec-patch.sh` is a standalone script you run on the device yourself, if you want it. The installer app lists it in its read-only "Advanced: device patches" step.
 
 ## The problem
@@ -35,7 +37,7 @@ Not changed: ordering with MPC (none), the timer, the root-bootstrap that adds t
 - A firmware update may remove the unit in the system image. Run `status`, then `install` again.
 - The timer runs every 5 s while the drive is absent (journal noise, no other effect).
 - Do not unplug the drive while a plugin from it is loaded.
-- **Not yet verified on a device by this project** (the contributor's 0.1.3 was; this adapted version and its uninstall have only been run offline). See NOTES.
+- **Untested on a device by this project** (the contributor's 0.1.3 was; this adapted version and its uninstall have only been run offline). See NOTES.
 
 ## Files and tests
 `src/` holds the files that get installed (the helper, the uninstaller, the bootstrap scripts and the three units); `build_script.py` embeds them into `script.template.sh` and writes `forcehd-vst-exec-patch.sh` (`python3 build_script.py`). `tools/test_forcehd_exec.py` tests it with real mounts: as root, in a private mount namespace, a tmpfs mounted `noexec` at `/media/SSD - Force` stands for the SSD and a small shared library is really `dlopen`ed before the patch, with it and after removing it (outside the folder it stays blocked, the parent mount's options never change); also install and removal, repeated apply, an absent drive, a plugin held by a process, a failed install rolling back, the typed words, hostile drive and folder names, and that the embedded files equal `src/`. Run `sudo python3 tools/test_forcehd_exec.py` (as a normal user only the file checks run).
