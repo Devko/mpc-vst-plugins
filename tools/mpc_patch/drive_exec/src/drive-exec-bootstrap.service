@@ -1,11 +1,11 @@
 [Unit]
-Description=ForceHD VST Exec bootstrap after writable etc
+Description=Drive exec bootstrap after writable etc
 Requires=etc.mount
 After=etc.mount
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh /etc/force-vst-exec/bootstrap.sh
+ExecStart=/bin/sh /etc/drive-exec/bootstrap.sh
 RemainAfterExit=yes
 TimeoutStartSec=15
 PrivateMounts=no

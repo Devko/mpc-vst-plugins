@@ -1,5 +1,5 @@
 #!/bin/sh
-# ForceHD VST Exec: only one folder on a drive becomes executable (a private bind mount of that folder, remounted with exec);
+# Drive exec: only one folder on a drive becomes executable (a private bind mount of that folder, remounted with exec);
 # the drive itself keeps its noexec. Original work: "ForceHD VST Exec 0.1.3" by timomacquis (issue #150), contributed to
 # mpc-vst-plugins. Changes in 0.2.0: the drive and the folder come from the config (any /media/<name>, spaces allowed, the folder
 # is "Synths" or "vst" or another plain name) instead of the fixed /media/ForceHD/vst, mount points are compared the way
@@ -8,17 +8,17 @@
 set -eu
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
-CONFIG=${FORCE_VST_EXEC_CONFIG:-/etc/force-vst-exec/config}
-STATE=${FORCE_VST_EXEC_STATE:-/run/force-vst-exec}
+CONFIG=${DRIVE_EXEC_CONFIG:-/etc/drive-exec/config}
+STATE=${DRIVE_EXEC_STATE:-/run/drive-exec}
 [ "$(id -u)" = 0 ] || { echo 'Root required'; exit 1; }
 [ -f "$CONFIG" ] || { echo 'Configuration missing'; exit 1; }
-FORCEHD_ROOT=; EXEC_DIR=
+DRIVE_ROOT=; EXEC_DIR=
 . "$CONFIG"
 # the config is shell: accept only plain names (letters, digits, . _ + ( ) - and single spaces), never ".", ".." or a hidden name
-printf '%s\n' "$FORCEHD_ROOT" | grep -Eq '^/media/[A-Za-z0-9][A-Za-z0-9._+() -]*$' || { echo 'Unsupported drive path'; exit 1; }
+printf '%s\n' "$DRIVE_ROOT" | grep -Eq '^/media/[A-Za-z0-9][A-Za-z0-9._+() -]*$' || { echo 'Unsupported drive path'; exit 1; }
 printf '%s\n' "$EXEC_DIR" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._+() -]*$' || { echo 'Unsupported folder name'; exit 1; }
-case "$FORCEHD_ROOT" in /media/az01-internal|/media/az01-internal-*|/media/acvs-synths) echo 'The internal storage is not a target'; exit 1;; esac
-TARGET=$FORCEHD_ROOT/$EXEC_DIR
+case "$DRIVE_ROOT" in /media/az01-internal|/media/az01-internal-*|/media/acvs-synths) echo 'The internal storage is not a target'; exit 1;; esac
+TARGET=$DRIVE_ROOT/$EXEC_DIR
 mkdir -p "$STATE"
 chmod 700 "$STATE"
 exec 9>"$STATE/lock"
@@ -38,8 +38,8 @@ log_state() {
   printf '%s\n' "$1" | tee "$STATE/last-status"
  fi
 }
-forcehd_mounted() {
- [ -n "$(mount_id "$FORCEHD_ROOT")" ]
+drive_mounted() {
+ [ -n "$(mount_id "$DRIVE_ROOT")" ]
 }
 allow_exec() {
  options=$(mount_options "$TARGET")
@@ -67,14 +67,14 @@ case "${1:-status}" in
    case "$wait_seconds" in ''|*[!0-9]*) echo 'Invalid wait duration'; exit 1;; esac
    [ "$wait_seconds" -le 30 ] || { echo 'Maximum wait is 30 seconds'; exit 1; }
   elif [ "$#" -gt 1 ]; then echo 'Usage: apply [--wait 0..30]'; exit 1; fi
-  while ! forcehd_mounted && [ "$wait_seconds" -gt 0 ]; do sleep 1; wait_seconds=$((wait_seconds-1)); done
-  if ! forcehd_mounted; then
-   log_state "Waiting for $FORCEHD_ROOT to mount; no changes made"
+  while ! drive_mounted && [ "$wait_seconds" -gt 0 ]; do sleep 1; wait_seconds=$((wait_seconds-1)); done
+  if ! drive_mounted; then
+   log_state "Waiting for $DRIVE_ROOT to mount; no changes made"
    exit 0
   fi
   [ ! -L "$TARGET" ] || { echo 'Symbolic-link folder refused'; exit 1; }
-  parent_id=$(mount_id "$FORCEHD_ROOT")
-  parent_options=$(mount_options "$FORCEHD_ROOT")
+  parent_id=$(mount_id "$DRIVE_ROOT")
+  parent_options=$(mount_options "$DRIVE_ROOT")
   actual=$(mount_id "$TARGET")
   owned=$(owner_id)
   if [ -n "$actual" ]; then
@@ -100,7 +100,7 @@ case "${1:-status}" in
   trap 'exit 143' TERM
   mount --make-private "$TARGET"
   allow_exec
-  [ "$(mount_id "$FORCEHD_ROOT")" = "$parent_id" ] && [ "$(mount_options "$FORCEHD_ROOT")" = "$parent_options" ] || {
+  [ "$(mount_id "$DRIVE_ROOT")" = "$parent_id" ] && [ "$(mount_options "$DRIVE_ROOT")" = "$parent_options" ] || {
    echo 'Parent mount modified: aborting'; exit 1;
   }
   trap - EXIT INT TERM
@@ -110,13 +110,13 @@ case "${1:-status}" in
   revert_mount
   ;;
  status)
-  printf 'Version: 0.2.0\nDrive: %s\nFolder: %s\n' "$FORCEHD_ROOT" "$TARGET"
-  findmnt -rn -M "$FORCEHD_ROOT" -o SOURCE,TARGET,FSTYPE,OPTIONS || true
+  printf 'Version: 0.2.0\nDrive: %s\nFolder: %s\n' "$DRIVE_ROOT" "$TARGET"
+  findmnt -rn -M "$DRIVE_ROOT" -o SOURCE,TARGET,FSTYPE,OPTIONS || true
   findmnt -rn -M "$TARGET" -o SOURCE,TARGET,FSTYPE,OPTIONS || true
-  if forcehd_mounted && [ -n "$(mount_id "$TARGET")" ] && [ "$(mount_id "$TARGET")" = "$(owner_id)" ]; then
+  if drive_mounted && [ -n "$(mount_id "$TARGET")" ] && [ "$(mount_id "$TARGET")" = "$(owner_id)" ]; then
    case ",$(mount_options "$TARGET")," in *,noexec,*) echo 'State: BLOCKED'; exit 1;; esac
    echo 'State: ACTIVE'
   else echo 'State: INACTIVE or disk absent'; exit 1; fi
   ;;
- *) echo 'Usage: force-vst-exec.sh apply [--wait 0..30] | revert | status'; exit 1;;
+ *) echo 'Usage: drive-exec.sh apply [--wait 0..30] | revert | status'; exit 1;;
 esac

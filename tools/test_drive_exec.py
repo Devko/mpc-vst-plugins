@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Tests for tools/mpc_patch/forcehd_exec/forcehd-vst-exec-patch.sh (the executable-mount patch for a noexec drive).
+"""Tests for tools/mpc_patch/drive_exec/drive-exec-patch.sh (the executable-mount patch for a noexec drive).
 
 The mount mechanism is tested for real: as root, in a private mount namespace (`unshare -m`), a tmpfs mounted noexec at
 /media/<name> stands for the Force's SSD, and a small shared library is really dlopen()ed before the patch, with it, and after
-removing it. systemctl and pidof are shims; the files the patch writes go to a scratch folder (FVE_PREFIX). Without root,
-unshare or a C compiler the tests that need them are skipped. Run:  python3 tools/test_forcehd_exec.py   (CI: sudo)
+removing it. systemctl and pidof are shims; the files the patch writes go to a scratch folder (DEX_PREFIX). Without root,
+unshare or a C compiler the tests that need them are skipped. Run:  python3 tools/test_drive_exec.py   (CI: sudo)
 """
 import ctypes
 import os
@@ -18,9 +18,9 @@ import textwrap
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DIR = os.path.join(HERE, "mpc_patch", "forcehd_exec")
-SCRIPT = os.path.join(DIR, "forcehd-vst-exec-patch.sh")
-IN_NS = os.environ.get("FVE_IN_NS") == "1"
+DIR = os.path.join(HERE, "mpc_patch", "drive_exec")
+SCRIPT = os.path.join(DIR, "drive-exec-patch.sh")
+IN_NS = os.environ.get("DEX_IN_NS") == "1"
 SH = shutil.which("dash") or shutil.which("sh")
 GCC = shutil.which("gcc") or shutil.which("cc")
 needs_ns = unittest.skipUnless(IN_NS, "needs root and `unshare -m` (run this file directly, as root)")
@@ -28,13 +28,13 @@ needs_ns = unittest.skipUnless(IN_NS, "needs root and `unshare -m` (run this fil
 PROBE_C = "int VSTPluginMain(void) { return 42; }\n"
 SHIM_SYSTEMCTL = textwrap.dedent("""\
     #!/bin/sh
-    echo "$*" >> "$FVE_SHIMLOG"
-    [ "$1" = enable ] && [ -n "${FVE_FAIL_ENABLE:-}" ] && exit 1
+    echo "$*" >> "$DEX_SHIMLOG"
+    [ "$1" = enable ] && [ -n "${DEX_FAIL_ENABLE:-}" ] && exit 1
     exit 0
     """)
 SHIM_PIDOF = textwrap.dedent("""\
     #!/bin/sh
-    [ -f "$FVE_PIDFILE" ] && { cat "$FVE_PIDFILE"; exit 0; }
+    [ -f "$DEX_PIDFILE" ] && { cat "$DEX_PIDFILE"; exit 0; }
     exit 1
     """)
 
@@ -81,14 +81,14 @@ class Rig(unittest.TestCase):
     def setUp(self):
         if not IN_NS:
             return
-        self.root = tempfile.mkdtemp(prefix="root-", dir=self.work)       # stands for / (FVE_PREFIX)
+        self.root = tempfile.mkdtemp(prefix="root-", dir=self.work)       # stands for / (DEX_PREFIX)
         self.shims = os.path.join(self.root, "shims")
         os.makedirs(self.shims)
         for name, body in (("systemctl", SHIM_SYSTEMCTL), ("pidof", SHIM_PIDOF)):
             write(os.path.join(self.shims, name), body, 0o755)
         self.log = os.path.join(self.root, "systemctl.log")
         self.pidfile = os.path.join(self.root, "pid")
-        self.env = dict(os.environ, FVE_PREFIX=self.root, FVE_SHIMLOG=self.log, FVE_PIDFILE=self.pidfile,
+        self.env = dict(os.environ, DEX_PREFIX=self.root, DEX_SHIMLOG=self.log, DEX_PIDFILE=self.pidfile,
                         PATH=self.shims + ":" + os.environ["PATH"])
         self.drives = []
         self.addCleanup(self.cleanup_mounts)
@@ -152,14 +152,14 @@ class Mechanism(Rig):
             outside = os.path.join(drive, "outside.so")
             shutil.copy(self.probe, outside)
             self.assertFalse(self.dlopen_ok(outside), "files outside the folder stay blocked")
-        cfg = read(self.root + "/etc/force-vst-exec/config")
-        self.assertEqual(cfg, "FORCEHD_ROOT='/media/SSD - Force'\nEXEC_DIR='Synths'\n")
+        cfg = read(self.root + "/etc/drive-exec/config")
+        self.assertEqual(cfg, "DRIVE_ROOT='/media/SSD - Force'\nEXEC_DIR='Synths'\n")
         calls = read(self.log)
-        self.assertIn("enable --now force-vst-exec.timer", calls)
-        for f in ("etc/systemd/system/force-vst-exec.service", "etc/systemd/system/force-vst-exec.timer",
-                  "usr/lib/systemd/system/force-vst-exec-bootstrap.service"):
+        self.assertIn("enable --now drive-exec.timer", calls)
+        for f in ("etc/systemd/system/drive-exec.service", "etc/systemd/system/drive-exec.timer",
+                  "usr/lib/systemd/system/drive-exec-bootstrap.service"):
             self.assertTrue(os.path.isfile(os.path.join(self.root, f)), f)
-        self.assertTrue(os.path.islink(self.root + "/usr/lib/systemd/system/multi-user.target.wants/force-vst-exec-bootstrap.service"))
+        self.assertTrue(os.path.islink(self.root + "/usr/lib/systemd/system/multi-user.target.wants/drive-exec-bootstrap.service"))
         self.assertTrue(os.listdir(self.root + "/data/mpc-vst-plugins/backups"), "a patch-only backup is made")
         st = self.state(self.run_patch("status").stdout)
         self.assertEqual((st["state"], st["supported"], st["backup"]), ("patched", "1", "1"))
@@ -170,9 +170,9 @@ class Mechanism(Rig):
         self.assertEqual((self.mountinfo(drive)[0][0], self.options(drive)), parent_before)
         if self.probe:
             self.assertFalse(self.dlopen_ok(so), "after removal the drive is noexec again")
-        self.assertFalse(os.path.exists(self.root + "/etc/force-vst-exec"))
-        self.assertFalse(os.path.exists(self.root + "/etc/systemd/system/force-vst-exec.timer"))
-        self.assertFalse(os.path.exists(self.root + "/usr/lib/systemd/system/force-vst-exec-bootstrap.service"))
+        self.assertFalse(os.path.exists(self.root + "/etc/drive-exec"))
+        self.assertFalse(os.path.exists(self.root + "/etc/systemd/system/drive-exec.timer"))
+        self.assertFalse(os.path.exists(self.root + "/usr/lib/systemd/system/drive-exec-bootstrap.service"))
         self.assertTrue(os.path.isdir(plugin), "plugins and skins are never touched")
         st = self.state(self.run_patch("status", "--root", drive).stdout)
         self.assertEqual(st["state"], "stock")
@@ -188,9 +188,9 @@ class Mechanism(Rig):
     def test_applying_twice_does_not_stack_mounts(self):
         drive = self.make_drive("SSD - Force")
         self.assertEqual(self.run_patch("install", "--root", drive, "--confirmed").returncode, 0)
-        env = dict(self.env, FORCE_VST_EXEC_CONFIG=self.root + "/etc/force-vst-exec/config", FORCE_VST_EXEC_STATE=self.root + "/run/force-vst-exec")
+        env = dict(self.env, DRIVE_EXEC_CONFIG=self.root + "/etc/drive-exec/config", DRIVE_EXEC_STATE=self.root + "/run/drive-exec")
         for _ in range(3):
-            r = subprocess.run([SH, self.root + "/etc/force-vst-exec/force-vst-exec.sh", "apply"], env=env, capture_output=True, text=True)
+            r = subprocess.run([SH, self.root + "/etc/drive-exec/drive-exec.sh", "apply"], env=env, capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(len(self.mountinfo(drive + "/Synths")), 1)
 
@@ -198,11 +198,11 @@ class Mechanism(Rig):
         drive = self.make_drive("SSD - Force")
         self.assertEqual(self.run_patch("install", "--root", drive, "--confirmed").returncode, 0)
         sh("umount '%s/Synths'" % drive)
-        env = dict(self.env, FORCE_VST_EXEC_CONFIG=self.root + "/etc/force-vst-exec/config", FORCE_VST_EXEC_STATE=self.root + "/run/force-vst-exec")
+        env = dict(self.env, DRIVE_EXEC_CONFIG=self.root + "/etc/drive-exec/config", DRIVE_EXEC_STATE=self.root + "/run/drive-exec")
         st = self.state(self.run_patch("status").stdout)
         self.assertEqual(st["state"], "partial", "installed, but the executable mount is not active")
         sh("umount '%s'" % drive)
-        r = subprocess.run([SH, self.root + "/etc/force-vst-exec/force-vst-exec.sh", "apply"], env=env, capture_output=True, text=True)
+        r = subprocess.run([SH, self.root + "/etc/drive-exec/drive-exec.sh", "apply"], env=env, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("Waiting for", r.stdout)
 
@@ -221,7 +221,7 @@ class Mechanism(Rig):
             self.assertNotEqual(r.returncode, 0, "removal must refuse while MPC maps a plugin from the folder")
             self.assertIn("MPC is using a plugin", r.stdout)
             self.assertEqual(len(self.mountinfo(drive + "/Synths")), 1, "the mount stays")
-            self.assertTrue(os.path.isdir(self.root + "/etc/force-vst-exec"), "and so do the files")
+            self.assertTrue(os.path.isdir(self.root + "/etc/drive-exec"), "and so do the files")
         finally:
             holder.send_signal(signal.SIGKILL)
             holder.wait()
@@ -231,14 +231,14 @@ class Mechanism(Rig):
 
     def test_a_failed_install_rolls_everything_back(self):
         drive = self.make_drive("SSD - Force")
-        self.env["FVE_FAIL_ENABLE"] = "1"
+        self.env["DEX_FAIL_ENABLE"] = "1"
         r = self.run_patch("install", "--root", drive, "--confirmed")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("rolling back", r.stdout)
         self.assertEqual(len(self.mountinfo(drive + "/Synths")), 0, "the mount is removed again")
-        self.assertFalse(os.path.exists(self.root + "/etc/force-vst-exec"))
-        self.assertFalse(os.path.exists(self.root + "/etc/systemd/system/force-vst-exec.timer"))
-        self.assertFalse(os.path.exists(self.root + "/usr/lib/systemd/system/force-vst-exec-bootstrap.service"))
+        self.assertFalse(os.path.exists(self.root + "/etc/drive-exec"))
+        self.assertFalse(os.path.exists(self.root + "/etc/systemd/system/drive-exec.timer"))
+        self.assertFalse(os.path.exists(self.root + "/usr/lib/systemd/system/drive-exec-bootstrap.service"))
         self.assertIn("noexec", self.options(drive).split(","))
 
 
@@ -249,7 +249,7 @@ class Refusals(Rig):
         r = self.run_patch("install", "--root", drive, stdin="")     # empty stdin: cancelled
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("cancelled", r.stderr)
-        self.assertFalse(os.path.exists(self.root + "/etc/force-vst-exec"))
+        self.assertFalse(os.path.exists(self.root + "/etc/drive-exec"))
         self.assertEqual(len(self.mountinfo(drive + "/Synths")), 0)
         r = self.run_patch("install", "--root", drive, stdin="PATCH\n")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -263,7 +263,7 @@ class Refusals(Rig):
                           (("--root", drive, "--exec-dir", "a'b"), "quote in the folder"), (("--root", drive, "--exec-dir", "a/b"), "folder with a slash")):
             r = self.run_patch("install", *args, "--confirmed")
             self.assertNotEqual(r.returncode, 0, why)
-            self.assertFalse(os.path.exists(self.root + "/etc/force-vst-exec"), why)
+            self.assertFalse(os.path.exists(self.root + "/etc/drive-exec"), why)
 
     def test_a_mounted_drive_with_a_hostile_name_is_refused(self):
         # these really are mounted noexec; only the name check stands between them and a config that a root service sources
@@ -272,7 +272,7 @@ class Refusals(Rig):
             r = self.run_patch("install", "--root", drive, "--confirmed")
             self.assertNotEqual(r.returncode, 0, name)
             self.assertIn("not a usable drive path", r.stderr, name)
-            self.assertFalse(os.path.exists(self.root + "/etc/force-vst-exec"), name)
+            self.assertFalse(os.path.exists(self.root + "/etc/drive-exec"), name)
             self.assertEqual(len(self.mountinfo(drive + "/Synths")), 0, name)
         self.assertFalse(os.path.exists("/tmp/fve-pwned"))
         # and with exactly one such drive, the automatic choice does not pick it either
@@ -297,7 +297,7 @@ class Refusals(Rig):
         r = self.run_patch("install", "--confirmed")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("--root", r.stdout + r.stderr)
-        self.assertFalse(os.path.exists(self.root + "/etc/force-vst-exec"))
+        self.assertFalse(os.path.exists(self.root + "/etc/drive-exec"))
         os.rmdir(a + "/Synths") if os.path.isdir(a + "/Synths") else None
         sh("umount /media/Other")
         r = self.run_patch("install", "--confirmed")
@@ -319,28 +319,41 @@ class Refusals(Rig):
         r = self.run_patch("install", "--root", drive, "--confirmed")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("already a mount point", r.stderr)
-        self.assertFalse(os.path.exists(self.root + "/etc/force-vst-exec"))
+        self.assertFalse(os.path.exists(self.root + "/etc/drive-exec"))
 
     def test_another_version_is_reported_and_never_touched(self):
         drive = self.make_drive("SSD - Force")
-        os.makedirs(self.root + "/etc/force-vst-exec")
-        write(self.root + "/etc/force-vst-exec/VERSION", "0.1.3\n")
+        os.makedirs(self.root + "/etc/drive-exec")
+        write(self.root + "/etc/drive-exec/VERSION", "0.1.3\n")
         st = self.state(self.run_patch("status", "--root", drive).stdout)
         self.assertEqual((st["state"], st["supported"], st["reason"]), ("unsupported", "0", "other-version"))
         r = self.run_patch("install", "--root", drive, "--confirmed")
         self.assertNotEqual(r.returncode, 0)
         r = self.run_patch("uninstall", "--confirmed")
         self.assertNotEqual(r.returncode, 0)
-        self.assertEqual(read(self.root + "/etc/force-vst-exec/VERSION"), "0.1.3\n")
+        self.assertEqual(read(self.root + "/etc/drive-exec/VERSION"), "0.1.3\n")
+
+    def test_the_contributors_original_install_is_reported_and_never_touched(self):
+        drive = self.make_drive("SSD - Force")
+        os.makedirs(self.root + "/etc/force-vst-exec")                  # where "ForceHD VST Exec" 0.1.3 installs itself
+        write(self.root + "/etc/force-vst-exec/VERSION", "0.1.3\n")
+        st = self.state(self.run_patch("status", "--root", drive).stdout)
+        self.assertEqual((st["state"], st["supported"], st["reason"]), ("unsupported", "0", "other-install"))
+        r = self.run_patch("install", "--root", drive, "--confirmed")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("original ForceHD VST Exec", r.stderr)
+        self.assertEqual(len(self.mountinfo(drive + "/Synths")), 0)
+        self.assertEqual(read(self.root + "/etc/force-vst-exec/VERSION"), "0.1.3\n", "his files are never touched")
+        self.assertFalse(os.path.exists(self.root + "/etc/drive-exec"))
 
     def test_the_helper_rejects_a_config_with_anything_but_plain_names(self):
         drive = self.make_drive("SSD - Force")
         self.assertEqual(self.run_patch("install", "--root", drive, "--confirmed").returncode, 0)
-        env = dict(self.env, FORCE_VST_EXEC_CONFIG=self.root + "/etc/force-vst-exec/config", FORCE_VST_EXEC_STATE=self.root + "/run/force-vst-exec")
-        for bad in ("FORCEHD_ROOT='/media/x$(touch /tmp/pwned)'\nEXEC_DIR='Synths'\n", "FORCEHD_ROOT='/media/..'\nEXEC_DIR='Synths'\n",
-                    "FORCEHD_ROOT='/media/SSD - Force'\nEXEC_DIR='../etc'\n", "FORCEHD_ROOT='/media/az01-internal'\nEXEC_DIR='Synths'\n"):
-            write(self.root + "/etc/force-vst-exec/config", bad)
-            r = subprocess.run([SH, self.root + "/etc/force-vst-exec/force-vst-exec.sh", "status"], env=env, capture_output=True, text=True)
+        env = dict(self.env, DRIVE_EXEC_CONFIG=self.root + "/etc/drive-exec/config", DRIVE_EXEC_STATE=self.root + "/run/drive-exec")
+        for bad in ("DRIVE_ROOT='/media/x$(touch /tmp/pwned)'\nEXEC_DIR='Synths'\n", "DRIVE_ROOT='/media/..'\nEXEC_DIR='Synths'\n",
+                    "DRIVE_ROOT='/media/SSD - Force'\nEXEC_DIR='../etc'\n", "DRIVE_ROOT='/media/az01-internal'\nEXEC_DIR='Synths'\n"):
+            write(self.root + "/etc/drive-exec/config", bad)
+            r = subprocess.run([SH, self.root + "/etc/drive-exec/drive-exec.sh", "status"], env=env, capture_output=True, text=True)
             self.assertNotEqual(r.returncode, 0, bad)
             self.assertRegex(r.stdout, "Unsupported|internal")
         self.assertFalse(os.path.exists("/tmp/pwned"))
@@ -349,9 +362,9 @@ class Refusals(Rig):
 class Generated(unittest.TestCase):
     def test_the_script_embeds_exactly_the_files_in_src(self):
         text = read(SCRIPT)
-        found = dict((m.group(1), m.group(3)) for m in re.finditer(r'cat > "\$d/([^"]+)" <<\'(FVE_EOF_\w+)\'\n(.*?)\n\2\n', text, re.S))
-        self.assertEqual(set(found), {"force-vst-exec.sh", "uninstall.sh", "bootstrap.sh", "root-bootstrap.sh", "force-vst-exec.service",
-                                      "force-vst-exec.timer", "force-vst-exec-bootstrap.service"})
+        found = dict((m.group(1), m.group(3)) for m in re.finditer(r'cat > "\$d/([^"]+)" <<\'(DEX_EOF_\w+)\'\n(.*?)\n\2\n', text, re.S))
+        self.assertEqual(set(found), {"drive-exec.sh", "uninstall.sh", "bootstrap.sh", "root-bootstrap.sh", "drive-exec.service",
+                                      "drive-exec.timer", "drive-exec-bootstrap.service"})
         for name, body in found.items():
             self.assertEqual(body + "\n", read(os.path.join(DIR, "src", name)), name)
 
@@ -359,7 +372,7 @@ class Generated(unittest.TestCase):
         out = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, out, True)
         subprocess.run([sys.executable, os.path.join(DIR, "build_script.py"), os.path.join(out, "x.sh")], check=True, capture_output=True)
-        self.assertEqual(read(SCRIPT), read(os.path.join(out, "x.sh")), "run tools/mpc_patch/forcehd_exec/build_script.py and commit the result")
+        self.assertEqual(read(SCRIPT), read(os.path.join(out, "x.sh")), "run tools/mpc_patch/drive_exec/build_script.py and commit the result")
 
     def test_every_shell_file_parses(self):
         for f in [SCRIPT] + [os.path.join(DIR, "src", n) for n in os.listdir(os.path.join(DIR, "src")) if n.endswith(".sh")]:
@@ -371,7 +384,7 @@ def main():
     if os.geteuid() == 0 and not IN_NS and shutil.which("unshare"):
         probe = subprocess.run(["unshare", "-m", "--propagation", "private", "true"], capture_output=True)
         if probe.returncode == 0:
-            env = dict(os.environ, FVE_IN_NS="1")
+            env = dict(os.environ, DEX_IN_NS="1")
             os.execvpe("unshare", ["unshare", "-m", "--propagation", "private", sys.executable, os.path.abspath(__file__)] + sys.argv[1:], env)
     unittest.main()
 
