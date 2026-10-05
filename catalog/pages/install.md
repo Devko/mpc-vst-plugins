@@ -12,6 +12,7 @@ The easiest way to put plugins from the catalog on your MPC or Force is the **MP
 ## What you need
 - A first-generation MPC OS standalone device with a 32-bit ARM processor: Force, MPC Live and Live II, One, X and Key 61. The installer refuses anything else. Newer models are untested.
 - MPC OS 2.x (for example 2.15) ships an older system library (glibc, about 2.32) than MPC OS 3.x and the Force (2.39 where checked). Every plugin in this catalog is built to need no newer than glibc 2.32, and the catalog checks this. A plugin from elsewhere, or an old build, may be listed by MPC and still not load.
+- Each plugin card says which MPC OS it works on: **MPC OS 2.x + 3.x** or **MPC OS 3.x only** (hover for the reason). The catalog works this out from the plugin's files; it is a check against MPC OS 2.15.1's own skins and system library, not a test on every 2.x unit, and "tested" is added only when a 2.x device test is listed. The *MPC OS* filter narrows the list.
 - Root SSH access to the device, and its IP address. The address is assigned by your router, so look it up on the device or in your router each time.
 - A Windows, Mac or Linux computer on the same network as the device.
 - Optional: an SD card or USB drive in the device, if you want plugins on it instead of on the internal drive (see "Where it goes" under step 5).
