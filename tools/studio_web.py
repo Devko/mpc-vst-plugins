@@ -264,11 +264,11 @@ def widget_svg(w, art, params, base_dir):
         x, y, rw, rh = w["cx"] - w["w"] // 2, w["cy"] - w["h"] // 2, w["w"], w["h"]
         dot = k == "readout" and w.get("style") == "dotmatrix"
         live.append(live_text(x + 8, y, rw - (44 if k == "popup" else 16), rh, first if k != "readout" else name,
-                              26, ss.DISPLAY_INK if dot else ss.ACCENT))
+                              26, ss.DISPLAY_INK if dot else (w.get("accent") or ss.ACCENT)))
         if k == "popup":
             cx, cy = w["cx"] + w["w"] // 2 - 22, w["cy"]
             art.ops.append('<path d="M%d %d L%d %d L%d %d Z" style="fill:#%s"/>' % (
-                cx - 8, cy - 4, cx + 8, cy - 4, cx, cy + 5, ss.ACCENT))
+                cx - 8, cy - 4, cx + 8, cy - 4, cx, cy + 5, w.get("accent") or ss.ACCENT))
             (px, py, pw, ph), orects = ss.popup_panel(w)
             ops, art.ops = art.ops, []
             if lk:

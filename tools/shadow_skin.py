@@ -15,7 +15,7 @@ Layout file:
             [font="Titillium Web"] [fontfile=fonts/My.ttf (beside the layout; overrides font=)] [weight=400|600|700] [align=left|center|right] [spacing=<px>]
             [case=upper|none] [opacity=0..1] [italic=1]      (html art only; align is about cx: "left"
                                                         starts at cx, "right" ends at cx)
-    knob    cx= cy= r= label="..." key=<param>
+    knob    cx= cy= r= label="..." key=<param> [ink=<hex>] [ink_dim=<hex>]   (ink / ink_dim: this knob's name and value text colours)
     toggle  cx= cy= label="..." key=<param>
     button  cx= cy= label="..." key=<param>          (trigger)
     enum_h  cx= cy= label="..." key=<param> [options="A,B,.."] [sw=<px>] [rows=<n>]
@@ -26,7 +26,7 @@ Layout file:
                                                         label_align=center needs the browser renderer, "art": "html")
     menu    cx= cy= w= h= label="..." key=<param>      (value text; tap opens MPC's native picker -- which
                                                          opens EMPTY for a VST2, see docs/NOTES.md; use popup)
-    popup   cx= cy= w= h= label="..." key=<param> [options="A,B,.."] [cols=<n>] [groups="Title:count[:RRGGBB],.."] [wheel=1]
+    popup   cx= cy= w= h= label="..." key=<param> [options="A,B,.."] [cols=<n>] [groups="Title:count[:RRGGBB],.."] [wheel=1] [accent=<hex>]
                                                        (value text; tap opens a drawn option list, a pick closes it.
                                                         Needs the hidden "<param>__open" param: popup_params())
     stepper cx= cy= w= h= label="..." key=<param> [label_align=center]   (live text;
@@ -788,7 +788,9 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 value_h = round(26 * LABEL_SCALE)
                 ch = value_y + value_h + 6
                 radii.add((r, lid))
-                key = "shKnob%d%s%s" % (r, sfx, ("_ls%g" % LABEL_SCALE) if LABEL_SCALE != 1.0 else "")
+                ink, dim = w.get("ink") or INK, w.get("ink_dim") or INK_DIM   # per-control label colours (ink=, ink_dim=)
+                key = "shKnob%d%s%s%s" % (r, sfx, ("_ls%g" % LABEL_SCALE) if LABEL_SCALE != 1.0 else "",
+                                          "_c%s%s" % (ink, dim) if (ink, dim) != (INK, INK_DIM) else "")
                 defs.setdefault(key, _local(key, [_action("Mouse Down", "Q-Link"),
                                                   _action("Double Click", "Show Overlay", "knob overlay"),
                                                   _action("Enter Pressed", "Show Overlay", "knob overlay")], [
@@ -799,7 +801,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                     _name_label(0, name_y, cw, name_h, NAME_FONT("knob"), INK),
                     _sub("Label", {"version": 1, "textStyle": {"version": 1, "font": {"version": 1, "name": "Titillium Web",
                                                                                      "style": "SemiBold", "height": 22.0 * LABEL_SCALE},
-                                                               "colour": "ff" + INK_DIM,
+                                                               "colour": "ff" + dim,
                                                                "justification": "horizontallyCentred verticallyCentred",
                                                                "case": "Upper Case"},
                                    "type": "Value", "handleName": "Data"},
@@ -918,19 +920,21 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 # group on the enum; the wrapper clears "open" when an option is picked.
                 oi = index[w["key"] + OPEN_SUFFIX]
                 x, y, rw, rh = w["cx"] - w["w"] // 2, w["cy"] - w["h"] // 2, w["w"], w["h"]
+                acc = w.get("accent") or ACCENT   # per-control field text colour (accent=)
+                csfx = "_c" + acc if acc != ACCENT else ""
                 if w.get("wheel") in ("1", "true", "yes"):
                     # wheel=1 (EXPERIMENTAL, unverified on a device): the field's Data handle is the enum itself, so the
                     # data wheel / a Q-Link step through the options while it has focus; a tap toggles the list through
                     # a second, named handle ("Open"), as stock skins name action handles.
-                    key = "shPopFieldW_%dx%d" % (rw, rh)
+                    key = "shPopFieldW_%dx%d%s" % (rw, rh, csfx)
                     defs.setdefault(key, _local(key, [_action("Mouse Down", "Toggle Switch", handle="Open"),
                                                       _action("Enter Pressed", "Toggle Switch", handle="Open")],
-                                                [_focus(rw, rh), _value_label(8, 0, rw - 44, rh, 26.0, ACCENT, handle="Text")]))
+                                                [_focus(rw, rh), _value_label(8, 0, rw - 44, rh, 26.0, acc, handle="Text")]))
                     kids.append(_placed(key, name, i, x, y, rw, rh, extra={"Text": i, "Open": oi}))
                 else:
-                    key = "shPopField_%dx%d" % (rw, rh)
+                    key = "shPopField_%dx%d%s" % (rw, rh, csfx)
                     defs.setdefault(key, _local(key, [_action("Mouse Down", "Toggle Switch"), _action("Enter Pressed", "Toggle Switch")],
-                                                [_focus(rw, rh), _value_label(8, 0, rw - 44, rh, 26.0, ACCENT, handle="Text")]))
+                                                [_focus(rw, rh), _value_label(8, 0, rw - 44, rh, 26.0, acc, handle="Text")]))
                     kids.append(_placed(key, name, oi, x, y, rw, rh, extra={"Text": i}))
                 (px, py, pw, ph), orects = popup_panel(w)
                 shown = "IndexedEnabling/1/2/Parameter %d" % oi
@@ -1098,7 +1102,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
             dr.text((gx - ox - tw / 2 - tb[0], gy - oy - th / 2 - tb[1]), w["label"], font=group_font, fill="#" + color)
         for w in pops:   # the field's "opens a list" marker
             x, y = w["cx"] + w["w"] // 2 - 22 - ox, w["cy"] - oy
-            dr.polygon([(x - 8, y - 4), (x + 8, y - 4), (x, y + 5)], fill="#" + ACCENT)
+            dr.polygon([(x - 8, y - 4), (x + 8, y - 4), (x, y + 5)], fill="#" + (w.get("accent") or ACCENT))
         im.save(path)
     if label_overlays:
         from PIL import Image, ImageDraw, ImageFont
