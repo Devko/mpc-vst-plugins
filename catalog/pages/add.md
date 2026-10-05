@@ -53,6 +53,13 @@ Do not put versions or checksums in this file. The catalog reads them from your 
 - A release that passes appears on the site with its date, size and checksum. GitHub prereleases show up as beta.
 - A release that fails is left out, your previous good version stays, and an issue is opened on the catalog repository explaining why.
 
+## MPC OS 2.x and 3.x (optional)
+Every release is labelled on the site as **MPC OS 2.x + 3.x** or **MPC OS 3.x only**. You do not declare it: the check works it out from your zip, and a 3.x-only plugin is listed like any other.
+- **2.x + 3.x** needs both: the library needs glibc 2.32 or less (the default build does), and the skin only uses the file versions MPC OS 2.15.1's own skins use. A skin written with the current tools uses newer versions, so it is labelled 3.x only, and on MPC OS 2.x it shows no touchscreen page (the Q-Links still work).
+- **To offer 2.x**, write the skin in the 2.x shape ([the table](https://github.com/sd88me/mpc-vst-plugins/blob/main/docs/OS2_SKINS.md)), run `python3 tools/skin_compat.py check "<skin>/Plugin Skins/TUI.json" "<skin>/Plugin Skins/Q-Links.json"` to see what still stops it, and publish a new release. The label updates on the next catalog build, and `tools/release.py` prints it when you build the zip.
+- A library that needs glibc 2.33 to 2.36 is still listed, as 3.x only; more than 2.36 is rejected.
+- Whether to support 2.x is your call: earlier releases keep their label, and people on MPC OS 2.x are told before they install a 3.x-only plugin.
+
 ## Plugins that can't ship a zip
 Some plugins compile the user's own firmware into the plugin. Their build contains firmware-derived data, so it must never be published or shared. Those are listed as **Build it yourself**: the catalog shows what you need, the exact build command and a warning, and offers no download.
 

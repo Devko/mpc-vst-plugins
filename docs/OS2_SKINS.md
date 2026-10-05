@@ -140,10 +140,16 @@ it back with the same file list and an updated `SHA256SUMS` line (the permission
 
 ## State of things (2026-10-04)
 
-- PR #138 (docs: skin-format findings) is merged. PR #139 (`to_mpc2x`, opt-in) is open and must not be merged until a 2.x unit has
-  confirmed touch behaviour; its unit tests (12 in `tools/test_shadow_skin.py`) pass offline.
-- The main README and the nine plugin READMEs still say "Requires MPC OS 3.x; 2.x needs further development". Change them
-  when a release carries a 2.x-capable skin, not before.
+- **Merged by 2026-10-05:** the findings (#138), this plan (#166), the catalog check and `os_compat` per version (#177), the site badge
+  and filter (#178), the installer app and `mpc-store.sh` badge and warnings (#179), and the glibc relaxation (2.33 to 2.36 is listed as
+  3.x only, #180). Installer app v0.4.0 carries the app side (a draft until the owner publishes it). Every release in the catalog is
+  labelled `3.x` today (67 versions), because none uses the 2.x skin shape.
+- **Open:** PR #139 (`to_mpc2x`, opt-in generator option) is mergeable but held until a 2.x unit has confirmed touch behaviour; its unit
+  tests (in `tools/test_shadow_skin.py`) pass offline.
+- **User-facing docs (2026-10-05):** the main README, the install guide and the developer page (`catalog/pages/add.md`) describe the
+  labels and say that making a plugin 2.x-capable, and re-releasing it, is up to its developer. The nine plugin READMEs still carry
+  the earlier note ("Requires MPC OS 3.x; 2.x needs further development"), which is still accurate; change them when a plugin has a
+  2.x-capable release.
 - The test Force has Dexed's converted `TUI.json` installed; the original is at `/sdcard/os2test-backup/TUI.json.os3` on that
   device (copy it back over `Plugin Skins/TUI.json` to restore). MPC restarted on its own within seconds of that file swap;
   the cause is unknown (no crash lines in the log), so do not swap skin files on a live unit without telling the owner.
@@ -157,6 +163,6 @@ it back with the same file list and an updated `SHA256SUMS` line (the permission
 
 ## Do not
 
-- Change the generator's default shape or ask authors to re-release before the experiment says it is safe.
+- Change the generator's default shape, or ask authors to re-release: the catalog labels what each release is, and 2.x support is the developer's choice.
 - Commit any stock Akai skin file (analysis copies live in a scratch folder and are deleted afterwards).
 - Restart MPC on someone's device without asking first.
