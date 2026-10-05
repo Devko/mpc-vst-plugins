@@ -640,6 +640,9 @@ sets a per-component flag and did not remove it; zeroing `qlinkBoundsData` did n
 focus style transparent (`backgroundColour` and `outlineColour` `00000000`, `outlineThickness` 0). List tiles keep
 their selected look because that is baked into the tile image, not the focus ring. Page `qlinkBoundsData` is now
 `"0 0 0 0"` and every `hideQLinkBounds` is true.
+**Superseded (MPC One, 2026-09-30, MPC Plaits):** pages now get one `qlinkBoundsData` rectangle per Q-Link column (slots
+1-4, 5-8, ...) and `hideQLinkBounds` is false, as in stock skins (AIR OPx-4): MPC outlines the column the Q-Links drive,
+and each press of the MPC One's Q-Link button moves the outline to the next one. Buttons count toward their column's box.
 
 **Q-Links stuck on integer params (fixed in `wrapper/vst2_wrap.c`).** Symptom: a Q-Link on a 0..127 param flicked
 between two values on a slow turn and would not climb. Causes, in order: (1) the value went to the DSP as `%g` text
@@ -1127,3 +1130,27 @@ meters) and the `when=` panels that hang on them. Rebased on that poll 2026-10-0
   MPC start wrote empty cache files and an addin install failed with "No space left on device" (its `.new` staging kept the live install
   intact). The running MPC had none of the files open and deleting them freed the space. Whether a reboot clears the folder is not known.
 - Credit: found by jacob-sabella (PR #162, closed; written up here).
+
+## Knob filmstrips over 16384 px drift as they turn (MPC One, 2026-09-27, MPC Plaits)
+A knob with r=80 (170 px frames x 128 = 21760 px strip) visibly moved up and down on the screen while its value
+changed; r=58 knobs (126 px frames, 16128 px) on the same page were fine. Most likely MPC's image/texture limit of
+16384 px, beyond which the strip is resampled and the frame offsets no longer line up. Keep `2r+10 <= 128`, i.e.
+r <= 58 (the largest seen working; r=59 lands exactly on 16384 and is untested). `shadow_skin.py` now warns.
+
+## step_of on an option param (2026-09-27, MPC Plaits)
+`step_of`/`step_delta` now also works when the target is an option list: it steps by index, wrapping like a hardware
+selector button, and reports the new value with `audioMasterAutomate` from `processReplacing` so the host redraws
+anything bound to it (the value text, `IndexedEnabling` pictures). Used for Plaits' two model buttons (a `stepper`
+with `prev=`/`next=`). Verified offline; not yet on a device.
+
+## Eurorack/firmware DSP assumes zeroed RAM; a plugin's heap isn't (MPC One, 2026-09-27, MPC Plaits)
+Plaits' FM 2-Op engine and most engines after it played silence inside MPC but fine in every offline test (x86,
+32-bit ARM under QEMU, and `tools/bench.sh` on the device itself). A device log showed healthy raw engine output
+and LPG gain, yet the voice output stayed at Plaits' silence value. Cause: several engines' `Init()` never set
+some state (e.g. `FMEngine`'s downsampler taps). On the module that RAM is `.bss`, zeroed at boot; MPC's
+long-running process hands the plugin reused heap, so the state could start as NaN, which then stuck in the
+voice's LPG filter (a NaN reaches ARM's float->int conversion as 0, i.e. silence) and silenced every LPG engine
+on that voice. Fresh test processes get zeroed pages, which is why nothing offline ever failed. Reproduced
+offline by overriding `operator new` to fill allocations with 0xFF (`mpc-vst-plaits/tests/dirty_heap.cc`); fixed
+by allocating the engine state with `calloc` + placement new. For any port of firmware code: allocate its state
+zeroed, and run the host tests with a dirty heap.
