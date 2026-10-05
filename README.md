@@ -5,9 +5,11 @@
 Native plugins for **Akai MPC OS standalone devices** (MPC Live/One/X/Key, Force): a catalog to find and install them,
 an installer app, and the tools to build, test and release your own.
 
-> **MPC OS 2.x vs 3.x.** The touchscreen skins are designed for, and verified on, **MPC OS 3.x**. **MPC OS 2.x needs
-> further development**: on 2.x (reported on 2.15.1) a plugin installs and its Q-Links work, but the touchscreen page
-> stays empty. See [MPC OS 2.x vs 3.x](#mpc-os-2x-vs-3x) below for what we know and how to help.
+> **MPC OS 2.x and 3.x.** Plugins here are built and tested on **MPC OS 3.x**. On **MPC OS 2.x** a plugin loads and its
+> Q-Links work, but its touchscreen page only appears if the plugin's skin is written in the older format 2.x reads. The
+> catalog says which each release is (**MPC OS 2.x + 3.x** or **MPC OS 3.x only**), checked from its files, so you know
+> before you install. A 3.x-only plugin becomes 2.x-capable when its developer re-releases it with a compatible skin
+> (how, and what the catalog checks: [MPC OS 2.x vs 3.x](#mpc-os-2x-vs-3x) below).
 
 ## Plugin catalog
 
@@ -57,9 +59,11 @@ authors, listed in the catalog, and installed by people on their own units.
 - **A release you can trust.** Every release is built in CI on a pinned toolchain, checked against the catalog's rules
   (layout, checksums, glibc and CPU limits), smoke-tested on a real device and only then published. Each version
   shows its SHA-256 and what it was tested on.
-- **Loads on MPC OS 2.x and 3.x; pages are verified on 3.x only.** Plugins are built against glibc 2.31, so they load
-  on older firmware (glibc 2.32, e.g. MPC OS 2.15) as well as current (2.39). A plugin that needs more than 2.32 (up to 2.36) is
-  still listed, marked "MPC OS 3.x only"; the catalog refuses more than 2.36. On 2.x the touchscreen page does not appear yet (see the note at the top).
+- **MPC OS 2.x and 3.x, labelled per release.** Plugins are built against glibc 2.31, so they load on older firmware
+  (glibc 2.32, e.g. MPC OS 2.15) as well as current (2.39). The catalog checks each release's library and skin and labels it
+  **MPC OS 2.x + 3.x** or **MPC OS 3.x only**; the installers warn before putting a 3.x-only plugin on a device that looks
+  like 2.x. Every release so far (2026-10) is 3.x only: whether to publish a 2.x-capable skin is up to each plugin's developer.
+  A plugin that needs more than 2.32 (up to 2.36) is listed as 3.x only; the catalog refuses more than 2.36.
 - **Tested on a Force** (MPC OS 3.9.1) as the reference device. Other Gen1 MPC OS devices (Live and Live II, One, X,
   Key 61) run the same `MPC` program. A user's MPC One on MPC OS 2.15 is what led to the glibc 2.31 builds; reports
   from other models are welcome. Gen2 devices (e.g. Live III) are reported to be more locked down.
@@ -120,8 +124,9 @@ design.
 
 ## Limitations
 
-- **No touchscreen page on MPC OS 2.x yet.** Skins are written for MPC OS 3.x. On 2.x (reported on 2.15.1) the plugin
-  works but the page is empty; use the Q-Links. See [MPC OS 2.x vs 3.x](#mpc-os-2x-vs-3x).
+- **MPC OS 2.x needs a compatible skin.** A plugin marked *MPC OS 3.x only* loads on 2.x and plays from the Q-Links, but its
+  touchscreen page stays empty until its developer releases a version with a compatible skin. See
+  [MPC OS 2.x vs 3.x](#mpc-os-2x-vs-3x).
 - **VST2 only.** MPC OS has no VST3 or LV2 support.
 - **Setup needs root SSH to the device**, to copy the plugin and add it to `MPC.settings`, so it is for modded units.
   Adding a new plugin needs one MPC restart; the installers stop and start MPC for you (the service is `acvs`, or
@@ -152,7 +157,7 @@ What's next is in [docs/ROADMAP.md](docs/ROADMAP.md).
 - [docs/SKIN_STUDIO.md](docs/SKIN_STUDIO.md): laying out and previewing pages.
 - [docs/BENCH.md](docs/BENCH.md): the on-device CPU check. [docs/RELEASING.md](docs/RELEASING.md): release zips.
 - [docs/ROADMAP.md](docs/ROADMAP.md): repo features still to do.
-- [docs/OS2_SKINS.md](docs/OS2_SKINS.md): the MPC OS 2.x skin findings, the open decision and the experiment plan.
+- [docs/OS2_SKINS.md](docs/OS2_SKINS.md): the MPC OS 2.x skin findings, the shape table, the plan and its open questions.
 
 ### Device details
 
@@ -169,30 +174,29 @@ What's next is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ### MPC OS 2.x vs 3.x
 
-What is known, details in [docs/NOTES.md](docs/NOTES.md)):
+What differs, and what the catalog does about it (checked on an MPC Live on 2.15.1 and a Force on 3.x; details and dates in
+[docs/NOTES.md](docs/NOTES.md), the plan and open questions in [docs/OS2_SKINS.md](docs/OS2_SKINS.md)):
 
-- **Loading works on 2.x, with a build that fits its glibc.** MPC OS 2.x has an older glibc (about 2.32; 3.x and the
-  Force have 2.39). Builds that needed `GLIBC_2.34` (older Dexed and JV-880 releases) were listed by MPC but showed only
-  "Load Plugin"; those releases are yanked from the catalog, and current builds need 2.32 or less and load. A build that does need more is now still listed, marked MPC OS 3.x only, and the installers warn before putting it on a 2.x device. The
-  log line to look for is `Attempting to load VST: ...` / `Initialising VST: ...` in `journalctl -u inmusic-mpc`.
-- **The service has another name.** On 2.15.1 MPC runs as `inmusic-mpc`, not `acvs`. The installer app and current
-  release zips detect it; zips built before that fix aborted with "Unit acvs.service not loaded".
-- **The skin is read, but ours does not draw.** With one of our plugins installed and its skin folder in a location
-  MPC lists (`SynthContentLocations`), the edit page shows only MPC's frame (header, preset box) and an empty body, with
-  nothing in the log. Replacing the plugin's `Plugin Skins` folder with a stock one (AIR Compressor) made the stock
-  page appear for our plugin, so 2.x does load skins from a plugin folder and the problem is inside our `TUI.json`.
-- **Likely cause (not proven): the file format is too new.** Every JSON object in a skin carries a `version`. The stock
-  `TUI.json` files on the 2.15.1 unit use versions 1 to 3 (10884, 3030 and 45 uses); the Force's stock skins (OS base 5.0.17) use 1 to 5. Our generator (`tools/shadow_skin.py`) writes the Force
-  shape: component definitions version 4, tabs 3, film-strip knobs 5, `Q-Links.json` 4. The 2.x parser may drop a
-  file with versions it does not know.
-- **What a 2.x skin looks like.** A stock 2.15.1 skin puts the page inline in the tab (tab `version 1`, page definition
-  `version 2`), and its film-strip `Knob` and `Button` data are `version 1` (fewer fields than ours). Ours point the tab
-  at a named definition (tab 3, definition 4) and write knob data 5 and button data 2. `Q-Links.json` is the same on
-  both (version 4), so it is not the cause. An offline conversion of the Dexed skin by those rules uses only versions 1
-  and 2 and has the same tab layout as a stock skin; it has not been tried on a device yet.
-- **Not known yet:** whether a converted skin is accepted by 2.x, what the dropped fields did (`gestureBehaviour`,
-  `invert`, `dragOrientation`), and whether other 2.x versions or models behave the same. Stock Akai skins are analysed
-  offline and never committed to this repo.
+- **System library.** MPC OS 2.x has glibc 2.32 (measured on a 2.15.1 MPC Live); 3.x and the Force have 2.39. A build that needs
+  `GLIBC_2.34` (older Dexed and JV-880 releases, built with a newer toolchain) is listed by MPC on 2.x but shows only
+  "Load Plugin"; those releases are yanked. The log lines to look for are `Attempting to load VST: ...` and
+  `Initialising VST: ...` in `journalctl -u inmusic-mpc`.
+- **Service name.** On 2.15.1 MPC runs as `inmusic-mpc`, not `acvs`. The installer app and current release zips detect it.
+- **Skin format.** Every JSON object in a skin carries a `version`, and each kind of object has its own. The stock skins of
+  2.15.1 use versions 1 to 3; the Force's use 1 to 5. Our generator wrote the Force's shape (tab 3, definitions 4, film-strip
+  knobs 5, buttons 2, actions 2), which 2.x does not draw: the page stays empty and the log says nothing. The 2.x shape puts
+  the page inline in the tab (tab 1, definitions 2) with knob, button and action data at version 1; the full table is in
+  docs/OS2_SKINS.md. `Q-Links.json` is the same on both.
+- **Both can read the older shape.** Dexed's skin written in the 2.x shape draws on a 2.15.1 MPC Live and on a Force. On the
+  Force touch works as before, and a tester on a 2.15.1 MPC Live reported the same skin working there too.
+- **The catalog decides, from the files.** For every release it works out `os_compat`: **2.x + 3.x** when the library needs
+  glibc 2.32 or less and every object in the skin has a version and fields that 2.15.1's own skins use, otherwise **3.x only**
+  (the reasons show on hover). Developers do not declare it. It is a check against one 2.x version's own skins, not a test on a
+  2.x unit, so a plain "2.x" badge also needs a 2.x device test listed.
+- **For developers: opting in is optional.** To make a plugin 2.x-capable, write its skin in the 2.x shape, check it with
+  `python3 tools/skin_compat.py check "<skin>/Plugin Skins/TUI.json" "<skin>/Plugin Skins/Q-Links.json"` (it lists what still
+  stops 2.x) and publish a new release; the label changes by itself on the next catalog build. Releases that are not
+  re-released stay listed as 3.x only. The skin generator writes the 2.x shape when built with `SHADOW_SKIN_MPC_OS=2` (docs/PORTING.md); a plugin written by hand needs the table in docs/OS2_SKINS.md.
 
 **Help us:** tell us your model, your MPC OS version (Settings), whether a plugin's page appeared, and what the
 screen shows. If you are comfortable in a terminal and on 2.x, the output of this read-only command is very useful:
