@@ -42,21 +42,26 @@ def patch_pages(doc, root):
     """Pages for catalog/patches.json: an overview ('patches') and one guide per patch ('patch-<id>', out of the menu), so the site
     and the installer app describe the same patches from the same manifest. The guide is the patch's own README (its `docs`)."""
     ps = doc["patches"]
-    over = ["> **Not for most people.** A device patch changes the device itself (for example Akai's own MPC program), it is not a plugin. "
-            "Read the guide first, back up your projects, and use it at your own risk. The installer app only *lists* these; "
-            "running one is done by hand over SSH with the script below, whose checksum you can verify.\n"]
+    e = lambda x: html_escape(str(x), quote=True)
+    cards = []
     pages = []
     for p in ps:
         sup = p["supports"]
-        over.append("## %s" % p["title"])
-        over.append(p["summary"] + "\n")
-        over.append("- **Works on:** %s%s" % (sup.get("os", "see the guide"), " (%s)" % sup["arch"] if sup.get("arch") else ""))
-        over.append("- **Changes:** " + ", ".join("`%s`" % m for m in p["modifies"]))
-        over.append("- **Backup:** `%s`" % p["backup"])
-        over.append("- **MPC restarts:** %s. **Undo:** %s." % ("yes" if p["restarts_mpc"] else "no", "built in (`uninstall`)" if p["reversible"] else "none"))
-        over.append("- **By:** %s, %s licence" % (p["author"], p["license"]))
-        over.append("- **Script:** [%s](%s), sha256 `%s`" % (os.path.basename(p["script"]["url"]), p["script"]["url"], p["script"]["sha256"]))
-        over.append("- [Read the guide](patch-%s.html)\n" % p["id"])
+        tags = ['<span class="tag">device patch</span>', '<span class="tag">%s</span>' % e(p["license"]),
+                '<span class="tag %s">%s</span>' % ("warn" if p["restarts_mpc"] else "ok", "MPC restarts" if p["restarts_mpc"] else "No MPC restart"),
+                '<span class="tag ok">Undo built in</span>' if p["reversible"] else '<span class="tag warn">No undo</span>']
+        if "UNTESTED" in p["summary"]:
+            tags.insert(1, '<span class="tag warn" title="Not yet run on a device by this project">Untested</span>')
+        summary = p["summary"].replace("UNTESTED on a device by this project (testers wanted, see issue #150). ", "")
+        rows = [("Works on", sup.get("os", "see the guide") + (" (%s)" % sup["arch"] if sup.get("arch") else "")),
+                ("Changes", "<br>".join("<code>%s</code>" % e(m) for m in p["modifies"]), True),
+                ("Backup", "<code>%s</code>" % e(p["backup"]), True),
+                ("Script", '<a href="%s">%s</a>, sha256 <code>%s</code>' % (e(p["script"]["url"]), e(os.path.basename(p["script"]["url"])), e(p["script"]["sha256"])), True)]
+        dl = "".join("<dt>%s</dt><dd>%s</dd>" % (r[0], r[1] if len(r) == 3 else e(r[1])) for r in rows)
+        fw = '<p class="fw" role="note"><strong>UNTESTED on a device by this project.</strong> Testers wanted (issue #150).</p>' if "UNTESTED" in p["summary"] else ""
+        cards.append('<article class="card"><header><div><h2>%s</h2><div class="by">by %s</div></div></header><div class="tags">%s</div><p>%s</p>%s'
+                     '<dl class="meta">%s</dl><div class="actions"><a class="btn-l primary" href="patch-%s.html">Read the guide</a></div></article>'
+                     % (e(p["title"]), e(p["author"]), "".join(tags), e(summary), fw, dl, e(p["id"])))
         guide = os.path.join(root, p["docs"])
         src = open(guide, encoding="utf-8").read() if os.path.isfile(guide) else "The guide is `%s` in the repository." % p["docs"]
         lines = src.splitlines()
@@ -65,9 +70,12 @@ def patch_pages(doc, root):
             title, lines = lines[0][2:].replace("`", "").strip(), lines[1:]
         pages.append({"slug": "patch-" + p["id"], "title": title, "nav": p["title"], "order": 99, "summary": p["summary"],
                       "body": "\n".join(lines) + "\n\n[All device patches](patches.html)\n", "hidden": True})
+    note = ('<blockquote><p><strong>Not for most people.</strong> A device patch changes the device itself (for example Akai\'s own MPC program), it is not a plugin. '
+            'Read the guide first, back up your projects, and use it at your own risk. The installer app only lists these; running one is done by hand over SSH '
+            'with the script shown, whose checksum you can verify.</p></blockquote>')
     pages.append({"slug": "patches", "title": "Device patches", "nav": "Device patches", "order": 40,
                   "summary": "Advanced and optional: community patches that change the device itself, listed read-only in the installer app's step 7.",
-                  "body": "\n".join(over)})
+                  "body": "", "html": note + '<div class="grid">%s</div>' % "".join(cards)})
     return pages
 
 
@@ -78,7 +86,7 @@ def nav_html(pages, current):
 
 def render_page(page, pages):
     """A guide page as full HTML."""
-    body = '<h1>%s</h1>\n<p class="lede">%s</p>\n%s' % (html_escape(page["title"]), catalog_md.inline(page["summary"]), catalog_md.render(page["body"]))
+    body = '<h1>%s</h1>\n<p class="lede">%s</p>\n%s' % (html_escape(page["title"]), catalog_md.inline(page["summary"]), page["html"] if "html" in page else catalog_md.render(page["body"]))
     tpl = read("page.template.html")
     for k, v in (("/*NAV*/", nav_html(pages, page["slug"])), ("/*TITLE*/", html_escape(page["title"])),
                  ("/*DESC*/", html_escape(page["summary"], quote=True)), ("/*SITE_CSS*/", read("site.css")), ("/*BODY*/", body)):
