@@ -2,6 +2,8 @@
 
 Status 2026-10-04: the design below is the plan; steps 1 and 2 of "Order of work" are built and merged (#154, #156), so the app has a read-only step 7 (in the desktop app from v0.3.5). **Apply and Undo from the app are not built.** Verified facts go in `NOTES.md`; this file says what we build and what is still unknown.
 
+Web catalog (2026-10-06): `tools/catalog_site.py` also renders `catalog/patches.json` as the site's **Device patches** page (`patches.html`) and one guide page per patch (`patch-<id>.html`, from the patch's `docs` README, out of the menu). The installer app and the site read the same manifest, so a patch added there appears in both; `tools/test_patches.py` checks each patch gets its page.
+
 ## Why
 Some community work is not a plugin: it changes the device itself. Today that is `tools/mpc_patch` (16-pad drum layout, patches Akai's
 `/usr/bin/MPC`, checked on MPC OS 3.9.1.2) and, if the author shares it, issue #150's "ForceHD VST Exec" patch, called drive exec here (makes one folder on the Force

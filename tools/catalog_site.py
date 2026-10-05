@@ -38,8 +38,41 @@ def load_pages(pages_dir):
     return sorted(pages, key=lambda p: (p["order"], p["slug"]))
 
 
+def patch_pages(doc, root):
+    """Pages for catalog/patches.json: an overview ('patches') and one guide per patch ('patch-<id>', out of the menu), so the site
+    and the installer app describe the same patches from the same manifest. The guide is the patch's own README (its `docs`)."""
+    ps = doc["patches"]
+    over = ["> **Not for most people.** A device patch changes the device itself (for example Akai's own MPC program), it is not a plugin. "
+            "Read the guide first, back up your projects, and use it at your own risk. The installer app only *lists* these; "
+            "running one is done by hand over SSH with the script below, whose checksum you can verify.\n"]
+    pages = []
+    for p in ps:
+        sup = p["supports"]
+        over.append("## %s" % p["title"])
+        over.append(p["summary"] + "\n")
+        over.append("- **Works on:** %s%s" % (sup.get("os", "see the guide"), " (%s)" % sup["arch"] if sup.get("arch") else ""))
+        over.append("- **Changes:** " + ", ".join("`%s`" % m for m in p["modifies"]))
+        over.append("- **Backup:** `%s`" % p["backup"])
+        over.append("- **MPC restarts:** %s. **Undo:** %s." % ("yes" if p["restarts_mpc"] else "no", "built in (`uninstall`)" if p["reversible"] else "none"))
+        over.append("- **By:** %s, %s licence" % (p["author"], p["license"]))
+        over.append("- **Script:** [%s](%s), sha256 `%s`" % (os.path.basename(p["script"]["url"]), p["script"]["url"], p["script"]["sha256"]))
+        over.append("- [Read the guide](patch-%s.html)\n" % p["id"])
+        guide = os.path.join(root, p["docs"])
+        src = open(guide, encoding="utf-8").read() if os.path.isfile(guide) else "The guide is `%s` in the repository." % p["docs"]
+        lines = src.splitlines()
+        title = p["title"]
+        if lines and lines[0].startswith("# "):
+            title, lines = lines[0][2:].replace("`", "").strip(), lines[1:]
+        pages.append({"slug": "patch-" + p["id"], "title": title, "nav": p["title"], "order": 99, "summary": p["summary"],
+                      "body": "\n".join(lines) + "\n\n[All device patches](patches.html)\n", "hidden": True})
+    pages.append({"slug": "patches", "title": "Device patches", "nav": "Device patches", "order": 40,
+                  "summary": "Advanced and optional: community patches that change the device itself, listed read-only in the installer app's step 7.",
+                  "body": "\n".join(over)})
+    return pages
+
+
 def nav_html(pages, current):
-    items = [("index.html", "Catalog", "index")] + [(p["slug"] + ".html", p["nav"], p["slug"]) for p in pages]
+    items = [("index.html", "Catalog", "index")] + [(p["slug"] + ".html", p["nav"], p["slug"]) for p in pages if not p.get("hidden")]
     return "".join('<li><a href="%s"%s>%s</a></li>' % (h, ' aria-current="page"' if k == current else "", html_escape(t)) for h, t, k in items)
 
 
@@ -61,7 +94,7 @@ def render(catalog, pages=(), helper_hashes=None):
     marker = "/*CATALOG_JSON*/"
     if tpl.count(marker) != 1:
         raise SystemExit("template must contain the marker exactly once")
-    guides = "".join('<a href="%s.html"><b>%s</b><span>%s</span></a>' % (p["slug"], html_escape(p["nav"]), html_escape(p["summary"])) for p in pages)
+    guides = "".join('<a href="%s.html"><b>%s</b><span>%s</span></a>' % (p["slug"], html_escape(p["nav"]), html_escape(p["summary"])) for p in pages if not p.get("hidden"))
     return tpl.replace("/*GUIDES*/", guides).replace("/*NAV*/", nav_html(list(pages), "index")).replace("/*SITE_CSS*/", read("site.css")).replace(marker, data)
 
 
@@ -140,6 +173,14 @@ def main():
         raise SystemExit("unsupported catalog schema %r" % catalog.get("schema"))
     os.makedirs(a.out, exist_ok=True)
     pages = load_pages(a.pages)
+    patches_doc = None
+    if os.path.isfile(a.patches):   # the installer app reads it from next to catalog.json; a manifest that fails its checks is not published
+        import patch_check
+        patches_doc = json.load(open(a.patches, encoding="utf-8"))
+        errors, _ = patch_check.check(patches_doc)
+        if errors:
+            raise SystemExit("catalog/patches.json is not valid:\n  " + "\n  ".join(errors))
+        pages = sorted(pages + patch_pages(patches_doc, os.path.dirname(HERE)), key=lambda p: (p["order"], p["slug"]))
     helpers = [("mpc-store.sh", os.path.join(HERE, "mpc-store.sh")), ("sync.sh", os.path.join(HERE, "release", "sync.sh")),
                ("plugin_list.awk", os.path.join(HERE, "release", "plugin_list.awk"))]
     hashes = {name: hashlib.sha256(open(path, "rb").read()).hexdigest() for name, path in helpers}
@@ -148,11 +189,7 @@ def main():
         open(os.path.join(a.out, pg["slug"] + ".html"), "w", encoding="utf-8").write(render_page(pg, pages))
     open(os.path.join(a.out, "feed.xml"), "w", encoding="utf-8").write(atom(catalog, a.base_url))
     shutil.copy(a.catalog, os.path.join(a.out, "catalog.json"))
-    if os.path.isfile(a.patches):   # the installer app reads it from next to catalog.json; a manifest that fails its checks is not published
-        import patch_check
-        errors, _ = patch_check.check(json.load(open(a.patches, encoding="utf-8")))
-        if errors:
-            raise SystemExit("catalog/patches.json is not valid:\n  " + "\n  ".join(errors))
+    if patches_doc is not None:
         shutil.copy(a.patches, os.path.join(a.out, "patches.json"))
     for name, path in helpers:   # the files a device downloads next to catalog.tsv, checked against the hashes listed in it
         shutil.copy(path, os.path.join(a.out, name))
@@ -160,7 +197,7 @@ def main():
     for old, new in MOVED_PAGES.items():   # links to pages that were merged into another still work
         open(os.path.join(a.out, old), "w", encoding="utf-8").write(redirect_page(new))
     open(os.path.join(a.out, ".nojekyll"), "w").close()
-    print("%s (%d plugins, %d guide pages)" % (os.path.join(a.out, "index.html"), len(catalog["plugins"]), len(pages)))
+    print("%s (%d plugins, %d guide pages)" % (os.path.join(a.out, "index.html"), len(catalog["plugins"]), len([p for p in pages if not p.get("hidden")])))
 
 
 if __name__ == "__main__":
