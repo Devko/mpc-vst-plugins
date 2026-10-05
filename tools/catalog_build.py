@@ -306,6 +306,7 @@ def build(entries, src, cache, yanked, keep=10, now=None):
         build_yourself = e.get("distribution", "release") == "build-yourself"
         releases = []
         all_time = 0   # every published release asset ever, whether or not it is listed (invalid, yanked or past --keep)
+        shared_repo = sum(1 for o in entries if o["repo"].lower() == e["repo"].lower()) > 1   # told apart by asset_pattern
         failed = []    # this entry's failing releases, with their publish time (see "superseded" below)
         if not build_yourself:
             try:
@@ -320,16 +321,18 @@ def build(entries, src, cache, yanked, keep=10, now=None):
                 problems.append({"id": e["id"], "tag": None, "error": "tested.json ignored: %s" % ex})
         if build_yourself:
             versions = tag_versions(e, src, yanked, tested, keep, problems)
+        newest = max((r for r in releases if not r.get("draft")), key=lambda r: r.get("published_at") or "", default=None)
         for rel in releases:
             if rel.get("draft"):
                 continue
             tag = rel.get("tag_name")
             assets = [a for a in rel.get("assets", []) if fnmatch.fnmatch(a["name"], e.get("asset_pattern", "*-mpc-armv7.zip"))]
             all_time += sum(a.get("download_count", 0) for a in assets)
-            if not assets and "asset_pattern" in e:
-                continue   # another plugin's release in a shared repo
+            if not assets and "asset_pattern" in e and (shared_repo or rel is not newest):
+                continue   # another plugin's release in a shared repo, or an old release from before the pattern existed
             if len(assets) != 1:
-                failed.append(({"id": e["id"], "tag": tag, "error": "expected one asset matching the pattern, found %d" % len(assets)},
+                failed.append(({"id": e["id"], "tag": tag, "error": "expected one asset matching %s, found %d" % (
+                                    e.get("asset_pattern", "*-mpc-armv7.zip"), len(assets))},
                                rel.get("published_at") or ""))
                 continue
             pub = rel.get("published_at") or ""
