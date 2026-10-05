@@ -1,11 +1,11 @@
 #!/bin/sh
 set -eu
 # Adds or removes the bootstrap unit in the system image (the root filesystem is read-only on the device: it is remounted
-# writable only for this and restored afterwards). Original: timomacquis, 0.1.3. FVE_PREFIX (tests only) redirects the paths
+# writable only for this and restored afterwards). Original: timomacquis, 0.1.3. DEX_PREFIX (tests only) redirects the paths
 # and skips the remount.
-P=${FVE_PREFIX:-}
-UNIT=$P/usr/lib/systemd/system/force-vst-exec-bootstrap.service
-LINK=$P/usr/lib/systemd/system/multi-user.target.wants/force-vst-exec-bootstrap.service
+P=${DEX_PREFIX:-}
+UNIT=$P/usr/lib/systemd/system/drive-exec-bootstrap.service
+LINK=$P/usr/lib/systemd/system/multi-user.target.wants/drive-exec-bootstrap.service
 ROOT_RO=0
 if [ -z "$P" ]; then
  case ",$(findmnt -rn -M / -o OPTIONS)," in *,ro,*) ROOT_RO=1; mount -o remount,rw /;; esac
@@ -18,7 +18,7 @@ case "$1" in
   mkdir -p "$P/usr/lib/systemd/system/multi-user.target.wants"
   cp "$2" "$UNIT"
   chmod 644 "$UNIT"
-  ln -s ../force-vst-exec-bootstrap.service "$LINK"
+  ln -s ../drive-exec-bootstrap.service "$LINK"
   ;;
  remove)
   rm -f "$LINK" "$UNIT"

@@ -315,12 +315,15 @@ func TestRowsExplainReasonsAndPartialInstalls(t *testing.T) {
 	}
 	defer d.Close()
 	var p Patch
-	p.ID, p.Supports.Arch, p.Supports.OS = "forcehd", "armv7l", "Force Gen1, MPC OS 3.9.1"
+	p.ID, p.Supports.Arch, p.Supports.OS = "drive-exec", "armv7l", "Force Gen1, MPC OS 3.9.1"
 	row := func(line string) PatchRow {
 		return PatchRows(d, []Patch{p}, func(Patch) ([]byte, error) { return []byte("#!/bin/sh\necho '" + line + "'\n"), nil })[0]
 	}
 	if r := row("STATE state=unsupported supported=0 backup=0 reason=no-noexec-drive"); r.State != "unsupported" || !strings.Contains(r.Detail, "No drive is mounted") || strings.Contains(r.Detail, "checksum") {
 		t.Errorf("a reason gets its own sentence, not the MPC-checksum one: %+v", r)
+	}
+	if r := row("STATE state=unsupported supported=0 backup=0 reason=other-install"); !strings.Contains(r.Detail, "original ForceHD VST Exec") {
+		t.Errorf("the original install gets its own sentence: %+v", r)
 	}
 	if r := row("STATE state=unsupported supported=0 backup=0 reason=something-new"); !strings.Contains(r.Detail, "does not recognise this device") {
 		t.Errorf("an unknown reason falls back: %+v", r)

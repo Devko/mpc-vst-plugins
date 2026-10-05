@@ -254,6 +254,7 @@ var reasonText = map[string]string{
 	"arch":            "This patch is for another kind of device.",
 	"tools":           "A tool the patch needs is missing on this device.",
 	"other-version":   "Another version of this patch is already installed: remove it with its own uninstaller first.",
+	"other-install":   "The original ForceHD VST Exec is installed: remove it with its own uninstaller first.",
 	"bad-drive":       "The drive path is not one the patch can use.",
 	"no-drive":        "That drive is not mounted.",
 	"not-needed":      "That drive already allows running programs, so the patch is not needed.",

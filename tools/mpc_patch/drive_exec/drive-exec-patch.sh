@@ -1,14 +1,15 @@
 #!/bin/sh
-# forcehd-vst-exec-patch.sh: let MPC load plugins from a drive that is mounted "noexec" (a Force's SSD is): one folder on the drive
-# gets a private bind mount that allows execution; the drive itself stays noexec. Force Gen1 / MPC OS 3.9.1 (the contributor's tested setup).
+# drive-exec-patch.sh: let MPC load plugins from a drive that is mounted "noexec" (a Force's SSD is): one folder on the drive
+# gets a private bind mount that allows execution; the drive itself stays noexec. Not specific to one drive or device: any drive
+# mounted noexec under /media. Its author tried the original on a Force Gen1 with MPC OS 3.9.1; nothing else is known (untested elsewhere).
 #
 # ADVANCED AND OPT-IN. This installs a small systemd service on the device (and a unit in its system image). Read the warnings below.
 #
-#   sh forcehd-vst-exec-patch.sh status [--root /media/<drive>]   what state the device is in (changes nothing)
-#   sh forcehd-vst-exec-patch.sh install [--root /media/<drive>] [--exec-dir Synths] [--confirmed]
+#   sh drive-exec-patch.sh status [--root /media/<drive>]   what state the device is in (changes nothing)
+#   sh drive-exec-patch.sh install [--root /media/<drive>] [--exec-dir Synths] [--confirmed]
 #                                                       install it (asks you to type PATCH first)
-#   sh forcehd-vst-exec-patch.sh uninstall [--confirmed]   remove it (asks you to type REMOVE first)
-#   sh forcehd-vst-exec-patch.sh help
+#   sh drive-exec-patch.sh uninstall [--confirmed]   remove it (asks you to type REMOVE first)
+#   sh drive-exec-patch.sh help
 # Run it ON the device as root (ssh root@<device-ip>), after copying the file there (scp).
 #
 # What it does: on the device a timer (every 5 seconds, from 5 s after boot) checks whether the drive is mounted; once it is, it makes
@@ -17,7 +18,7 @@
 # fstab, MPC's program and MPC.settings are not touched.
 #
 # Credit: the mount logic, the checks and the rollback are "ForceHD VST Exec 0.1.3" by timomacquis (issue #150 of mpc-vst-plugins),
-# who contributed it to the project. Changes made here: the drive and folder are chosen (any /media/<name>, spaces allowed) instead of
+# who contributed it to the project (he named it after his drive; it is called drive exec here because nothing in it is specific to that drive). Changes made here: the drive and folder are chosen (any /media/<name>, spaces allowed) instead of
 # the fixed /media/ForceHD/vst, mount points are compared as /proc/self/mountinfo writes them, the drive and folder names are strictly
 # validated, the no-op acvs drop-in is gone, and this wrapper (status line, typed confirmation, one self-contained file).
 #
@@ -32,19 +33,20 @@
 #  - A backup of the mount table and the unit files goes to /data/mpc-vst-plugins/backups (small: no projects, no system image).
 #  - Not affiliated with Akai Professional / inMusic.
 #
-# Version 1. Source: tools/mpc_patch/forcehd_exec of the repository this came from.
+# Version 1. Source: tools/mpc_patch/drive_exec of the repository this came from.
 set -u
 VERSION=0.2.0
-P=${FVE_PREFIX:-}                    # tests only: a folder that stands for / (files), nothing else changes
+P=${DEX_PREFIX:-}                    # tests only: a folder that stands for / (files), nothing else changes
 BK_ROOT=$P/data/mpc-vst-plugins/backups
-MOUNTINFO=${FVE_MOUNTINFO:-/proc/self/mountinfo}
-if [ -n "$P" ]; then FORCE_VST_EXEC_CONFIG=$P/etc/force-vst-exec/config; FORCE_VST_EXEC_STATE=$P/run/force-vst-exec; export FORCE_VST_EXEC_CONFIG FORCE_VST_EXEC_STATE; fi
-export FVE_PREFIX
-ETC=$P/etc/force-vst-exec
-UNIT_BOOT=$P/usr/lib/systemd/system/force-vst-exec-bootstrap.service
-LINK_BOOT=$P/usr/lib/systemd/system/multi-user.target.wants/force-vst-exec-bootstrap.service
-UNIT_SVC=$P/etc/systemd/system/force-vst-exec.service
-UNIT_TIMER=$P/etc/systemd/system/force-vst-exec.timer
+MOUNTINFO=${DEX_MOUNTINFO:-/proc/self/mountinfo}
+if [ -n "$P" ]; then DRIVE_EXEC_CONFIG=$P/etc/drive-exec/config; DRIVE_EXEC_STATE=$P/run/drive-exec; export DRIVE_EXEC_CONFIG DRIVE_EXEC_STATE; fi
+export DEX_PREFIX
+ETC=$P/etc/drive-exec
+ORIG_ETC=$P/etc/force-vst-exec          # where the contributor's original ("ForceHD VST Exec") installs itself: not ours, never touched
+UNIT_BOOT=$P/usr/lib/systemd/system/drive-exec-bootstrap.service
+LINK_BOOT=$P/usr/lib/systemd/system/multi-user.target.wants/drive-exec-bootstrap.service
+UNIT_SVC=$P/etc/systemd/system/drive-exec.service
+UNIT_TIMER=$P/etc/systemd/system/drive-exec.timer
 die() { echo "ERROR: $*" >&2; exit 1; }
 usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
@@ -67,9 +69,9 @@ candidates() {   # drives mounted noexec directly under /media, one per line (in
 }
 write_payload() {   # $1 = folder to write the patch's files into
     d=$1
-    cat > "$d/force-vst-exec.sh" <<'FVE_EOF_FORCE_VST_EXEC_SH'
+    cat > "$d/drive-exec.sh" <<'DEX_EOF_DRIVE_EXEC_SH'
 #!/bin/sh
-# ForceHD VST Exec: only one folder on a drive becomes executable (a private bind mount of that folder, remounted with exec);
+# Drive exec: only one folder on a drive becomes executable (a private bind mount of that folder, remounted with exec);
 # the drive itself keeps its noexec. Original work: "ForceHD VST Exec 0.1.3" by timomacquis (issue #150), contributed to
 # mpc-vst-plugins. Changes in 0.2.0: the drive and the folder come from the config (any /media/<name>, spaces allowed, the folder
 # is "Synths" or "vst" or another plain name) instead of the fixed /media/ForceHD/vst, mount points are compared the way
@@ -78,17 +80,17 @@ write_payload() {   # $1 = folder to write the patch's files into
 set -eu
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
-CONFIG=${FORCE_VST_EXEC_CONFIG:-/etc/force-vst-exec/config}
-STATE=${FORCE_VST_EXEC_STATE:-/run/force-vst-exec}
+CONFIG=${DRIVE_EXEC_CONFIG:-/etc/drive-exec/config}
+STATE=${DRIVE_EXEC_STATE:-/run/drive-exec}
 [ "$(id -u)" = 0 ] || { echo 'Root required'; exit 1; }
 [ -f "$CONFIG" ] || { echo 'Configuration missing'; exit 1; }
-FORCEHD_ROOT=; EXEC_DIR=
+DRIVE_ROOT=; EXEC_DIR=
 . "$CONFIG"
 # the config is shell: accept only plain names (letters, digits, . _ + ( ) - and single spaces), never ".", ".." or a hidden name
-printf '%s\n' "$FORCEHD_ROOT" | grep -Eq '^/media/[A-Za-z0-9][A-Za-z0-9._+() -]*$' || { echo 'Unsupported drive path'; exit 1; }
+printf '%s\n' "$DRIVE_ROOT" | grep -Eq '^/media/[A-Za-z0-9][A-Za-z0-9._+() -]*$' || { echo 'Unsupported drive path'; exit 1; }
 printf '%s\n' "$EXEC_DIR" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._+() -]*$' || { echo 'Unsupported folder name'; exit 1; }
-case "$FORCEHD_ROOT" in /media/az01-internal|/media/az01-internal-*|/media/acvs-synths) echo 'The internal storage is not a target'; exit 1;; esac
-TARGET=$FORCEHD_ROOT/$EXEC_DIR
+case "$DRIVE_ROOT" in /media/az01-internal|/media/az01-internal-*|/media/acvs-synths) echo 'The internal storage is not a target'; exit 1;; esac
+TARGET=$DRIVE_ROOT/$EXEC_DIR
 mkdir -p "$STATE"
 chmod 700 "$STATE"
 exec 9>"$STATE/lock"
@@ -108,8 +110,8 @@ log_state() {
   printf '%s\n' "$1" | tee "$STATE/last-status"
  fi
 }
-forcehd_mounted() {
- [ -n "$(mount_id "$FORCEHD_ROOT")" ]
+drive_mounted() {
+ [ -n "$(mount_id "$DRIVE_ROOT")" ]
 }
 allow_exec() {
  options=$(mount_options "$TARGET")
@@ -137,14 +139,14 @@ case "${1:-status}" in
    case "$wait_seconds" in ''|*[!0-9]*) echo 'Invalid wait duration'; exit 1;; esac
    [ "$wait_seconds" -le 30 ] || { echo 'Maximum wait is 30 seconds'; exit 1; }
   elif [ "$#" -gt 1 ]; then echo 'Usage: apply [--wait 0..30]'; exit 1; fi
-  while ! forcehd_mounted && [ "$wait_seconds" -gt 0 ]; do sleep 1; wait_seconds=$((wait_seconds-1)); done
-  if ! forcehd_mounted; then
-   log_state "Waiting for $FORCEHD_ROOT to mount; no changes made"
+  while ! drive_mounted && [ "$wait_seconds" -gt 0 ]; do sleep 1; wait_seconds=$((wait_seconds-1)); done
+  if ! drive_mounted; then
+   log_state "Waiting for $DRIVE_ROOT to mount; no changes made"
    exit 0
   fi
   [ ! -L "$TARGET" ] || { echo 'Symbolic-link folder refused'; exit 1; }
-  parent_id=$(mount_id "$FORCEHD_ROOT")
-  parent_options=$(mount_options "$FORCEHD_ROOT")
+  parent_id=$(mount_id "$DRIVE_ROOT")
+  parent_options=$(mount_options "$DRIVE_ROOT")
   actual=$(mount_id "$TARGET")
   owned=$(owner_id)
   if [ -n "$actual" ]; then
@@ -170,7 +172,7 @@ case "${1:-status}" in
   trap 'exit 143' TERM
   mount --make-private "$TARGET"
   allow_exec
-  [ "$(mount_id "$FORCEHD_ROOT")" = "$parent_id" ] && [ "$(mount_options "$FORCEHD_ROOT")" = "$parent_options" ] || {
+  [ "$(mount_id "$DRIVE_ROOT")" = "$parent_id" ] && [ "$(mount_options "$DRIVE_ROOT")" = "$parent_options" ] || {
    echo 'Parent mount modified: aborting'; exit 1;
   }
   trap - EXIT INT TERM
@@ -180,82 +182,82 @@ case "${1:-status}" in
   revert_mount
   ;;
  status)
-  printf 'Version: 0.2.0\nDrive: %s\nFolder: %s\n' "$FORCEHD_ROOT" "$TARGET"
-  findmnt -rn -M "$FORCEHD_ROOT" -o SOURCE,TARGET,FSTYPE,OPTIONS || true
+  printf 'Version: 0.2.0\nDrive: %s\nFolder: %s\n' "$DRIVE_ROOT" "$TARGET"
+  findmnt -rn -M "$DRIVE_ROOT" -o SOURCE,TARGET,FSTYPE,OPTIONS || true
   findmnt -rn -M "$TARGET" -o SOURCE,TARGET,FSTYPE,OPTIONS || true
-  if forcehd_mounted && [ -n "$(mount_id "$TARGET")" ] && [ "$(mount_id "$TARGET")" = "$(owner_id)" ]; then
+  if drive_mounted && [ -n "$(mount_id "$TARGET")" ] && [ "$(mount_id "$TARGET")" = "$(owner_id)" ]; then
    case ",$(mount_options "$TARGET")," in *,noexec,*) echo 'State: BLOCKED'; exit 1;; esac
    echo 'State: ACTIVE'
   else echo 'State: INACTIVE or disk absent'; exit 1; fi
   ;;
- *) echo 'Usage: force-vst-exec.sh apply [--wait 0..30] | revert | status'; exit 1;;
+ *) echo 'Usage: drive-exec.sh apply [--wait 0..30] | revert | status'; exit 1;;
 esac
-FVE_EOF_FORCE_VST_EXEC_SH
-    cat > "$d/uninstall.sh" <<'FVE_EOF_UNINSTALL_SH'
+DEX_EOF_DRIVE_EXEC_SH
+    cat > "$d/uninstall.sh" <<'DEX_EOF_UNINSTALL_SH'
 #!/bin/sh
 set -eu
 # Removes the patch: stops the timer, takes the executable mount off (a normal umount, never forced or lazy), deletes the files this
 # patch installed. Plugins, skins, MPC.settings and fstab are not touched. Original: timomacquis, 0.1.3 (adapted: the drive and folder
-# come from the config; FVE_PREFIX, tests only, redirects the paths).
-P=${FVE_PREFIX:-}
-if [ -z "$P" ]; then PATH=/usr/sbin:/usr/bin:/sbin:/bin; export PATH; fi   # fixed PATH on the device; tests (FVE_PREFIX) bring their own shims
+# come from the config; DEX_PREFIX, tests only, redirects the paths).
+P=${DEX_PREFIX:-}
+if [ -z "$P" ]; then PATH=/usr/sbin:/usr/bin:/sbin:/bin; export PATH; fi   # fixed PATH on the device; tests (DEX_PREFIX) bring their own shims
 [ "$(id -u)" = 0 ] || { echo 'Root required'; exit 1; }
-[ -f "$P/etc/force-vst-exec/VERSION" ] || { echo 'Patch not installed'; exit 0; }
-[ "$(cat "$P/etc/force-vst-exec/VERSION")" = 0.2.0 ] || { echo 'Different version: use its matching uninstaller'; exit 1; }
-FORCEHD_ROOT=; EXEC_DIR=
-. "$P/etc/force-vst-exec/config"
+[ -f "$P/etc/drive-exec/VERSION" ] || { echo 'Patch not installed'; exit 0; }
+[ "$(cat "$P/etc/drive-exec/VERSION")" = 0.2.0 ] || { echo 'Different version: use its matching uninstaller'; exit 1; }
+DRIVE_ROOT=; EXEC_DIR=
+. "$P/etc/drive-exec/config"
 mpc_service() {
  if systemctl cat acvs >/dev/null 2>&1; then echo acvs
  elif systemctl cat inmusic-mpc >/dev/null 2>&1; then echo inmusic-mpc
  else echo acvs; fi
 }
 for pid in $(pidof MPC || true); do
- if grep -qF "$FORCEHD_ROOT/$EXEC_DIR/" "/proc/$pid/maps"; then
-  echo "MPC is using a plugin from $FORCEHD_ROOT/$EXEC_DIR. Save the project, stop MPC, then retry the removal."
+ if grep -qF "$DRIVE_ROOT/$EXEC_DIR/" "/proc/$pid/maps"; then
+  echo "MPC is using a plugin from $DRIVE_ROOT/$EXEC_DIR. Save the project, stop MPC, then retry the removal."
   echo "Command after saving: systemctl stop $(mpc_service)"
   exit 1
  fi
 done
 # Retain the existing enabled state if revert fails.
 ENABLED=0
-systemctl is-enabled --quiet force-vst-exec.timer && ENABLED=1 || true
-systemctl disable --now force-vst-exec.timer
-systemctl stop force-vst-exec.service
-if ! /bin/sh "$P/etc/force-vst-exec/force-vst-exec.sh" revert; then
- [ "$ENABLED" = 0 ] || systemctl enable --now force-vst-exec.timer
+systemctl is-enabled --quiet drive-exec.timer && ENABLED=1 || true
+systemctl disable --now drive-exec.timer
+systemctl stop drive-exec.service
+if ! /bin/sh "$P/etc/drive-exec/drive-exec.sh" revert; then
+ [ "$ENABLED" = 0 ] || systemctl enable --now drive-exec.timer
  echo 'Uninstallation cancelled: mount busy or unmanaged'
  exit 1
 fi
-/bin/sh "$P/etc/force-vst-exec/root-bootstrap.sh" remove
-systemctl stop force-vst-exec-bootstrap.service 2>/dev/null || true
-rm -f "$P/etc/systemd/system/force-vst-exec.service" "$P/etc/systemd/system/force-vst-exec.timer"
-rm -f "$P/etc/force-vst-exec/force-vst-exec.sh" "$P/etc/force-vst-exec/config" "$P/etc/force-vst-exec/VERSION" "$P/etc/force-vst-exec/uninstall.sh" "$P/etc/force-vst-exec/bootstrap.sh" "$P/etc/force-vst-exec/root-bootstrap.sh"
-rmdir "$P/etc/force-vst-exec" 2>/dev/null || true
+/bin/sh "$P/etc/drive-exec/root-bootstrap.sh" remove
+systemctl stop drive-exec-bootstrap.service 2>/dev/null || true
+rm -f "$P/etc/systemd/system/drive-exec.service" "$P/etc/systemd/system/drive-exec.timer"
+rm -f "$P/etc/drive-exec/drive-exec.sh" "$P/etc/drive-exec/config" "$P/etc/drive-exec/VERSION" "$P/etc/drive-exec/uninstall.sh" "$P/etc/drive-exec/bootstrap.sh" "$P/etc/drive-exec/root-bootstrap.sh"
+rmdir "$P/etc/drive-exec" 2>/dev/null || true
 systemctl daemon-reload
-rm -f "${FORCE_VST_EXEC_STATE:-$P/run/force-vst-exec}/lock" "${FORCE_VST_EXEC_STATE:-$P/run/force-vst-exec}/last-status"
-rmdir "${FORCE_VST_EXEC_STATE:-$P/run/force-vst-exec}" 2>/dev/null || true
+rm -f "${DRIVE_EXEC_STATE:-$P/run/drive-exec}/lock" "${DRIVE_EXEC_STATE:-$P/run/drive-exec}/last-status"
+rmdir "${DRIVE_EXEC_STATE:-$P/run/drive-exec}" 2>/dev/null || true
 sync
 echo 'Patch removed. The drive itself stays mounted as it was.'
 echo 'Backups remain in /data/mpc-vst-plugins/backups.'
 echo "If MPC was stopped manually, restart it: systemctl start $(mpc_service)"
 echo 'Plugins on the drive stay where they are, but they will not load again until the patch is back (the drive is noexec).'
-FVE_EOF_UNINSTALL_SH
-    cat > "$d/bootstrap.sh" <<'FVE_EOF_BOOTSTRAP_SH'
+DEX_EOF_UNINSTALL_SH
+    cat > "$d/bootstrap.sh" <<'DEX_EOF_BOOTSTRAP_SH'
 #!/bin/sh
 set -eu
 # Reload after the writable /etc overlay appears; schedule work without waiting for SSD. (Original: timomacquis, 0.1.3.)
 systemctl daemon-reload
-systemctl --no-block start force-vst-exec.timer
-FVE_EOF_BOOTSTRAP_SH
-    cat > "$d/root-bootstrap.sh" <<'FVE_EOF_ROOT_BOOTSTRAP_SH'
+systemctl --no-block start drive-exec.timer
+DEX_EOF_BOOTSTRAP_SH
+    cat > "$d/root-bootstrap.sh" <<'DEX_EOF_ROOT_BOOTSTRAP_SH'
 #!/bin/sh
 set -eu
 # Adds or removes the bootstrap unit in the system image (the root filesystem is read-only on the device: it is remounted
-# writable only for this and restored afterwards). Original: timomacquis, 0.1.3. FVE_PREFIX (tests only) redirects the paths
+# writable only for this and restored afterwards). Original: timomacquis, 0.1.3. DEX_PREFIX (tests only) redirects the paths
 # and skips the remount.
-P=${FVE_PREFIX:-}
-UNIT=$P/usr/lib/systemd/system/force-vst-exec-bootstrap.service
-LINK=$P/usr/lib/systemd/system/multi-user.target.wants/force-vst-exec-bootstrap.service
+P=${DEX_PREFIX:-}
+UNIT=$P/usr/lib/systemd/system/drive-exec-bootstrap.service
+LINK=$P/usr/lib/systemd/system/multi-user.target.wants/drive-exec-bootstrap.service
 ROOT_RO=0
 if [ -z "$P" ]; then
  case ",$(findmnt -rn -M / -o OPTIONS)," in *,ro,*) ROOT_RO=1; mount -o remount,rw /;; esac
@@ -268,52 +270,52 @@ case "$1" in
   mkdir -p "$P/usr/lib/systemd/system/multi-user.target.wants"
   cp "$2" "$UNIT"
   chmod 644 "$UNIT"
-  ln -s ../force-vst-exec-bootstrap.service "$LINK"
+  ln -s ../drive-exec-bootstrap.service "$LINK"
   ;;
  remove)
   rm -f "$LINK" "$UNIT"
   ;;
  *) exit 1;;
 esac
-FVE_EOF_ROOT_BOOTSTRAP_SH
-    cat > "$d/force-vst-exec.service" <<'FVE_EOF_FORCE_VST_EXEC_SERVICE'
+DEX_EOF_ROOT_BOOTSTRAP_SH
+    cat > "$d/drive-exec.service" <<'DEX_EOF_DRIVE_EXEC_SERVICE'
 [Unit]
-Description=ForceHD VST Exec - scoped executable mount
+Description=Drive exec - scoped executable mount
 After=edisksd.service
 Wants=edisksd.service
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh /etc/force-vst-exec/force-vst-exec.sh apply
+ExecStart=/bin/sh /etc/drive-exec/drive-exec.sh apply
 TimeoutStartSec=15
 PrivateMounts=no
-FVE_EOF_FORCE_VST_EXEC_SERVICE
-    cat > "$d/force-vst-exec.timer" <<'FVE_EOF_FORCE_VST_EXEC_TIMER'
+DEX_EOF_DRIVE_EXEC_SERVICE
+    cat > "$d/drive-exec.timer" <<'DEX_EOF_DRIVE_EXEC_TIMER'
 [Unit]
-Description=Check ForceHD VST executable mount
+Description=Check the drive exec mount
 
 [Timer]
 OnBootSec=5s
 OnUnitInactiveSec=5s
 AccuracySec=1s
-Unit=force-vst-exec.service
+Unit=drive-exec.service
 
 [Install]
 WantedBy=timers.target
-FVE_EOF_FORCE_VST_EXEC_TIMER
-    cat > "$d/force-vst-exec-bootstrap.service" <<'FVE_EOF_FORCE_VST_EXEC_BOOTSTRAP_SERVICE'
+DEX_EOF_DRIVE_EXEC_TIMER
+    cat > "$d/drive-exec-bootstrap.service" <<'DEX_EOF_DRIVE_EXEC_BOOTSTRAP_SERVICE'
 [Unit]
-Description=ForceHD VST Exec bootstrap after writable etc
+Description=Drive exec bootstrap after writable etc
 Requires=etc.mount
 After=etc.mount
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh /etc/force-vst-exec/bootstrap.sh
+ExecStart=/bin/sh /etc/drive-exec/bootstrap.sh
 RemainAfterExit=yes
 TimeoutStartSec=15
 PrivateMounts=no
-FVE_EOF_FORCE_VST_EXEC_BOOTSTRAP_SERVICE
+DEX_EOF_DRIVE_EXEC_BOOTSTRAP_SERVICE
 }
 
 # --- arguments (after the command)
@@ -328,9 +330,9 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-need_device() {   # root and the tools; tests (FVE_PREFIX set) skip the architecture check
+need_device() {   # root and the tools; tests (DEX_PREFIX set) skip the architecture check
     [ "$(id -u)" = 0 ] || die "run as root on the device"
-    if [ -z "$P" ]; then case "$(uname -m)" in armv7*) ;; *) die "this is for 32-bit ARM MPC OS devices (Force Gen1); this one is $(uname -m)" ;; esac; fi
+    if [ -z "$P" ]; then case "$(uname -m)" in armv7*) ;; *) die "this is for 32-bit ARM MPC OS devices (Gen1); this one is $(uname -m)" ;; esac; fi
     for c in mount umount findmnt flock systemctl awk sed grep; do command -v "$c" >/dev/null || die "missing tool: $c"; done
 }
 installed_version() { [ -f "$ETC/VERSION" ] && cat "$ETC/VERSION"; }
@@ -343,12 +345,16 @@ cmd_status() {
     if [ "$(id -u)" != 0 ]; then echo "Not root: run this on the device as root."; state_line unsupported 0 not-root; return; fi
     if [ -z "$P" ]; then case "$(uname -m)" in armv7*) ;; *) echo "This is for 32-bit ARM MPC OS devices; this one is $(uname -m)."; state_line unsupported 0 arch; return ;; esac; fi
     for c in mount umount findmnt flock systemctl awk sed grep; do command -v "$c" >/dev/null || { echo "Missing tool: $c"; state_line unsupported 0 tools; return; }; done
+    if [ -e "$ORIG_ETC" ]; then
+        echo "The original ForceHD VST Exec is installed ($ORIG_ETC): remove it with its own uninstaller (sh $ORIG_ETC/uninstall.sh) before using this one."
+        state_line unsupported 0 other-install; return
+    fi
     if v=$(installed_version); then
         if [ "$v" != "$VERSION" ]; then
             echo "Another version of this patch is installed ($v; this script is $VERSION): remove it with its own uninstaller first."
             state_line unsupported 0 other-version; return
         fi
-        out=$(/bin/sh "$ETC/force-vst-exec.sh" status 2>&1); echo "$out"
+        out=$(/bin/sh "$ETC/drive-exec.sh" status 2>&1); echo "$out"
         case "$out" in *"State: ACTIVE"*) echo "Installed and active."; state_line patched 1 ;;
             *) echo "Installed, but the executable mount is not active now (the drive is not mounted, or the mount was removed)."; state_line partial 1 ;; esac
         return
@@ -368,6 +374,7 @@ cmd_status() {
 
 cmd_install() {
     need_device
+    [ ! -e "$ORIG_ETC" ] || die "the original ForceHD VST Exec is installed ($ORIG_ETC): remove it with its own uninstaller (sh $ORIG_ETC/uninstall.sh) first"
     v=$(installed_version) && die "this patch is already installed (version $v). Uninstall it first (sh $0 uninstall)."
     valid_dir "$EXECDIR" || die "the folder name may only have letters, digits, . _ + ( ) - and spaces, and must start with a letter or digit"
     if [ -z "$ROOT" ]; then
@@ -385,7 +392,7 @@ cmd_install() {
     for path in "$UNIT_BOOT" "$LINK_BOOT" "$ETC" "$UNIT_SVC" "$UNIT_TIMER"; do
         [ ! -e "$path" ] && [ ! -L "$path" ] || die "already exists: $path (an earlier install of this patch? uninstall it with its own uninstaller first)"
     done
-    echo "Installing the ForceHD VST Exec patch ($VERSION):"
+    echo "Installing the drive exec patch ($VERSION):"
     echo "  drive:  $ROOT   (stays noexec)"
     echo "  folder: $TARGET   (gets an executable bind mount; plugins put their .so inside it)"
     echo "  files:  $ETC/, $UNIT_SVC, $UNIT_TIMER and the bootstrap unit in /usr/lib/systemd/system"
@@ -395,7 +402,7 @@ cmd_install() {
         if [ -n "$P" ]; then read -r a; else read -r a < /dev/tty 2>/dev/null || read -r a; fi
         [ "$a" = PATCH ] || die "cancelled; nothing was changed"
     fi
-    BACKUP=$BK_ROOT/forcehd-vst-exec-$VERSION-$(date +%Y%m%d-%H%M%S)
+    BACKUP=$BK_ROOT/drive-exec-$VERSION-$(date +%Y%m%d-%H%M%S)
     [ ! -e "$BACKUP" ] || die "backup folder exists: $BACKUP"
     mkdir -p "$BACKUP" || die "cannot create $BACKUP"
     chmod 700 "$BACKUP"
@@ -410,14 +417,14 @@ cmd_install() {
         [ -z "$stage" ] || rm -rf "$stage"
         if [ "$FAILED" = 1 ]; then
             echo 'Installation interrupted: rolling back the patch'
-            systemctl disable --now force-vst-exec.timer 2>/dev/null || true
-            systemctl stop force-vst-exec.service 2>/dev/null || true
-            if [ -f "$ETC/force-vst-exec.sh" ]; then
-                if ! /bin/sh "$ETC/force-vst-exec.sh" revert; then echo 'Cannot remove the mount: recovery files retained'; return; fi
+            systemctl disable --now drive-exec.timer 2>/dev/null || true
+            systemctl stop drive-exec.service 2>/dev/null || true
+            if [ -f "$ETC/drive-exec.sh" ]; then
+                if ! /bin/sh "$ETC/drive-exec.sh" revert; then echo 'Cannot remove the mount: recovery files retained'; return; fi
             fi
             if [ -f "$ETC/root-bootstrap.sh" ]; then /bin/sh "$ETC/root-bootstrap.sh" remove; fi
             rm -f "$UNIT_SVC" "$UNIT_TIMER"
-            rm -f "$ETC/force-vst-exec.sh" "$ETC/config" "$ETC/VERSION" "$ETC/uninstall.sh" "$ETC/bootstrap.sh" "$ETC/root-bootstrap.sh"
+            rm -f "$ETC/drive-exec.sh" "$ETC/config" "$ETC/VERSION" "$ETC/uninstall.sh" "$ETC/bootstrap.sh" "$ETC/root-bootstrap.sh"
             rmdir "$ETC" 2>/dev/null || true
             systemctl daemon-reload
         fi
@@ -427,19 +434,19 @@ cmd_install() {
     write_payload "$stage"
     mkdir -p "$ETC" "$P/etc/systemd/system" || exit 1
     chmod 755 "$ETC"
-    cp "$stage/force-vst-exec.sh" "$stage/uninstall.sh" "$stage/bootstrap.sh" "$stage/root-bootstrap.sh" "$ETC/" || exit 1
-    printf "FORCEHD_ROOT='%s'\nEXEC_DIR='%s'\n" "$ROOT" "$EXECDIR" > "$ETC/config" || exit 1
+    cp "$stage/drive-exec.sh" "$stage/uninstall.sh" "$stage/bootstrap.sh" "$stage/root-bootstrap.sh" "$ETC/" || exit 1
+    printf "DRIVE_ROOT='%s'\nEXEC_DIR='%s'\n" "$ROOT" "$EXECDIR" > "$ETC/config" || exit 1
     printf '%s\n' "$VERSION" > "$ETC/VERSION"
-    chmod 755 "$ETC/force-vst-exec.sh" "$ETC/uninstall.sh"
+    chmod 755 "$ETC/drive-exec.sh" "$ETC/uninstall.sh"
     chmod 644 "$ETC/config" "$ETC/VERSION"
-    cp "$stage/force-vst-exec.service" "$stage/force-vst-exec.timer" "$P/etc/systemd/system/" || exit 1
-    /bin/sh "$ETC/root-bootstrap.sh" install "$stage/force-vst-exec-bootstrap.service" || exit 1
+    cp "$stage/drive-exec.service" "$stage/drive-exec.timer" "$P/etc/systemd/system/" || exit 1
+    /bin/sh "$ETC/root-bootstrap.sh" install "$stage/drive-exec-bootstrap.service" || exit 1
     rm -rf "$stage"
     systemctl daemon-reload || exit 1
-    /bin/sh "$ETC/force-vst-exec.sh" apply || exit 1
-    /bin/sh "$ETC/force-vst-exec.sh" status || exit 1
-    systemctl enable --now force-vst-exec.timer || exit 1
-    systemctl start force-vst-exec.service || exit 1
+    /bin/sh "$ETC/drive-exec.sh" apply || exit 1
+    /bin/sh "$ETC/drive-exec.sh" status || exit 1
+    systemctl enable --now drive-exec.timer || exit 1
+    systemctl start drive-exec.service || exit 1
     find "$ETC" -type f -exec sha256sum {} \; > "$BACKUP/installed.sha256"
     sha256sum "$UNIT_SVC" "$UNIT_TIMER" "$UNIT_BOOT" >> "$BACKUP/installed.sha256"
     FAILED=0

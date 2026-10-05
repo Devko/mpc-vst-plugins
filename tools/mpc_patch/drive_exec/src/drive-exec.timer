@@ -1,11 +1,11 @@
 [Unit]
-Description=Check ForceHD VST executable mount
+Description=Check the drive exec mount
 
 [Timer]
 OnBootSec=5s
 OnUnitInactiveSec=5s
 AccuracySec=1s
-Unit=force-vst-exec.service
+Unit=drive-exec.service
 
 [Install]
 WantedBy=timers.target
