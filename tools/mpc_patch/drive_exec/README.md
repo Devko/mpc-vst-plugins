@@ -1,4 +1,4 @@
-# Optional: drive exec, run plugins from a `noexec` drive (a Force's SSD)
+# Optional: drive exec, run plugins from a `noexec` drive (an MPC/Force's SSD)
 
 Not specific to one drive or device: it works on any drive MPC mounts `noexec` under `/media/<name>`. Its author named it "ForceHD VST Exec" after his own drive (labelled `ForceHD`); it is called **drive exec** here. It has only been tried on a Force Gen1 with MPC OS 3.9.1; nothing is known about other devices or firmware.
 
