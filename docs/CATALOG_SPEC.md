@@ -54,6 +54,7 @@ anywhere, engines must find their data next to it (`wrapper/plugin_dir.h`, `MODU
 | `user_data` | list of folders inside the plugin folder that hold the user's own files; the installer keeps them (and moves them in from `/sdcard/vst` for an old-layout install) |
 | `arch` | ELF machine of the `.so`; the catalog accepts `armv7` only |
 | `max_glibc` | highest `GLIBC_x.y` symbol version needed; the catalog limit is 2.32 (MPC OS 2.x) |
+| `os_compat` | `["2.x", "3.x"]` or `["3.x"]`: the MPC OS generations the plugin works on. `release.py` computes it (`tools/skin_compat.py`); a developer may narrow `["2.x", "3.x"]` to `["3.x"]` by hand, never widen it |
 | `about`, `requires` | one-line description; extra requirements |
 | `source_repo`, `license` | `owner/name` on GitHub; SPDX id. **Required for the catalog** |
 | `cpu` | `{p99_pct, max_pct, verdict}` from `tools/bench.sh -j`, or null |
@@ -63,8 +64,17 @@ Errors (exit 1): unsafe paths; missing required file; manifest missing a field o
 `param_compat` != major; arch not armv7; GLIBC above 2.32; `.so` not ELF; a file missing from or wrong in `SHA256SUMS`;
 a plugin folder (`portable/<skin>/`) that is missing `version.xml`, `Plugin Skins/TUI.json`, `plugin-meta.xml`, the `.so` or
 an extra; a `plugin-meta.xml` whose `file=` is not `%payload-path%/<skin>/<so>` or whose `uid`/`name` disagree with the manifest;
+an `os_compat` that is not `["2.x","3.x"]` or `["3.x"]`, or that claims 2.x when the check below does not confirm it;
 an unknown `layout`; with `--catalog`, no `source_repo` or `license`; with `--expect-id/--expect-repo`, a registry mismatch.
 Zips of the old layout (no `layout` field) are checked against their own rules (`payload/`, `plugin.xml`).
+
+**MPC OS compatibility (`tools/skin_compat.py`, docs/OS2_SKINS.md).** The checker works out `os_compat` itself, for every version, so releases
+made before the field existed are classified too. A version is `2.x` and `3.x` when the `.so` needs glibc 2.32 or less and every
+object in `Plugin Skins/TUI.json` and `Q-Links.json` has a version, with fields, that the stock skins of MPC OS 2.15.1 use (the table is
+`tools/skin_roles_2x.json`: version numbers and field names only, rebuilt with `skin_compat.py build <stock Synths folder>`); otherwise it
+is `3.x` and the record carries `os_compat_why`, up to five short reasons ("TUI:tabs[] version 3 (2.15.1 uses 1)"). This is a check against
+one 2.x version's own skins, not a test on a 2.x unit: the site and installer should say so, and show a plain "2.x" only for versions
+with a 2.x device test in `tested.json`. Add-ons have no skin and carry no `os_compat`.
 Warnings (need a human look): `install.sh`/`uninstall.sh`/`plugin_list.awk` differ from the repo's current template
 (regenerated from the manifest and compared; not done for old-layout zips), `max_glibc` not recorded.
 
@@ -117,7 +127,7 @@ no valid tag, script missing at the newest tag, and (loudly, `LICENCE RISK`) a G
 `{"schema": 1, "generated": <ISO time>, "plugins": [ <registry fields> + "versions": [ <record>, ... ], "latest",
 "latest_beta", "downloads", "updated" ]}`, versions
 newest first. A record is what `catalog_check.py --json` prints (`version`, `size`, `sha256` of the zip,
-`param_compat`, `max_glibc`, `cpu`, `defer`, `manifest`) plus `url`, `date`, `channel` (`stable`|`beta`), `notes`, `yanked`
+`param_compat`, `max_glibc`, `os_compat`, `os_compat_why`, `cpu`, `defer`, `manifest`) plus `url`, `date`, `channel` (`stable`|`beta`), `notes`, `yanked`
 and `tested` (`[{device, firmware, date}]`), added by the builder.
 `defer` is true when the zip's `install.sh` understands `-n` (the caller stops and starts MPC), false for an older installer that restarts MPC by
 itself; batch installers (the desktop app, `mpc-store.sh`) run such a zip separately and use the flag to say how often MPC will restart.

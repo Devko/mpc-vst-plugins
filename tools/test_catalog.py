@@ -69,13 +69,13 @@ class Base(unittest.TestCase):
                 zout.writestr(i, data[i.filename])
         return out
 
-    def build(self, version="1.2.0", machine=40, glibc=b"GLIBC_2.30", extra=(), elf_class=1):
+    def build(self, version="1.2.0", machine=40, glibc=b"GLIBC_2.30", extra=(), elf_class=1, tui="{}"):
         t = self.tmp
         fake_so(os.path.join(t, "test_synth.so"), machine, glibc, elf_class)
         skin = os.path.join(t, "Acme - VST - Test Synth")
         os.makedirs(os.path.join(skin, "Plugin Skins"), exist_ok=True)
         open(os.path.join(skin, "version.xml"), "w").write("<v/>")
-        open(os.path.join(skin, "Plugin Skins", "TUI.json"), "w").write("{}")
+        open(os.path.join(skin, "Plugin Skins", "TUI.json"), "w").write(tui)
         open(os.path.join(t, "entry.xml"), "w").write(ENTRY)
         out = os.path.join(t, "dist")
         subprocess.check_call([sys.executable, os.path.join(HERE, "release.py"), "--so", os.path.join(t, "test_synth.so"),
@@ -93,6 +93,72 @@ class Base(unittest.TestCase):
                     data = fn(data)
                 zout.writestr(i, data)
         return out
+
+
+class OsCompatTest(Base):
+    """Which MPC OS generations a version works on, worked out from its skin and library (docs/OS2_SKINS.md)."""
+
+    def check(self, z):
+        return catalog_check.check(z, catalog=True, expect_id="test-synth", expect_repo="acme/test-synth")
+
+    def test_a_skin_the_checker_cannot_read_is_3x_only(self):
+        z = self.build()                                   # the fake skin is "{}"
+        errors, warnings, rec = self.check(z)
+        self.assertEqual(errors, [])
+        self.assertEqual(rec["os_compat"], ["3.x"])
+        self.assertEqual(rec["os_compat_why"], ["TUI.json has no pageData"])
+        self.assertEqual(rec["manifest"]["os_compat"], ["3.x"])
+
+    def test_a_2x_shaped_skin_is_2x_and_3x(self):
+        import json
+        from test_skin_compat import tui_2x
+        z = self.build(tui=json.dumps(tui_2x()))
+        errors, warnings, rec = self.check(z)
+        self.assertEqual(errors, [])
+        self.assertEqual(rec["os_compat"], ["2.x", "3.x"])
+        self.assertNotIn("os_compat_why", rec)
+        self.assertEqual(rec["manifest"]["os_compat"], ["2.x", "3.x"])
+
+    def test_a_release_made_before_the_field_is_still_classified(self):
+        import json
+        from test_skin_compat import tui_2x
+
+        def drop(d):
+            m = json.loads(d)
+            m.pop("os_compat")
+            return (json.dumps(m, indent=2) + "\n").encode()
+        z = self.resum(self.build(tui=json.dumps(tui_2x())), "mpc-plugin.json", drop)
+        errors, warnings, rec = self.check(z)
+        self.assertEqual(errors, [])
+        self.assertEqual(rec["os_compat"], ["2.x", "3.x"])
+
+    def claim(self, value):
+        import json
+
+        def setv(d):
+            m = json.loads(d)
+            m["os_compat"] = value
+            return (json.dumps(m, indent=2) + "\n").encode()
+        return setv
+
+    def test_claiming_2x_for_a_skin_that_is_not_is_an_error(self):
+        z = self.resum(self.build(), "mpc-plugin.json", self.claim(["2.x", "3.x"]))
+        errors, warnings, rec = self.check(z)
+        self.assertTrue([e for e in errors if "claims 2.x" in e], errors)
+
+    def test_a_developer_can_narrow_a_2x_skin_to_3x(self):
+        import json
+        from test_skin_compat import tui_2x
+        z = self.resum(self.build(tui=json.dumps(tui_2x())), "mpc-plugin.json", self.claim(["3.x"]))
+        errors, warnings, rec = self.check(z)
+        self.assertEqual(errors, [])
+        self.assertEqual(rec["os_compat"], ["3.x"])
+
+    def test_a_bad_claim_is_an_error(self):
+        for bad in (["2.x"], ["4.x"], "2.x", []):
+            z = self.resum(self.build(), "mpc-plugin.json", self.claim(bad))
+            errors, warnings, rec = self.check(z)
+            self.assertTrue([e for e in errors if "os_compat must be" in e], (bad, errors))
 
 
 class CatalogTest(Base):
@@ -454,6 +520,19 @@ class BuildTest(Base):
         self.assertTrue(p["versions"][1]["yanked"])
         self.assertEqual(p["downloads"], 9)   # all time: every published zip, including the yanked 1.0.0 and the invalid 1.2.0
         self.assertEqual(sorted((x["tag"] for x in problems)), ["v1.2.0", "v1.3.0-b"])
+
+    def test_each_version_carries_its_os_compat(self):
+        import json
+        from test_skin_compat import tui_2x
+        old, new = self.build("1.0.0"), self.build("1.1.0", tui=json.dumps(tui_2x()))
+        gh = FakeGitHub({"acme/test-synth": [self.rel("v1.1.0", 2), self.rel("v1.0.0", 1)]}, {1: old, 2: new})
+        cat, problems = catalog_build.build([self.ENTRY], gh, os.path.join(self.tmp, "c"), set())
+        self.assertEqual(problems, [])
+        by = {v["version"]: v for v in cat["plugins"][0]["versions"]}
+        self.assertEqual(by["1.0.0"]["os_compat"], ["3.x"])
+        self.assertEqual(by["1.0.0"]["os_compat_why"], ["TUI.json has no pageData"])
+        self.assertEqual(by["1.1.0"]["os_compat"], ["2.x", "3.x"])
+        self.assertNotIn("os_compat_why", by["1.1.0"])
 
     def test_tested_json_attaches_to_matching_version(self):
         gh = FakeGitHub({"acme/test-synth": [self.rel("v1.0.0", 1)]}, {1: self.build("1.0.0")})

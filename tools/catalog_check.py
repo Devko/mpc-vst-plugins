@@ -18,6 +18,9 @@ import sys
 import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import skin_compat  # noqa: E402
+
 MAX_GLIBC = (2, 32)
 SEMVER = re.compile(r"\d+\.\d+\.\d+")
 ID = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
@@ -329,6 +332,27 @@ def check(zpath, catalog=False, expect_id=None, expect_repo=None):
     if os.path.exists(canon) and "plugin_list.awk" in files and open(canon, "rb").read() != files["plugin_list.awk"]:
         warn("plugin_list.awk differs from this repo's current copy: review it")
 
+    # Which MPC OS generations it works on, from its library and its skin (docs/OS2_SKINS.md). Computed here, never taken on trust: a
+    # manifest's os_compat may only narrow it (a developer holding a plugin back), and a claim of 2.x that the check cannot confirm is an error.
+    os_gens, os_why = None, []
+    if not addin:
+        sbase = ("payload/Synths/%s/" % m["skin"]) if legacy else (m["folder"] + "/")
+        try:
+            tui = json.loads(files["%sPlugin Skins/TUI.json" % sbase]) if "%sPlugin Skins/TUI.json" % sbase in files else None
+            qraw = files.get("%sPlugin Skins/Q-Links.json" % sbase)
+            qlinks = json.loads(qraw) if qraw else None
+        except ValueError:
+            tui = qlinks = None
+        os_gens, os_why = skin_compat.os_compat(m.get("max_glibc"), tui, qlinks)
+        claim = m.get("os_compat")
+        if claim is not None:
+            if claim not in (["2.x", "3.x"], ["3.x"]):
+                err('os_compat must be ["2.x", "3.x"] or ["3.x"], not %r' % (claim,))
+            elif "2.x" in claim and "2.x" not in os_gens:
+                err("os_compat claims 2.x but the check does not confirm it: " + "; ".join(os_why[:3]))
+            else:
+                os_gens = [g for g in os_gens if g in claim]
+
     # does the installer understand -n (the caller stops and starts MPC)? An installer that does not restarts MPC by itself, so a batch
     # installer must run it separately (docs/RELEASING.md). Releases of the old layout have no -n.
     defer = (not legacy) and b"DEFER=" in files.get("install.sh", b"")
@@ -338,6 +362,10 @@ def check(zpath, catalog=False, expect_id=None, expect_repo=None):
         "param_compat": m["param_compat"], "max_glibc": m.get("max_glibc"), "cpu": m.get("cpu"),
         "manifest": m,
     }
+    if os_gens is not None:
+        record["os_compat"] = os_gens
+        if "2.x" not in os_gens:
+            record["os_compat_why"] = os_why[:5]
     return errors, warnings, record
 
 
