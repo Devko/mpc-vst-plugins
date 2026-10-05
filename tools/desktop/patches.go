@@ -235,7 +235,11 @@ func PatchRows(dev *Device, patches []Patch, fetch func(Patch) ([]byte, error)) 
 					case "unsupported":
 						r.Detail = unsupportedDetail(p, st)
 					case "partial":
-						r.Detail = "Installed, but not active right now: the drive may not be mounted, or its mount was removed. Check the patch's guide."
+						if t, ok := reasonText[st.Reason]; ok {
+							r.Detail = t
+						} else {
+							r.Detail = "Installed, but not active right now: the drive may not be mounted, or its mount was removed. Check the patch's guide."
+						}
 					}
 				}
 			}
@@ -259,6 +263,11 @@ var reasonText = map[string]string{
 	"no-drive":        "That drive is not mounted.",
 	"not-needed":      "That drive already allows running programs, so the patch is not needed.",
 	"no-noexec-drive": "No drive is mounted that blocks running programs (is the drive plugged in, and does it already work?).",
+	"unknown-layout":  "This device has neither the Hakai launcher nor an acvs or inmusic-mpc service this patch can hook.",
+	"hand-install":    "A copy of this remap is already installed by hand. Remove it first; the patch's guide says how.",
+	"not-loaded":      "Installed, but the running MPC has not loaded it. Restart MPC.",
+	"not-running":     "Installed. MPC is not running, so it is not in effect until MPC starts.",
+	"incomplete":      "Installed, but a file is missing. The patch's guide says how to remove it and install it again.",
 }
 
 // unsupportedDetail says why the script would not touch the device, so a bare "not supported" is never all the page shows.
