@@ -39,6 +39,15 @@
   "display": "int"
  },
  {
+  "key": "long",
+  "name": "Long",
+  "min": 0,
+  "max": 998,
+  "default": 0,
+  "display": "int",
+  "nudge_pct": 10
+ },
+ {
   "key": "mode_prev",
   "name": "Mode Prev",
   "momentary": true,
