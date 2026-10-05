@@ -475,6 +475,7 @@ class AddinTest(Base):
         row = catalog_site.tsv(cat, []).splitlines()[1].split("\t")
         self.assertEqual(row[:8], ["plugin", "test-addin", "1.2.0", "1", "addin", "Test addin", "-", "-"])
         self.assertEqual((row[12], row[13]), ("test.conf", "1"))
+        self.assertEqual(row[14:], ["-", row[15]])   # an addin has no skin, so no os_compat; max_glibc is whatever its library needs
         # an addin release listed under an instrument entry (or the reverse) is refused
         cat, problems = catalog_build.build([dict(entry, kind="instrument")], gh, os.path.join(self.tmp, "cache"), set())
         self.assertEqual(cat["plugins"][0]["versions"], [])
@@ -1235,9 +1236,11 @@ class StoreTest(Base):
         for v, path in self.versions:
             if v not in published:
                 continue
-            m = catalog_check.check(path, catalog=True)[2]["manifest"]
+            rec = catalog_check.check(path, catalog=True)[2]
+            m = rec["manifest"]
             vs.append({"version": v, "size": os.path.getsize(path), "sha256": self.hashlib.sha256(open(path, "rb").read()).hexdigest(),
                        "param_compat": int(v.split(".")[0]), "manifest": m, "channel": "stable", "yanked": False,
+                       "os_compat": rec.get("os_compat"), "max_glibc": rec.get("max_glibc"),
                        "url": "http://127.0.0.1:%d/%s" % (self.port, os.path.basename(path))})
         vs.sort(key=lambda x: [int(n) for n in x["version"].split(".")], reverse=True)
         cat = {"schema": 1, "plugins": [{"id": "test-synth", "name": "Test Synth", "kind": "instrument", "distribution": "release",
@@ -1256,8 +1259,8 @@ class StoreTest(Base):
         helpers = [(n, os.path.join(self.web, n)) for n in ("sync.sh", "plugin_list.awk")]
         open(os.path.join(self.web, "catalog.tsv"), "w").write(self.catalog_site.tsv(cat, helpers))
 
-    def store(self, *args, stdin=""):
-        env = dict(os.environ, MPC_INSTALL_TEST="1", MPC_SETTINGS=self.settings_path, MPC_TEST_LOG=self.log, MPC_STORE_TMP=self.tmp,
+    def store(self, *args, stdin="", env_extra=None):
+        env = dict(os.environ, **(env_extra or {}), MPC_INSTALL_TEST="1", MPC_SETTINGS=self.settings_path, MPC_TEST_LOG=self.log, MPC_STORE_TMP=self.tmp,
                    MPC_LEGACY_ROOT=os.path.join(self.tmp, "nolegacy"),
                    ADDIN_INSTALL_TEST="1", SYSTEMD_ROOT=os.path.join(self.tmp, "root"), ADDIN_TEST_LOG=os.path.join(self.tmp, "addin.log"),
                    MPC_ADDINS=os.path.join(self.tmp, "addins"))
@@ -1284,6 +1287,45 @@ class StoreTest(Base):
         self.assertNotIn("byo", r.stdout)
         os.makedirs(os.path.join(self.synths, self.SKIN))                        # a folder somebody copied there by hand
         self.assertIn("manual", self.store("list").stdout)
+
+    def fake_libc(self, text=None, name="libc.so.6"):
+        """A stand-in for the device's libc: an executable that prints what glibc prints when run, or (text=None) a plain file."""
+        path = os.path.join(self.tmp, name)
+        open(path, "w").write("#!/bin/sh\necho '%s'\n" % text if text else "x")
+        os.chmod(path, 0o755 if text else 0o644)
+        return {"MPC_STORE_LIBC": path}
+
+    OLD_LIB = "GNU C Library (Buildroot 2021.02.12) stable release version 2.33."
+
+    def test_a_3x_only_plugin_on_a_device_that_looks_like_2x_gets_a_note_and_still_installs(self):
+        r = self.store("install", "test-synth", env_extra=self.fake_libc(self.OLD_LIB))   # the fake package's skin is "{}": 3.x only
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("NOTE: Test Synth 1.2.0 is made for MPC OS 3.x", r.stdout)
+        self.assertIn("glibc 2.33", r.stdout)
+        self.assertEqual(self.calls(), ["stop", "start"])
+
+    def test_no_note_on_a_3x_device_or_when_the_libc_cannot_be_found(self):
+        for env in (self.fake_libc("GNU C Library (GNU libc) stable release version 2.39."),
+                    {"MPC_STORE_LIBC": os.path.join(self.tmp, "nothing-here")}):
+            r = self.store("install", "test-synth", env_extra=env)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertNotIn("NOTE:", r.stdout)
+            self.assertNotIn("WARNING:", r.stdout)
+            shutil.rmtree(os.path.join(self.synths, self.SKIN), ignore_errors=True)
+
+    def test_a_plugin_that_needs_a_newer_glibc_than_the_device_has_gets_a_warning(self):
+        r = self.store("install", "test-synth", env_extra=self.fake_libc("GNU C Library stable release version 2.28."))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("WARNING: Test Synth 1.2.0 needs glibc 2.30 but this device has 2.28", r.stdout)
+        self.assertNotIn("NOTE:", r.stdout)
+
+    def test_older_glibc_is_read_from_the_library_file_name(self):
+        r = self.store("install", "test-synth", env_extra=self.fake_libc(None, name="libc-2.32.so"))
+        self.assertIn("NOTE: Test Synth 1.2.0 is made for MPC OS 3.x", r.stdout)
+        self.assertIn("glibc 2.32", r.stdout)
+
+    def test_list_marks_3x_only_plugins(self):
+        self.assertIn("[MPC OS 3.x only]", self.store("list").stdout)
 
     def test_install_verifies_installs_and_restarts_mpc_once(self):
         r = self.store("install", "test-synth")

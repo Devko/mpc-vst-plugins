@@ -153,7 +153,12 @@ zip uses `layout: "addin"`:
   `defer` is true for the installer (it understands `-n`).
 - **Registry:** `"kind": "addin"` on a release entry (never `build-yourself`); the builder refuses a release whose zip is an addin
   under a plugin entry, or the reverse.
-- **`catalog.tsv`:** `skin` and `uid` are `-`. `mpc-store.sh` installs an addin to `/data/mpc-addins/<id>` and reads the installed
+- **`catalog.tsv` columns** (tab separated, `-` when empty; clients read the ones they know and ignore extra ones): `plugin`, `id`, `version`, `latest`
+  (1 for the newest stable), `kind`, `name`, `skin`, `uid`, `param_compat`, `size`, `sha256`, `url`, `user_data` (comma list), `defer` (1 when the
+  installer understands `-n`), `os_compat` (`2.x,3.x`, `3.x` or `-`), `max_glibc` (the newest glibc the library needs, or `-`). `mpc-store.sh` and the
+  desktop app use the last two to warn about a plugin that will not load on the device (it needs a newer glibc than the device has) or is 3.x only on
+  a device that looks like MPC OS 2.x (glibc below 2.34); they warn and never block.
+- **`catalog.tsv`, addins:** `skin` and `uid` are `-`. `mpc-store.sh` installs an addin to `/data/mpc-addins/<id>` and reads the installed
   version from the folder's `addin.manifest` (`ADDIN_VERSION`), not from `.mpc-store`.
 
 ## Portable paths (for engines)

@@ -54,9 +54,17 @@ location step 3 picked. Step 4 lists the addins found there after the plugins; o
 which removal runs (it takes the addin out of MPC's `LD_PRELOAD` and deletes its folder; `MPC.settings` is not touched). A folder
 without one is listed but not removable here.
 
-The catalog says, for every version, whether its installer understands `-n` (`defer` in `catalog.json`, the last column of `catalog.tsv`).
+The catalog says, for every version, whether its installer understands `-n` (`defer` in `catalog.json`, column 14 of `catalog.tsv`).
 The page uses that to state the exact number of MPC restarts before you confirm, and marks releases whose older installer restarts MPC by
 itself. A zip you drop in is inspected directly.
+
+**MPC OS badge and warnings.** The catalog also says which MPC OS generations a version works on (`os_compat`, `os_compat_why` and `max_glibc` in
+`catalog.json`; columns 15 and 16 of `catalog.tsv`; docs/OS2_SKINS.md). The list shows "MPC OS 2.x + 3.x" or "MPC OS 3.x only", and connecting
+reads the device's glibc (`libc` in the device info: run the libc for its version, or take it from `libc-2.33.so`; nothing is guessed when
+neither works). Against that glibc the list adds a note per plugin, and the install dialog repeats it: a plugin that needs a newer glibc than
+the device has "will not load" (the button becomes *Install anyway*), and a 3.x-only plugin on a device below glibc 2.34 (MPC OS 2.x) "may
+show an empty touchscreen page". It warns and never blocks. Tests: `catalog_test.go`, `device_test.go` (`TestDialReadsTheDevicesGlibc`) and
+`ui_test/ui_os.py` (a browser test with the API stubbed). `tools/mpc-store.sh` prints the same notes before its confirmation.
 
 What was installed is written to `<Synths>/.mpc-store` on the device, so `mpc-store.sh update` (the on-device script) knows about it.
 
