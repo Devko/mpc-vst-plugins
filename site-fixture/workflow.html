@@ -1,3 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Release workflow - MPC OS Plugin Catalog</title>
+<meta name="description" content="The path from a working build to a tested, checksummed release that people can install and the catalog can list.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Titillium+Web:wght@400;600;700&display=swap">
+<style>
 /* Layout: sticky bar, masthead with a line-drawn MPC (screen, Q-Link encoders, jog wheel, buttons, 16 pads), filters, card grid.
    One committed look: light studio faceplate. Fonts are the two MPC resolves: Titillium Web (labels, headings) and Roboto (text). */
 :root {
@@ -176,3 +185,62 @@ footer { margin-top: 36px; color: var(--muted); font-size: 12px; border-top: 1px
 .doc details.fold > :not(summary) { margin-inline: 16px; }
 .doc details.fold > :last-child { margin-bottom: 16px; }
 
+
+</style>
+</head>
+<body>
+<div class="bar"><div class="wrap nav">
+  <div class="brand"><span class="dot"></span><a href="index.html">MPC OS Plugin Catalog</a></div>
+  <nav aria-label="Site"><ul><li><a href="index.html">Catalog</a></li><li><a href="install.html">Install</a></li><li><a href="build.html">Build</a></li><li><a href="workflow.html" aria-current="page">Workflow</a></li><li><a href="add.html">Add yours</a></li></ul></nav>
+</div></div>
+<main class="wrap doc">
+<h1>Release workflow</h1>
+<p class="lede">The path from a working build to a tested, checksummed release that people can install and the catalog can list.</p>
+<p>Develop on your PC first, test on the device once, and let a workflow package the zip that people will actually install. The order matters because the device is somebody's live setup.</p>
+<h2 id="the-loop">The loop</h2>
+<ol><li><strong>Build</strong> with <code>tools/build_port.sh</code>. It produces the <code>.so</code>, the skin and the plugin-list entry.</li><li><strong>Host test</strong> with <code>tools/test_port.sh</code>. It must print <code>PASSED</code>.</li><li><strong>Preview the skin</strong> with <code>tools/studio.py preview</code>, and look at every page.</li><li><strong>Measure CPU</strong> on a device: <code>tools/bench.sh build/x.so &lt;device-ip&gt; -j | tee build/bench.txt</code>. It must <strong>PASS</strong>, or <strong>WARN</strong> with a note in your release notes. A plugin gets about 2.9 ms per audio block and shares it with everything else in the project.</li><li><strong>Package</strong> the zip (below).</li><li><strong>Smoke test the zip</strong> on a device with its own <code>install.sh</code>: load the plugin on a track, play it, turn every page and Q-Link, save and reload a project, then run <code>uninstall.sh</code>.</li><li><strong>Publish</strong> the release on GitHub.</li></ol>
+<h2 id="package-the-zip">Package the zip</h2>
+<pre><code>tools/release.py --so build/x.so --skin "build/skin/&lt;vendor&gt; - VST - &lt;Name&gt;" \
+    --entry build/pluginlist-entry.xml --version 1.2.0 --bench build/bench.txt \
+    --about "One line about the plugin." \
+    --repo you/your-plugin-repo --license MIT -o dist
+tools/catalog_check.py dist/Name-1.2.0-mpc-armv7.zip --catalog</code></pre>
+<p>You get <code>Name-1.2.0-mpc-armv7.zip</code>: the plugin, its skin, <code>install.sh</code>, <code>uninstall.sh</code>, a generated <code>INSTALL.md</code>, checksums and a manifest (<code>mpc-plugin.json</code>) the catalog reads. <code>catalog_check.py</code> runs the same checks the catalog does, so a zip that passes here will be listed.</p>
+<h2 id="or-let-github-build-it">Or let GitHub build it</h2>
+<p>Your repo can call this repo's reusable workflow, which builds, tests, packages and attaches the zip to a <strong>draft</strong> release:</p>
+<pre><code>jobs:
+  vst:
+    uses: sd88me/mpc-vst-plugins/.github/workflows/vst-release.yml@&lt;commit&gt;
+    permissions: { contents: write }
+    with:
+      tag: my-plugin-vst-v${{ inputs.version }}
+      version: ${{ inputs.version }}
+      tools_ref: &lt;commit&gt;
+      vst_dir: vst
+      build: vst/build.sh
+      license: MIT
+      about: One line about the plugin.</code></pre>
+<p>Pin the same commit in both places. The steps that need a device, CPU and the smoke test, stay with you: run them on the draft's own zip, then publish it, so the zip you tested is the zip people get. Publishing the draft creates the tag.</p>
+<h2 id="versions">Versions</h2>
+<p>Use <code>X.Y.Z</code>.</p>
+<div class="tablewrap"><table><thead><tr><th>Bump</th><th>When</th></tr></thead><tbody><tr><td>Z</td><td>Fixes</td></tr><tr><td>Y</td><td>New parameters or pages</td></tr><tr><td>X</td><td>Parameter positions change (this breaks saved projects, so avoid it)</td></tr></tbody></table></div>
+<p>Keep the plugin <code>uid</code> and the <code>.so</code> name fixed forever. Projects find the plugin by uid, and the installer replaces the entry with the same uid or file name.</p>
+<h2 id="say-where-you-tested">Say where you tested</h2>
+<p>Add a <code>tested.json</code> at the root of your repo's default branch, and the catalog shows it on the release:</p>
+<pre><code>[ { "version": "1.2.0", "device": "MPC Live II", "firmware": "3.6.0", "date": "2026-09-29" } ]</code></pre>
+<h2 id="after-the-release">After the release</h2>
+<p>The catalog finds new releases by itself every night. To list a plugin for the first time, follow <a href="add.html">Add your plugin</a>. If a release fails the checks, it is left out, the previous version stays listed, and an issue is opened on the <a href="https://github.com/sd88me/mpc-vst-plugins/issues">catalog repository</a> saying why.</p>
+</main>
+<script>
+/* a link to a collapsible section (page.html#its-title) opens it */
+function openFold() {
+  var h = decodeURIComponent(location.hash.slice(1)), e = h ? document.getElementById(h) : null;
+  if (!e) return;
+  for (var n = e; n; n = n.parentElement) if (n.tagName === "DETAILS") n.open = true;
+  e.scrollIntoView();
+}
+addEventListener("hashchange", openFold); openFold();
+</script>
+<footer class="wrap">Community-provided software. Installing runs a script as root on your device: check the source and the checksum first. Not affiliated with or endorsed by Akai Professional.</footer>
+</body>
+</html>
