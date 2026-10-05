@@ -485,6 +485,13 @@ def shown(c, state):
     return all(state.get(p, 0) == i for i, n, p in handles(c))
 
 
+def tab_components(tab, defs):
+    """A tab's controls: its page inline (`componentDefinition`, the MPC OS 2.x shape, shadow_skin.to_mpc2x) or the local
+    definition it names (`componentName`, the 3.x shape)."""
+    page = tab["componentDefinition"] if "componentDefinition" in tab else defs[tab["componentName"]]
+    return page["componentsData"]
+
+
 def preview(skin_dir, out_pattern, frame=40):
     """Composite a built skin into PNGs (what MPC should draw), one per page with every option parameter
     at its first option, plus "<page>_open" with the page's popups open and "<page>_mode<p>-<i>" for each
@@ -496,7 +503,7 @@ def preview(skin_dir, out_pattern, frame=40):
     outs = []
     pages = []
     for n, tab in enumerate(t["tabs"]):
-        comps = defs[tab["componentName"]]["componentsData"]
+        comps = tab_components(tab, defs)
         base, ext = os.path.splitext(out_pattern % n)
         pages.append((out_pattern % n, tab, {}, ""))
         opens = {int(m.group(1)) for c in comps if c["componentData"]["type"].startswith("shPopField_")
@@ -510,7 +517,7 @@ def preview(skin_dir, out_pattern, frame=40):
     for out, tab, state, note in pages:
         im = Image.new("RGB", (W, H), (0, 0, 0))
         dr = ImageDraw.Draw(im)
-        for c in defs[tab["componentName"]]["componentsData"]:
+        for c in tab_components(tab, defs):
             if not shown(c, state):
                 continue
             cd = c["componentData"]
