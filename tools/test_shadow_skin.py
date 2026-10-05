@@ -35,6 +35,30 @@ class SegRects(unittest.TestCase):
         self.assertEqual(self.widths(w), {68})
 
 
+class QLinkBounds(unittest.TestCase):
+    TAB = {"widgets": [{"kind": "knob", "key": k, "cx": 100 + 150 * i, "cy": 300, "r": 30}
+                       for i, k in enumerate("abcdefgh")]}
+
+    def tearDown(self):
+        shadow_skin.apply_theme([])
+
+    def test_outlines_are_opt_in(self):
+        shadow_skin.apply_theme([])
+        self.assertFalse(shadow_skin.QLINK_COLUMNS)
+        shadow_skin.apply_theme(["qlink_bounds=column"])
+        self.assertTrue(shadow_skin.QLINK_COLUMNS)
+        shadow_skin.apply_theme([])
+        self.assertFalse(shadow_skin.QLINK_COLUMNS)
+
+    def test_one_rect_per_column_empty_slots_skipped(self):
+        rects = shadow_skin.qlink_column_bounds(self.TAB, list("abcd") + ["-"] * 4 + list("efgh"))
+        self.assertEqual(len(rects), 3)
+        self.assertEqual(rects[1], "0 0 0 0")
+        x0 = [int(r.split()[0]) for r in (rects[0], rects[2])]
+        self.assertLess(x0[0], x0[1])
+        self.assertEqual(len(shadow_skin.qlink_column_bounds(self.TAB, list("abcd") + ["-"] * 4)), 1)
+
+
 class FilmStripFrames(unittest.TestCase):
     def test_rotary_knob_is_one_fewer_than_strip(self):
         self.assertEqual(shadow_skin.ROT_FRAMES, shadow_skin.FRAMES - 1)

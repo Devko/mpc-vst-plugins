@@ -12,5 +12,8 @@
   ],
   "cflags": [],
   "libs": []
+ },
+ "defines": {
+  "HAS_TRANSPORT": 1
  }
 }

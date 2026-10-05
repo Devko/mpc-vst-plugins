@@ -26,7 +26,7 @@ Layout file:
                                                         label_align=center needs the browser renderer, "art": "html")
     menu    cx= cy= w= h= label="..." key=<param>      (value text; tap opens MPC's native picker -- which
                                                          opens EMPTY for a VST2, see docs/NOTES.md; use popup)
-    popup   cx= cy= w= h= label="..." key=<param> [options="A,B,.."] [cols=<n>] [groups="Title:count[:RRGGBB],.."]
+    popup   cx= cy= w= h= label="..." key=<param> [options="A,B,.."] [cols=<n>] [groups="Title:count[:RRGGBB],.."] [wheel=1]
                                                        (value text; tap opens a drawn option list, a pick closes it.
                                                         Needs the hidden "<param>__open" param: popup_params())
     stepper cx= cy= w= h= label="..." key=<param> [label_align=center]   (live text;
@@ -51,11 +51,15 @@ Layout file:
 Controls can have looks: built-in drawings or images (look=, img=, img_on=, base=, strip=, frames=, peak=, rms=;
 frames and popups take img=), per line or as top-level defaults (knob_look=moog): see tools/skin_assets.py. Looks,
 images and pictures need the browser renderer.
-    qlinks  "PAGE NAME" = key,key,...                  (optional, repeatable)
+    qlinks  "PAGE NAME" = key,key,...                  (optional, repeatable; "-" leaves a slot empty. Every 4 keys
+                                                        are one Q-Link column -- one press of the MPC One's Q-Link
+                                                        button. With qlink_bounds=column, MPC outlines that column)
 Any widget line (frames too) can end in `when=<param>:<option>` (option name or index): it is shown only
 while that option parameter is at that option (MPC's IndexedEnabling), so a tab can swap control sets per
 mode. Its baked parts (frame, title, text boxes, group labels) go into a per-mode image over the background.
 Top level: `qlinks_track = key,...` sets the Q-Links used outside page-follow mode (default: page 1's).
+`qlink_bounds=column` outlines the controls of the Q-Link column in use, as stock skins do (checked on an MPC One
+only; default: no outline).
 Top-level `style=` / `theme_<name>=RRGGBB` lines are the shadow_page.conf ones; `color=` on a
 button overrides its fill. `art_css=skin.css` restyles the browser renderer's artwork (tools/html_art.py).
 
@@ -81,6 +85,7 @@ LCD, LINE, BTN_BG, BTN_TEXT, BOX = "1a120d", "2a2823", "", "fdf3ea", "1f1f1f"
 TILE_ON = ""             # theme_tile_on: fill of a selected/sounding list tile ("" = the LCD fill, border only)
 DISPLAY_INK = "cdeb63"   # theme_display_ink: live-text colour over a dotreadout/dotstepper (see readout/stepper below)
 TD3 = False   # style=td3: frames are filled boxes, so widget crops sit on BOX, not the page bg
+QLINK_COLUMNS = False   # qlink_bounds=column: per-column Q-Link outlines (qlink_column_bounds)
 LABEL_SCALE = 1.0   # label_scale=<n>: scales knob/toggle/pill name+value live-text size and their boxes
 FRAMES = 128               # filmstrip frames emitted by (l)sstrip / (l)strip
 ROT_FRAMES = FRAMES - 1     # rotary knob FilmStrip: a rotation reads one fewer than the strip length
@@ -174,6 +179,7 @@ def apply_theme(top):
     never rasterizes with it, that's still all done by shadow_art (render_conf_preview.c)."""
     g = globals()
     g["LOOK_DEFAULTS"] = skin_assets.defaults(top)
+    g["QLINK_COLUMNS"] = False
     for line in top:
         if line.strip() == "style=td3":
             g["TD3"] = True
@@ -182,6 +188,9 @@ def apply_theme(top):
             continue
         if line.startswith("label_scale="):
             g["LABEL_SCALE"] = float(line[len("label_scale="):].strip())
+            continue
+        if line.startswith("qlink_bounds="):
+            g["QLINK_COLUMNS"] = line[len("qlink_bounds="):].strip() == "column"
             continue
         if line.startswith("scale_names="):
             g["SCALE_NAMES"] = line[len("scale_names="):].strip() not in ("", "0", "no", "off")
@@ -546,8 +555,8 @@ def _sub(ctype, data, bnd, name=""):
             "handle remapping": {"version": 1, "map": []}, "bounds": bnd}
 
 
-def _action(on, handler, extra=""):
-    return {"version": 2, "onAction": on, "handler": handler, "handleName": "" if handler == "Show Overlay" else "Data",
+def _action(on, handler, extra="", handle="Data"):
+    return {"version": 2, "onAction": on, "handler": handler, "handleName": "" if handler == "Show Overlay" else handle,
             "additionalData": extra, "handle remapping": {"version": 1, "map": []}}
 
 
@@ -556,7 +565,7 @@ def _local(key, actions, children):
     return {"key": key, "value": {"version": 4, "actions": actions,
                                   "backgroundData": {"version": 1, "focussed": clear, "unfocussed": clear},
                                   "ignoreMousePresses": False, "disableCoarseDataWheel": False, "repeats": 1,
-                                  "hideQLinkBounds": True, "componentsData": children}}
+                                  "hideQLinkBounds": not QLINK_COLUMNS, "componentsData": children}}
 
 
 def _focus(w, h):
@@ -766,6 +775,9 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
             if kind == "knob":
                 r = w["r"]
                 s, cw = 2 * r + 10, max(round(130 * LABEL_SCALE) if SCALE_NAMES else 130, 2 * r + 10)   # value label width; LFO knobs sit 138 px apart
+                if s * FRAMES > 16384:   # MPC garbles taller filmstrips (the knob drifts as it turns): docs/NOTES.md
+                    sys.stderr.write("warning: knob r=%d (%s): its %d px filmstrip is over MPC's 16384 px image limit; "
+                                     "use r <= %d\n" % (r, w["key"], s * FRAMES, (16384 // FRAMES - 10) // 2))
                 name_h = NAME_H() if SCALE_NAMES else round(20 * LABEL_SCALE)
                 name_y = s // 2 + r + 2
                 value_y = name_y + name_h + 2
@@ -902,10 +914,20 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 # group on the enum; the wrapper clears "open" when an option is picked.
                 oi = index[w["key"] + OPEN_SUFFIX]
                 x, y, rw, rh = w["cx"] - w["w"] // 2, w["cy"] - w["h"] // 2, w["w"], w["h"]
-                key = "shPopField_%dx%d" % (rw, rh)
-                defs.setdefault(key, _local(key, [_action("Mouse Down", "Toggle Switch"), _action("Enter Pressed", "Toggle Switch")],
-                                            [_focus(rw, rh), _value_label(8, 0, rw - 44, rh, 26.0, ACCENT, handle="Text")]))
-                kids.append(_placed(key, name, oi, x, y, rw, rh, extra={"Text": i}))
+                if w.get("wheel") in ("1", "true", "yes"):
+                    # wheel=1 (EXPERIMENTAL, unverified on a device): the field's Data handle is the enum itself, so the
+                    # data wheel / a Q-Link step through the options while it has focus; a tap toggles the list through
+                    # a second, named handle ("Open"), as stock skins name action handles.
+                    key = "shPopFieldW_%dx%d" % (rw, rh)
+                    defs.setdefault(key, _local(key, [_action("Mouse Down", "Toggle Switch", handle="Open"),
+                                                      _action("Enter Pressed", "Toggle Switch", handle="Open")],
+                                                [_focus(rw, rh), _value_label(8, 0, rw - 44, rh, 26.0, ACCENT, handle="Text")]))
+                    kids.append(_placed(key, name, i, x, y, rw, rh, extra={"Text": i, "Open": oi}))
+                else:
+                    key = "shPopField_%dx%d" % (rw, rh)
+                    defs.setdefault(key, _local(key, [_action("Mouse Down", "Toggle Switch"), _action("Enter Pressed", "Toggle Switch")],
+                                                [_focus(rw, rh), _value_label(8, 0, rw - 44, rh, 26.0, ACCENT, handle="Text")]))
+                    kids.append(_placed(key, name, oi, x, y, rw, rh, extra={"Text": i}))
                 (px, py, pw, ph), orects = popup_panel(w)
                 shown = "IndexedEnabling/1/2/Parameter %d" % oi
                 panel = "sh_pop_%d_%s" % (t, w["key"])
@@ -1016,12 +1038,15 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 raise SystemExit("layout: qlinks %r has %d keys (max 16)" % (title, len(keys)))
             ql = {"Q-Link %d" % (q + 1): -1 for q in range(16)}
             for s, k in enumerate(keys):
+                if k == "-":
+                    continue
                 if k not in index:
                     raise SystemExit("layout: qlinks key %r is not a parameter" % k)
                 ql["Q-Link %d" % qlink_for_slot(s)] = index[k]
             comp = "%s|%s" % (tab["name"], title)
             pages.append({"version": 3, "tabName": title, "fnKeyIndex": t, "fnKeySubIndex": sp,
-                          "qlinkBoundsData": ["0 0 0 0"], "componentName": comp,
+                          "qlinkBoundsData": qlink_column_bounds(tab, keys, base_dir) if QLINK_COLUMNS else ["0 0 0 0"],
+                          "componentName": comp,
                           "initialSize": "0 0 %d %d" % (W, H), "scale": 1.0})
             qmap.append({"Tab": t + 1, "SubTab": sp + 1, "Bank Direction": "Column", "Q-Links": ql})
             defs[comp] = {"key": comp, "value": {
@@ -1029,7 +1054,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 "backgroundData": {"version": 1, "focussed": {"version": 1, "colour": "ff" + PLATE, "image": ""},
                                    "unfocussed": {"version": 1, "colour": "ff" + PLATE, "image": ""}},
                 "ignoreMousePresses": False, "disableCoarseDataWheel": False, "repeats": 1,
-                "hideQLinkBounds": True, "componentsData": kids}}
+                "hideQLinkBounds": not QLINK_COLUMNS, "componentsData": kids}}
 
     for img, sw_, sh_, vert, lid in sorted(sliders):
         if lid:
@@ -1100,8 +1125,19 @@ def square_strip(path, w, h):
     out.save(path)
 
 
-def qlink_bounds(tab, keys):
-    """Rectangle around the controls a page's Q-Links drive (plugin coords)."""
+def qlink_column_bounds(tab, keys, base_dir="."):
+    """One rectangle per Q-Link column, as stock skins do (e.g. AIR OPx-4): with "Bank Direction": "Column", slots
+    1-4 are column 1, 5-8 column 2, ... (qlink_for_slot), and MPC outlines the column the Q-Links currently drive --
+    on an MPC One each press of the Q-Link button moves to the next one. A single rectangle around all 16 left MPC
+    outlining the wrong area. An empty column in the middle gets an empty rectangle; trailing ones are left out."""
+    rects = [qlink_bounds(tab, [k for k in keys[c * 4:c * 4 + 4] if k != "-"], base_dir) for c in range(4)]
+    while rects and rects[-1] is None:
+        rects.pop()
+    return [r or "0 0 0 0" for r in rects]
+
+
+def qlink_bounds(tab, keys, base_dir="."):
+    """Rectangle around the controls in keys (plugin coords), or None if none of them is on the page."""
     xs, ys = [], []
     for w in tab["widgets"]:
         if w["kind"] == "list":
@@ -1124,8 +1160,12 @@ def qlink_bounds(tab, keys):
             r = w["r"]
             xs += [w["cx"] - r - 10, w["cx"] + r + 10]
             ys += [w["cy"] - r - 8, w["cy"] + r + 40]
-        elif w["kind"] in ("button", "meter"):
-            continue   # a shared trigger (e.g. GENERATE) would stretch the box across frames; meters take no Q-Link
+        elif w["kind"] == "button":   # boxes are per Q-Link column, so a trigger only stretches its own column's box
+            x, y, bw, bh = button_rect(w, base_dir)
+            xs += [x, x + bw]
+            ys += [y, y + bh]
+        elif w["kind"] == "meter":
+            continue   # meters take no Q-Link
         elif w["kind"] == "toggle":
             xs += [w["cx"] - TOG_W() // 2, w["cx"] + TOG_W() // 2]
             ys += [w["cy"] - 18, w["cy"] + 18 + NAME_H()]
@@ -1134,7 +1174,7 @@ def qlink_bounds(tab, keys):
                 xs += [x, x + sw]
                 ys += [y - 40, y + sh]
     if not xs:
-        return "0 0 %d %d" % (W, H)
+        return None
     x0, y0 = max(0, min(xs) - 6), max(0, min(ys) - Y_OFF - 6)
     return "%d %d %d %d" % (x0, y0, min(W, max(xs) + 6) - x0, min(H, max(ys) - Y_OFF + 6) - y0)
 
