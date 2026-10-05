@@ -49,6 +49,9 @@ for the pattern). This applies to every future port, not just ones that hit the 
 - [ ] Optional, instruments only: `"defines": {"SAMPLE_ACCURATE": 1}` starts each note at its in-block position (MPC sends 0..127 for
       sequenced notes) instead of at the 128-frame block start. The engine's `render()` must then accept any 1..128 frames
       (check block-counting clocks, fixed-block cores) and `tools/test_port.sh` plus a bench (docs/BENCH.md) must pass.
+- [ ] Optional: an engine that changes values by itself (a worker thread, a state machine, status text) sets `"defines": {"HAS_DISPLAY_REV": 1}` and
+      bumps a `display_rev` value whenever something changed; the wrapper polls it every ~100 ms and tells the host (text, `when=` panels, meters).
+      Readouts longer than 24 characters need `"PARAM_TEXT_MAX": <n>` (NOTES.md; `poc/uiprobe` is the example).
 - [ ] Never hardcode `/sdcard/...` in an engine. Set `"defines": {"MODULE_SUBDIR": "\"engine\""}` in vst.json and
       the wrapper passes `<dir of the .so>/engine` to `create()`, found at runtime with `dladdr` (`wrapper/plugin_dir.h`,
       also usable directly via `mpc_plugin_dir()`), so the plugin works from `/sdcard/Synths`, `/media/*/Synths` or anywhere
