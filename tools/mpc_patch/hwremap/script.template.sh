@@ -59,7 +59,8 @@ usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 write_so() { # $1 destination
     dest=$1
     tmp=$(mktemp) || die "cannot make a temporary file"
-    awk 'BEGIN { for (i = 0; i < 16; i++) { d = sprintf("%x", i); v[d] = i; v[toupper(d)] = i } }
+    # LC_ALL=C: gawk in a UTF-8 locale writes printf "%c" values above 127 as multi-byte characters, which corrupts the library
+    LC_ALL=C awk 'BEGIN { for (i = 0; i < 16; i++) { d = sprintf("%x", i); v[d] = i; v[toupper(d)] = i } }
         /^$/ { next }
         { s = $0; n = length(s); for (i = 1; i <= n; i += 2) printf "%c", v[substr(s, i, 1)] * 16 + v[substr(s, i + 1, 1)] }' <<'HW_SO_HEX' > "$tmp" || { rm -f "$tmp"; die "could not unpack the library"; }
 @@SO_HEX@@

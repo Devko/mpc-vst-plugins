@@ -228,6 +228,20 @@ class Contract(Rig):
         seen = subprocess.run([SH, "-c", text], capture_output=True, text=True, timeout=30).stdout.splitlines()
         self.assertIn("LD_PRELOAD=/usr/lib/foo.so:/usr/lib/hwremap.so", seen)
 
+    def test_the_library_unpacks_the_same_under_gawk_in_a_utf8_locale(self):
+        # gawk writes printf "%c" values above 127 as multi-byte characters in a UTF-8 locale: the script forces LC_ALL=C
+        gawk = shutil.which("gawk")
+        if not gawk:
+            self.skipTest("gawk is not installed")
+        os.symlink(gawk, os.path.join(self.shims, "awk"))
+        text = read(SCRIPT)
+        a = text.index("\n", text.index("<<'HW_SO_HEX'")) + 1
+        want = bytes.fromhex(text[a:text.index("\nHW_SO_HEX", a)].replace("\n", ""))
+        self.launcher()
+        r = self.patch("install", "--confirmed", LC_ALL="C.UTF-8", LANG="C.UTF-8")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.so_bytes("usr/lib/hwremap.so"), want)
+
     def test_a_library_that_unpacks_wrongly_is_never_installed(self):
         text = read(SCRIPT)
         a = text.index("\n", text.index("<<'HW_SO_HEX'")) + 1
