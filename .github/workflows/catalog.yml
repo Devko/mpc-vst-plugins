@@ -13,6 +13,10 @@ on:
 permissions:
   contents: read
   issues: write
+# One run at a time per branch: two overlapping runs each opened the same issue (#112, #113).
+concurrency:
+  group: catalog-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,7 +33,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 tools/catalog_build.py
-      - name: Open issues for failing releases
+      - name: Open and close issues for failing releases
         if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

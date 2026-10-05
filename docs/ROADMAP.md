@@ -27,6 +27,9 @@ Building on parameter-driven visibility (`IndexedEnabling`, NOTES "Conditional v
       VST2** (NOTES.md "Native picker (menu overlay): not available to VST2", 2026-09-24) under its real
       component name, not a new option — `popup` stays the way to do a list. Not separately verified.
 ## Porting and tooling
+- [ ] **Catalog: MPC OS 2.x / 3.x compatibility field.** Derived by the release and catalog checks (glibc 2.32 or less, and the skin only uses
+      versions 2.15.1's own skins use); badge and filter on the site, badge and warning in the installer app; developers opt in with the
+      2.x skin shape. Plan and phases: [docs/OS2_SKINS.md](OS2_SKINS.md) ("Proposed direction").
 - [ ] **Q-Link feel on option lists and whole numbers.** A Q-Link event is one step on a Force (docs/NOTES.md "Stepping of option lists
       and whole numbers"), which is quick on a short range; the data wheel is right. Three prototypes of slowing it failed (NOTES). First
       thing to try: how the stock plugins (AIR, Akai) respond to the same Q-Link on a stepped param, by logging what MPC sends them
@@ -43,12 +46,13 @@ The catalog, its site and the installer app are live (see Done). Still open, in 
 - [ ] **Announce to the community** and collect what people ask for before building more.
 
 ## Patches (installer app)
-- [ ] **"Advanced" step for device patches** (`tools/mpc_patch`, and the ForceHD exec patch from #150 if it is shared and reviewed). Plan in
+- [ ] **"Advanced" step for device patches** (`tools/mpc_patch`: the drum-pad layout and drive exec, from #150). Plan in
       `docs/PATCHES.md`: a manifest, the script stays the unit (`status` / `install` / `uninstall`), typed confirmation, staged rollout.
       Built (2026-10-03/04): the script contract (`STATE` line with checksum, `install --confirmed`, restore of an unknown build from a
       verified stock backup), `catalog/patches.json`, and a read-only step 7 in the app. Seen on a Force 2026-10-04: the app's row, the
-      restore and the reinstall (NOTES 2026-10-04). **Still to do:** Apply and Undo from the app (then a Force test), and the ForceHD patch
-      (not yet received or reviewed).
+      restore and the reinstall (NOTES 2026-10-04). The drive exec patch from #150 (run plugins from a `noexec` drive) is built and listed
+      (2026-10-05, offline only, real-mount tests). **Still to do:** a Force run of that patch (install, reboot, a plugin loads, uninstall), and
+      Apply and Undo from the app (then a Force test).
 
 ## Verification
 - [ ] **Stock, unmodded MPC and other models:** the ALSA MIDI-out port (`poc/midiport.c`) without MockbaMod,

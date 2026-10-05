@@ -17,6 +17,23 @@
       "backup": "/sdcard/MPC-backup",
       "restarts_mpc": true,
       "reversible": true
+    },
+    {
+      "id": "drive-exec",
+      "title": "Drive exec: run plugins from a noexec drive (a Force's SSD)",
+      "summary": "UNTESTED on a device by this project (testers wanted, see issue #150). MPC cannot load a plugin from a drive mounted noexec: it is listed but only shows Load Plugin. This makes one folder of the drive (Synths) executable, through a small boot-time service; the drive itself stays noexec.",
+      "author": "timomacquis (adapted by sd88me)",
+      "license": "MIT",
+      "docs": "tools/mpc_patch/drive_exec/README.md",
+      "script": {
+        "url": "https://raw.githubusercontent.com/sd88me/mpc-vst-plugins/fe7e399a2ed994cb78a0aed08681343c1250ff27/tools/mpc_patch/drive_exec/drive-exec-patch.sh",
+        "sha256": "85ae102b14e16db2c3fee11829a3e15d2f65459b0d32325a4bbb34cb9bd9b642"
+      },
+      "supports": {"os": "MPC OS Gen1 (tried on a Force, MPC OS 3.9.1)", "arch": "armv7l"},
+      "modifies": ["/etc/drive-exec", "/etc/systemd/system/drive-exec.timer", "/usr/lib/systemd/system/drive-exec-bootstrap.service", "/media/<your drive>/Synths (an executable bind mount of the folder)"],
+      "backup": "/data/mpc-vst-plugins/backups",
+      "restarts_mpc": false,
+      "reversible": true
     }
   ]
 }

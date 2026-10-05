@@ -10,7 +10,8 @@ checksum and device-verification status, that stays correct without anyone editi
 3. **The zip is the source of truth, not the registry.** Every release zip carries a machine-readable manifest
    written by `tools/release.py`. The catalog reads and validates it; nobody types a version number.
 4. **Automatic on updates, human only on first entry.** A new plugin needs one reviewed PR. Later releases are
-   picked up and validated by CI; a failed validation hides that version and opens an issue on the plugin's repo.
+   picked up and validated by CI; a failed validation hides that version and opens an issue on this catalog repo (not when a newer release
+   of that plugin passes; see `tools/catalog_issues.py`).
 5. **Installers execute as root on someone's device.** So: open source only, checksums shown, canonical
    `install.sh` checked, previous versions kept, a maintainer can yank a version.
 6. **The catalog never hosts or links a build that contains someone else's firmware.** A port whose DSP is compiled
@@ -127,7 +128,13 @@ here first and move to its own repo (recommended, for community ownership) once 
 ### Phase 2: The catalog builder
 - [x] (2026-09-29; runs against real releases, checked 2026-10-02) `tools/catalog_build.py`: read `plugins/*.json`, list GitHub releases (API, token via Actions), download
       matching assets, validate, write `catalog.json` + `catalog.schema.json`. Idempotent and cached by asset id.
-- [ ] Failure handling: bad version excluded, previous good version kept, issue opened on the plugin repo.
+- [x] (2026-10-03, offline tests and a dry run against the live registry) Failure handling: bad version excluded,
+      previous good version kept, one issue per failing release on this repo (`tools/catalog_issues.py`). A failure
+      that a newer passing, unyanked release supersedes gets no issue (an old tag can't be rebuilt); an open issue
+      closes itself when its problem is gone or superseded; a closed per-tag title is never reopened (a tag can't
+      be rebuilt, even if its release asset is later replaced); a closed "repo cannot be read" title reopens if the
+      repo breaks again, since that one isn't tied to a fixed tag; duplicates close. Issues on the plugin's own
+      repo: not done.
 - [x] (`.github/workflows/catalog.yml`, builds and uploads an artifact; Pages deploy comes with Phase 3) Workflow: nightly cron + `repository_dispatch`/`workflow_dispatch`; an optional one-line "ping" step ports
       can add to their release workflow for instant updates.
 - [x] (registry rules and licence list; 'latest release validates' runs in the full build) PR check for registry PRs: schema, repo exists, latest release validates, uid unique. Issue template

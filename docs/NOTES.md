@@ -640,6 +640,11 @@ sets a per-component flag and did not remove it; zeroing `qlinkBoundsData` did n
 focus style transparent (`backgroundColour` and `outlineColour` `00000000`, `outlineThickness` 0). List tiles keep
 their selected look because that is baked into the tile image, not the focus ring. Page `qlinkBoundsData` is now
 `"0 0 0 0"` and every `hideQLinkBounds` is true.
+**Per-column outlines, opt-in (MPC One, 2026-09-30, MPC Plaits):** with `qlink_bounds=column` in the layout, pages get
+one `qlinkBoundsData` rectangle per Q-Link column (slots 1-4, 5-8, ...) and `hideQLinkBounds` is false, as in stock skins
+(AIR OPx-4): MPC outlines the column the Q-Links drive, and each press of the MPC One's Q-Link button moves the outline to
+the next one. Buttons count toward their column's box. The orange box above was the Focus outline, so hiding the bounds
+was never needed to fix it; still, the outline is only checked on an MPC One, so the default stays "0 0 0 0" and hidden.
 
 **Q-Links stuck on integer params (fixed in `wrapper/vst2_wrap.c`).** Symptom: a Q-Link on a 0..127 param flicked
 between two values on a slow turn and would not climb. Causes, in order: (1) the value went to the DSP as `%g` text
@@ -869,7 +874,7 @@ below are in 1/128 of the host's 0..1 range:
 
 ## 2026-10-03: MPC OS 2.15.1: plugins load, skins do not draw (user reports on an MPC Live, plus other 2.x users; not reproduced by us)
 
-Unit: MPC Live (first generation), MPC OS 2.15.1, Buildroot 2021.02, BusyBox userland (no `ldd`, `file`; `head -n`, not `head -3`), `armv7l`. MPC runs as `inmusic-mpc.service`; there is no `acvs`.
+Unit: MPC Live (first generation), MPC OS 2.15.1, Buildroot 2021.02, BusyBox userland (no `ldd`, `file`; `head -n`, not `head -3`; `tar` has no `-z`, so use `tar cf` and `gzip` separately if it exists), `armv7l`. MPC runs as `inmusic-mpc.service`; there is no `acvs`.
 
 - **Service name.** Release zips built before the installers picked the service themselves ran `systemctl stop acvs` and aborted ("Unit acvs.service not loaded") before touching `MPC.settings`. Fixed in the installers and in the desktop app (a `systemctl` shim for old zips, desktop v0.3.2).
 - **glibc.** Builds that need `GLIBC_2.34` (`dladdr`, `pthread_*`: Dexed 1.0.1-1.0.2, JV-880 1.0.0-1.0.3, checked with `objdump -T`) were registered correctly (right `file=`, file present, executable) but MPC showed only "Load Plugin". Dexed 1.0.4 (needs 2.29) installed through the app loads: the log shows `Attempting to load VST`, `Creating VST instance`, `Initialising VST`. The two old releases per plugin are yanked in `catalog/yanked.json`.
@@ -1127,3 +1132,34 @@ meters) and the `when=` panels that hang on them. Rebased on that poll 2026-10-0
   MPC start wrote empty cache files and an addin install failed with "No space left on device" (its `.new` staging kept the live install
   intact). The running MPC had none of the files open and deleting them freed the space. Whether a reboot clears the folder is not known.
 - Credit: found by jacob-sabella (PR #162, closed; written up here).
+
+## Knob filmstrips over 16384 px drift as they turn (MPC One, 2026-09-27, MPC Plaits)
+A knob with r=80 (170 px frames x 128 = 21760 px strip) visibly moved up and down on the screen while its value
+changed; r=58 knobs (126 px frames, 16128 px) on the same page were fine. Most likely MPC's image/texture limit of
+16384 px, beyond which the strip is resampled and the frame offsets no longer line up. Keep `2r+10 <= 128`, i.e.
+r <= 58 (the largest seen working; r=59 lands exactly on 16384 and is untested). `shadow_skin.py` now warns.
+
+## step_of on an option param (2026-09-27, MPC Plaits)
+`step_of`/`step_delta` now also works when the target is an option list: it steps by index, wrapping like a hardware
+selector button, and reports the new value with `audioMasterAutomate` from `processReplacing` so the host redraws
+anything bound to it (the value text, `IndexedEnabling` pictures). Used for Plaits' two model buttons (a `stepper`
+with `prev=`/`next=`). Verified offline; not yet on a device.
+
+## Eurorack/firmware DSP assumes zeroed RAM; a plugin's heap isn't (MPC One, 2026-09-27, MPC Plaits)
+Plaits' FM 2-Op engine and most engines after it played silence inside MPC but fine in every offline test (x86,
+32-bit ARM under QEMU, and `tools/bench.sh` on the device itself). A device log showed healthy raw engine output
+and LPG gain, yet the voice output stayed at Plaits' silence value. Cause: several engines' `Init()` never set
+some state (e.g. `FMEngine`'s downsampler taps). On the module that RAM is `.bss`, zeroed at boot; MPC's
+long-running process hands the plugin reused heap, so the state could start as NaN, which then stuck in the
+voice's LPG filter (a NaN reaches ARM's float->int conversion as 0, i.e. silence) and silenced every LPG engine
+on that voice. Fresh test processes get zeroed pages, which is why nothing offline ever failed. Reproduced
+offline by overriding `operator new` to fill allocations with 0xFF (`mpc-vst-plaits/tests/dirty_heap.cc`); fixed
+by allocating the engine state with `calloc` + placement new. For any port of firmware code: allocate its state
+zeroed, and run the host tests with a dirty heap.
+
+## 2026-10-05: ForceHD VST Exec (timomacquis, #150) read in full, adapted and tested offline; not yet run on a device by us
+The contributor shared his package (a systemd timer service that makes one folder of a `noexec` SSD executable) and gave it to the project (the maintainer's word; the maintainer is confirming the licence with him; a written confirmation on #150 is wanted). **Listed as untested** (2026-10-05): the maintainer has no SSD to test with, so the patch is marked untested in the manifest summary and the guides and testers are being asked for. All 25 files were read, nothing was run on a device; the shell files parse (`dash -n`), the distribution zip's scripts and units equal its `Source/`, no network access or `eval` anywhere.
+- **His evidence (his logs, a Force Gen1, MPC OS 3.9.1, kernel `6.18.26-az01`):** the SSD is an exFAT partition that `edisksd` mounts at `/media/<volume label>` as `rw,nosuid,nodev,noexec,relatime,nosymfollow,...` (the same line our SSD user reported). `dlopen` of a probe library on it fails with "failed to map segment from shared object"; inside his child bind mount (remounted with `exec`, parent unchanged) it loads; a copy outside the folder still fails. Persistent after a full reboot (bootstrap 1.17 s, MPC active at 7.4 s), Dexed and Plaits sound and reopen a saved project. His stated gaps: auto-loading a project before the SSD is ready, absent/late/reconnected disk cases, and the 0.1.3 uninstall and helper apply/revert were not validated on hardware; the English edition was never run on a Force.
+- **Our review found:** it hard-codes the drive name `/media/ForceHD` and the folder `vst`; the `/proc/self/mountinfo` compare (`awk '$5==p'`) cannot match a name with a space (the table writes `\040`; reproduced); our plugins keep the `.so` in `Synths/<skin>/`, which his folder choice leaves `noexec`; `status` exits non-zero when inactive and has no machine-readable line; the timer polls forever while the drive is absent; the unit goes into the factory image (`/usr/lib/systemd/system`, root remounted writable then restored). The mount logic itself is careful: `flock`, mount-ID ownership, parent-mount check, a rollback trap, no forced or lazy unmount.
+- **Adapted (version 0.2.0, `tools/mpc_patch/drive_exec`, **renamed "drive exec" on 2026-10-05**: nothing in it is specific to that drive or to a Force, "ForceHD" was the label of the contributor's own drive; the on-device names are `/etc/drive-exec`, `drive-exec.timer` and so on, so it never collides with his original `force-vst-exec`, which `status` reports and `install` refuses to touch, `reason=other-install`):** drive and folder chosen and strictly validated (the config is sourced by a root service), default folder `Synths`, mountinfo paths compared escaped, the empty `acvs` drop-in dropped, a wrapper with the `STATE` line (new state `partial`, new `reason=` tokens), typed words, one file. His three systemd units are his, with only the names changed.
+- **Tested offline, with real mounts** (`tools/test_drive_exec.py`, root, `unshare -m`): a `noexec` tmpfs at `/media/SSD - Force`; a compiled library really `dlopen`ed before, with, and after the patch (blocked, loads from `Synths`, outside stays blocked, blocked again after removal); the parent mount's id and options never change; install, status, uninstall, repeated apply, an absent drive, a plugin held by a process blocks removal, a failed install rolls back, the typed words, hostile drive and folder names (really mounted, e.g. a quote, `$(...)`), a foreign mount, another version, and the embedded files equal `src/`. Seven mutations of the script each fail a test. **Not covered (tmpfs is not exFAT, no systemd, no MPC):** a Force, exFAT specifics, a reboot, MPC loading a plugin from the folder, `Register plugin folders` after, and any firmware update. The patch is listed in `catalog/patches.json` (read-only in the app); applying it from the app is not built.
