@@ -188,7 +188,7 @@ What differs, and what the catalog does about it (checked on an MPC Live on 2.15
   the page inline in the tab (tab 1, definitions 2) with knob, button and action data at version 1; the full table is in
   docs/OS2_SKINS.md. `Q-Links.json` is the same on both.
 - **Both can read the older shape.** Dexed's skin written in the 2.x shape draws on a 2.15.1 MPC Live and on a Force. On the
-  Force touch works as before; touch on 2.x is still being checked.
+  Force touch works as before, and a tester on a 2.15.1 MPC Live reported the same skin working there too.
 - **The catalog decides, from the files.** For every release it works out `os_compat`: **2.x + 3.x** when the library needs
   glibc 2.32 or less and every object in the skin has a version and fields that 2.15.1's own skins use, otherwise **3.x only**
   (the reasons show on hover). Developers do not declare it. It is a check against one 2.x version's own skins, not a test on a
@@ -196,7 +196,7 @@ What differs, and what the catalog does about it (checked on an MPC Live on 2.15
 - **For developers: opting in is optional.** To make a plugin 2.x-capable, write its skin in the 2.x shape, check it with
   `python3 tools/skin_compat.py check "<skin>/Plugin Skins/TUI.json" "<skin>/Plugin Skins/Q-Links.json"` (it lists what still
   stops 2.x) and publish a new release; the label changes by itself on the next catalog build. Releases that are not
-  re-released stay listed as 3.x only. The skin generator's option for the 2.x shape is still being checked on a 2.x unit.
+  re-released stay listed as 3.x only. The skin generator writes the 2.x shape when built with `SHADOW_SKIN_MPC_OS=2` (docs/PORTING.md); a plugin written by hand needs the table in docs/OS2_SKINS.md.
 
 **Help us:** tell us your model, your MPC OS version (Settings), whether a plugin's page appeared, and what the
 screen shows. If you are comfortable in a terminal and on 2.x, the output of this read-only command is very useful:

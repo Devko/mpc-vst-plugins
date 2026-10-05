@@ -246,6 +246,35 @@ int main(void) {
         a->setP(a, i, PARAMS[i].def);
         break;
     }
+    for (int i = 0; i < NPARAMS; i++) {   /* a long whole-number list (a bank list): nudge_pct makes each Q-Link event and wheel click one step */
+        const param_t *p = &PARAMS[i];
+        if (p->nopts || !p->int_display || p->nudge_pct <= 0 || p->max - p->min < 2) continue;
+        float range = p->max - p->min, rate[2] = {1.0f / 128, 0.01f};   /* a Q-Link event and a data wheel click, of the whole range */
+        const char *who[2] = {"Q-Link events", "data wheel clicks"};
+        for (int r = 0; r < 2; r++) {
+            a->setP(a, i, 0); int ok = 1;
+            for (int k = 1; k <= 6; k++) {
+                a->setP(a, i, a->getP(a, i) + rate[r]);
+                if (fabsf(a->getP(a, i) * range - k) > 0.05f) ok = 0;
+            }
+            CHECK(ok, "%s: six %s step six, not %.0f at a time (%.2f)", p->key, who[r], range * rate[r], a->getP(a, i) * range);
+            ok = 1;
+            for (int k = 5; k >= 0; k--) {   /* and back down to the minimum, MPC clamping what it sends at 0 */
+                float v = a->getP(a, i) - rate[r];
+                a->setP(a, i, v < 0 ? 0 : v);
+                if (fabsf(a->getP(a, i) * range - k) > 0.05f) ok = 0;
+            }
+            CHECK(ok, "%s: six %s step back down to the minimum (%.2f)", p->key, who[r], a->getP(a, i) * range);
+        }
+        a->setP(a, i, 0.5f);
+        CHECK(fabsf(a->getP(a, i) - 0.5f) <= 0.5f / range + 1e-3f, "%s: a jump past the nudge range lands outright (%.3f)", p->key, a->getP(a, i));
+        a->setP(a, i, 1.0f - 1.0f / 128);
+        float below = roundf(a->getP(a, i) * range);
+        a->setP(a, i, 1.0f);   /* clamped at the maximum from within the nudge range: one step up, not a jump to the end */
+        CHECK(fabsf(a->getP(a, i) * range - (below + 1)) < 0.05f, "%s: at the top a clamped move is one step (%.2f from %.0f)", p->key, a->getP(a, i) * range, below);
+        a->setP(a, i, p->def);
+        break;
+    }
     for (int i = 0; i < NPARAMS; i++)   /* the first whole-number param */
         if (!PARAMS[i].nopts && PARAMS[i].int_display && PARAMS[i].qlink_ticks <= 1 && PARAMS[i].max - PARAMS[i].min >= 2) { step_tests(a, i, "int", (int)(PARAMS[i].max - PARAMS[i].min)); break; }
     if (pop >= 0) {

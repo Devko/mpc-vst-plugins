@@ -14,7 +14,7 @@ only and are never committed (see `CLAUDE.md`).
 - **Confirmed 2026-10-03:** Dexed's skin rewritten in the 2.15.1 shape draws on the 2.15.1 MPC Live, and the same file draws on a
   Force (3.x) and looks the same on both. Touch behaviour on 2.x was still being checked.
 
-The 2.x shape (what `to_mpc2x` in `tools/shadow_skin.py` writes, PR #139, opt-in via `SHADOW_SKIN_MPC_OS=2`, not merged):
+The 2.x shape (what `to_mpc2x` in `tools/shadow_skin.py` writes, opt-in via `SHADOW_SKIN_MPC_OS=2`; merged 2026-10-05):
 
 | Part of `TUI.json` | MPC OS 3.x shape (ours today) | MPC OS 2.15.1 shape |
 |---|---|---|
@@ -144,7 +144,7 @@ it back with the same file list and an updated `SHA256SUMS` line (the permission
   and filter (#178), the installer app and `mpc-store.sh` badge and warnings (#179), and the glibc relaxation (2.33 to 2.36 is listed as
   3.x only, #180). Installer app v0.4.0 carries the app side (a draft until the owner publishes it). Every release in the catalog is
   labelled `3.x` today (67 versions), because none uses the 2.x skin shape.
-- **Open:** PR #139 (`to_mpc2x`, opt-in generator option) is mergeable but held until a 2.x unit has confirmed touch behaviour; its unit
+- **Generator option (#139, merged 2026-10-05):** `SHADOW_SKIN_MPC_OS=2` writes the 2.x shape (`to_mpc2x`), after a 2.x tester reported the converted Dexed skin working on a 2.15.1 MPC Live; its unit
   tests (in `tools/test_shadow_skin.py`) pass offline.
 - **User-facing docs (2026-10-05):** the main README, the install guide and the developer page (`catalog/pages/add.md`) describe the
   labels and say that making a plugin 2.x-capable, and re-releasing it, is up to its developer. The nine plugin READMEs still carry

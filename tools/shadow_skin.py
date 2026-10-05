@@ -33,7 +33,8 @@ Layout file:
                                                         arrows = <param>_prev / <param>_next;
                                                         label_align=center needs "art": "html")
     list    x= y= w= h= cols= rows= th= gap= key=<p>   (rows = params <p>_1..<p>_N: text + tap;
-                                                        order=pads numbers the rows from the bottom, like a pad bank)
+                                                        order=pads numbers the rows from the bottom, like a pad bank;
+                                                        order=cols numbers down each column first, so it reads top to bottom)
     art     file="drawing.svg" [x= y= w= h=] [fit=]    (an SVG drawing, e.g. from studio.py from-svg, or a .png/.jpg/.webp
                                                         image, drawn into the page background: the whole plugin area, or
                                                         the box; fit=contain|cover|stretch; browser renderer only)
@@ -277,8 +278,11 @@ def shade(hexcol, f):
 
 
 def list_keys(w):
-    """tile i's param: rows top-down, or bottom-up like a pad bank (order=pads: pad 1 is bottom left)"""
+    """tile i's param: rows top-down, or bottom-up like a pad bank (order=pads: pad 1 is bottom left), or down each column
+    first (order=cols: 1..rows in the left column, then the next column), so a list reads and steps top to bottom"""
     n, cols = w["cols"] * w["rows"], w["cols"]
+    if w.get("order") == "cols":
+        return ["%s_%d" % (w["key"], (i % cols) * w["rows"] + i // cols + 1) for i in range(n)]
     if w.get("order") == "pads":
         return ["%s_%d" % (w["key"], (w["rows"] - 1 - i // cols) * cols + i % cols + 1) for i in range(n)]
     return ["%s_%d" % (w["key"], i + 1) for i in range(n)]
@@ -1200,9 +1204,65 @@ def program_qlinks(layout_path, params, qmap):
     return dict(qmap[0]["Q-Links"])
 
 
-def write_skin(outdir, vendor, name, layout_path, params, art_bin):
-    """Build the whole skin folder <outdir>/<vendor> - VST - <name>/ from a layout. Needs Pillow."""
+def to_mpc2x(tui):
+    """Rewrite a generated TUI.json (the MPC OS 3.x format) in the shape MPC OS 2.15.1's own skins use, in place.
+
+    Seen in 2.15.1's stock skins (AIR Amp Sim, Decimator; docs/NOTES.md): the tab is `version 1` with its page inline as
+    `componentDefinition`, definitions are `version 2` without `repeats`/`hideQLinkBounds`, `Knob` data is `version 1`
+    (no `invert`/`dragOrientation`), `Button` data is `version 1` (no `gestureBehaviour`) and actions are `version 1` (no
+    `handle remapping`, which is always empty in Akai's own skins). Checked role by role against 110 stock 2.15.1 skins:
+    every role in the six released ports' skins then has a version 2.15.1 itself uses. Experimental: touch behaviour on
+    2.x not yet confirmed on a device."""
+    pd = tui["pageData"]
+    cdefs = pd["componentDefinitions"]
+    defs = {d["key"]: d for d in cdefs["localComponentDefinitions"]}
+    used = set()
+    for t in pd["tabs"]:
+        if t.get("version") == 3:
+            key = t.pop("componentName")
+            if key not in defs:
+                raise SystemExit("to_mpc2x: tab %r points at missing definition %r" % (t.get("tabName"), key))
+            t.pop("initialSize", None)
+            t.pop("scale", None)
+            t["componentDefinition"] = defs[key]["value"]
+            t["version"] = 1
+            used.add(key)
+    cdefs["localComponentDefinitions"] = [d for d in cdefs["localComponentDefinitions"] if d["key"] not in used]
+
+    def fix(o):
+        if isinstance(o, dict):
+            cd = o.get("componentData")
+            if isinstance(cd, dict):
+                dd = cd.get("data", {})
+                if cd.get("type") == "Knob" and dd.get("version") == 5:
+                    dd["version"] = 1
+                    dd.pop("invert", None)
+                    dd.pop("dragOrientation", None)
+                elif cd.get("type") == "Button" and dd.get("version") == 2:
+                    dd["version"] = 1
+                    dd.pop("gestureBehaviour", None)
+            if o.get("version") == 2 and "onAction" in o and "handler" in o:   # an action: 2.x only has version 1
+                o["version"] = 1
+                o.pop("handle remapping", None)
+            if o.get("version") == 4 and "componentsData" in o:     # a page or widget definition
+                o["version"] = 2
+                o.pop("repeats", None)
+                o.pop("hideQLinkBounds", None)
+            for x in list(o.values()):
+                fix(x)
+        elif isinstance(o, list):
+            for x in o:
+                fix(x)
+    fix(pd)
+    return tui
+
+
+def write_skin(outdir, vendor, name, layout_path, params, art_bin, mpc_os=None):
+    """Build the whole skin folder <outdir>/<vendor> - VST - <name>/ from a layout. Needs Pillow.
+    mpc_os=2 (or SHADOW_SKIN_MPC_OS=2) writes TUI.json in the older MPC OS 2.x shape (to_mpc2x); default is 3.x."""
     import json
+    if mpc_os is None:
+        mpc_os = int(os.environ.get("SHADOW_SKIN_MPC_OS", "3"))
     from PIL import Image
     d = os.path.join(outdir, "%s - VST - %s" % (vendor, name))
     skin = os.path.join(d, "Plugin Skins")
@@ -1215,6 +1275,8 @@ def write_skin(outdir, vendor, name, layout_path, params, art_bin):
                                  "localComponentDefinitions": comps},
         "info": {"version": 1, "type": "CompleteDescription"},
         "tabs": tabs}}
+    if mpc_os == 2:
+        to_mpc2x(tui)
     qlinks = {"version": 4, "info": {"version": 1, "type": "CompleteDescription"},
               "Screen Mode Q-Links": {"version": 4, "map": qmap},
               "Program Mode Q-Links": program_qlinks(layout_path, params, qmap)}
