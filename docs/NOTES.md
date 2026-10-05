@@ -640,9 +640,11 @@ sets a per-component flag and did not remove it; zeroing `qlinkBoundsData` did n
 focus style transparent (`backgroundColour` and `outlineColour` `00000000`, `outlineThickness` 0). List tiles keep
 their selected look because that is baked into the tile image, not the focus ring. Page `qlinkBoundsData` is now
 `"0 0 0 0"` and every `hideQLinkBounds` is true.
-**Superseded (MPC One, 2026-09-30, MPC Plaits):** pages now get one `qlinkBoundsData` rectangle per Q-Link column (slots
-1-4, 5-8, ...) and `hideQLinkBounds` is false, as in stock skins (AIR OPx-4): MPC outlines the column the Q-Links drive,
-and each press of the MPC One's Q-Link button moves the outline to the next one. Buttons count toward their column's box.
+**Per-column outlines, opt-in (MPC One, 2026-09-30, MPC Plaits):** with `qlink_bounds=column` in the layout, pages get
+one `qlinkBoundsData` rectangle per Q-Link column (slots 1-4, 5-8, ...) and `hideQLinkBounds` is false, as in stock skins
+(AIR OPx-4): MPC outlines the column the Q-Links drive, and each press of the MPC One's Q-Link button moves the outline to
+the next one. Buttons count toward their column's box. The orange box above was the Focus outline, so hiding the bounds
+was never needed to fix it; still, the outline is only checked on an MPC One, so the default stays "0 0 0 0" and hidden.
 
 **Q-Links stuck on integer params (fixed in `wrapper/vst2_wrap.c`).** Symptom: a Q-Link on a 0..127 param flicked
 between two values on a slow turn and would not climb. Causes, in order: (1) the value went to the DSP as `%g` text

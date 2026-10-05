@@ -53,11 +53,13 @@ frames and popups take img=), per line or as top-level defaults (knob_look=moog)
 images and pictures need the browser renderer.
     qlinks  "PAGE NAME" = key,key,...                  (optional, repeatable; "-" leaves a slot empty. Every 4 keys
                                                         are one Q-Link column -- one press of the MPC One's Q-Link
-                                                        button -- and MPC outlines that column's controls)
+                                                        button. With qlink_bounds=column, MPC outlines that column)
 Any widget line (frames too) can end in `when=<param>:<option>` (option name or index): it is shown only
 while that option parameter is at that option (MPC's IndexedEnabling), so a tab can swap control sets per
 mode. Its baked parts (frame, title, text boxes, group labels) go into a per-mode image over the background.
 Top level: `qlinks_track = key,...` sets the Q-Links used outside page-follow mode (default: page 1's).
+`qlink_bounds=column` outlines the controls of the Q-Link column in use, as stock skins do (checked on an MPC One
+only; default: no outline).
 Top-level `style=` / `theme_<name>=RRGGBB` lines are the shadow_page.conf ones; `color=` on a
 button overrides its fill. `art_css=skin.css` restyles the browser renderer's artwork (tools/html_art.py).
 
@@ -83,6 +85,7 @@ LCD, LINE, BTN_BG, BTN_TEXT, BOX = "1a120d", "2a2823", "", "fdf3ea", "1f1f1f"
 TILE_ON = ""             # theme_tile_on: fill of a selected/sounding list tile ("" = the LCD fill, border only)
 DISPLAY_INK = "cdeb63"   # theme_display_ink: live-text colour over a dotreadout/dotstepper (see readout/stepper below)
 TD3 = False   # style=td3: frames are filled boxes, so widget crops sit on BOX, not the page bg
+QLINK_COLUMNS = False   # qlink_bounds=column: per-column Q-Link outlines (qlink_column_bounds)
 LABEL_SCALE = 1.0   # label_scale=<n>: scales knob/toggle/pill name+value live-text size and their boxes
 FRAMES = 128               # filmstrip frames emitted by (l)sstrip / (l)strip
 ROT_FRAMES = FRAMES - 1     # rotary knob FilmStrip: a rotation reads one fewer than the strip length
@@ -176,6 +179,7 @@ def apply_theme(top):
     never rasterizes with it, that's still all done by shadow_art (render_conf_preview.c)."""
     g = globals()
     g["LOOK_DEFAULTS"] = skin_assets.defaults(top)
+    g["QLINK_COLUMNS"] = False
     for line in top:
         if line.strip() == "style=td3":
             g["TD3"] = True
@@ -184,6 +188,9 @@ def apply_theme(top):
             continue
         if line.startswith("label_scale="):
             g["LABEL_SCALE"] = float(line[len("label_scale="):].strip())
+            continue
+        if line.startswith("qlink_bounds="):
+            g["QLINK_COLUMNS"] = line[len("qlink_bounds="):].strip() == "column"
             continue
         if line.startswith("scale_names="):
             g["SCALE_NAMES"] = line[len("scale_names="):].strip() not in ("", "0", "no", "off")
@@ -529,7 +536,7 @@ def _local(key, actions, children):
     return {"key": key, "value": {"version": 4, "actions": actions,
                                   "backgroundData": {"version": 1, "focussed": clear, "unfocussed": clear},
                                   "ignoreMousePresses": False, "disableCoarseDataWheel": False, "repeats": 1,
-                                  "hideQLinkBounds": False, "componentsData": children}}
+                                  "hideQLinkBounds": not QLINK_COLUMNS, "componentsData": children}}
 
 
 def _focus(w, h):
@@ -995,7 +1002,8 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 ql["Q-Link %d" % qlink_for_slot(s)] = index[k]
             comp = "%s|%s" % (tab["name"], title)
             pages.append({"version": 3, "tabName": title, "fnKeyIndex": t, "fnKeySubIndex": sp,
-                          "qlinkBoundsData": qlink_column_bounds(tab, keys, base_dir), "componentName": comp,
+                          "qlinkBoundsData": qlink_column_bounds(tab, keys, base_dir) if QLINK_COLUMNS else ["0 0 0 0"],
+                          "componentName": comp,
                           "initialSize": "0 0 %d %d" % (W, H), "scale": 1.0})
             qmap.append({"Tab": t + 1, "SubTab": sp + 1, "Bank Direction": "Column", "Q-Links": ql})
             defs[comp] = {"key": comp, "value": {
@@ -1003,7 +1011,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                 "backgroundData": {"version": 1, "focussed": {"version": 1, "colour": "ff" + PLATE, "image": ""},
                                    "unfocussed": {"version": 1, "colour": "ff" + PLATE, "image": ""}},
                 "ignoreMousePresses": False, "disableCoarseDataWheel": False, "repeats": 1,
-                "hideQLinkBounds": False, "componentsData": kids}}
+                "hideQLinkBounds": not QLINK_COLUMNS, "componentsData": kids}}
 
     for img, sw_, sh_, vert, lid in sorted(sliders):
         if lid:
