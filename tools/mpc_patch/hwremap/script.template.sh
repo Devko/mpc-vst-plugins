@@ -64,6 +64,10 @@ write_so() { # $1 destination
         { s = $0; n = length(s); for (i = 1; i <= n; i += 2) printf "%c", v[substr(s, i, 1)] * 16 + v[substr(s, i + 1, 1)] }' <<'HW_SO_HEX' > "$tmp" || { rm -f "$tmp"; die "could not unpack the library"; }
 @@SO_HEX@@
 HW_SO_HEX
+    # the awk unpacker can drop or mangle bytes on a device (NULs): never put a library into MPC's LD_PRELOAD unchecked
+    if [ "$(wc -c < "$tmp" | tr -d ' ')" != "@@SO_SIZE@@" ] || [ "$(sha256sum < "$tmp" | cut -d' ' -f1)" != "@@SO_SHA256@@" ]; then
+        rm -f "$tmp"; die "the library did not unpack correctly (size or sha256 differs); nothing was changed"
+    fi
     mv "$tmp" "$dest" || die "cannot install the library"
     chmod 755 "$dest" || die "cannot mark the library executable"
 }
@@ -101,7 +105,7 @@ backup_present() { [ -d "$BK_ROOT" ] && [ -n "$(ls "$BK_ROOT" 2>/dev/null)" ]; }
 state_line() { echo "STATE state=$1 supported=$2 backup=$(backup_present && echo 1 || echo 0)${3:+ reason=$3}"; }
 
 need_tools() {
-    for c in awk sed grep cmp mktemp systemctl pidof; do
+    for c in awk sed grep cmp mktemp systemctl pidof wc tr cut sha256sum; do
         command -v "$c" >/dev/null || return 1
     done
     return 0
@@ -141,7 +145,7 @@ patch_launcher() {
             else if (match($0, /LD_PRELOAD="[^"]*"/))
                 $0 = substr($0, 1, RSTART + RLENGTH - 2) " /usr/lib/hwremap.so" substr($0, RSTART + RLENGTH - 1)
             else if (match($0, /LD_PRELOAD=[^[:space:]]+/))
-                $0 = substr($0, 1, RSTART + RLENGTH - 1) " /usr/lib/hwremap.so" substr($0, RSTART + RLENGTH)
+                $0 = substr($0, 1, RSTART + RLENGTH - 1) ":/usr/lib/hwremap.so" substr($0, RSTART + RLENGTH)
             else {
                 print "ERROR: a launcher line sets LD_PRELOAD in a shape this patch cannot edit" > "/dev/stderr"
                 print $0 > "/dev/stderr"
@@ -259,7 +263,7 @@ cmd_status() {
         if [ "$(id -u)" != 0 ]; then echo "Not root: run this on the device as root."; state_line unsupported 0 not-root; return; fi
         case "$(uname -m)" in armv7*) ;; *) echo "This is for 32-bit ARM MPC OS devices; this one is $(uname -m)."; state_line unsupported 0 arch; return ;; esac
     fi
-    if ! need_tools; then echo "A tool this patch needs is missing (awk, sed, grep, cmp, mktemp, systemctl, pidof)."; state_line unsupported 0 tools; return; fi
+    if ! need_tools; then echo "A tool this patch needs is missing (awk, sed, grep, cmp, mktemp, systemctl, pidof, wc, tr, cut, sha256sum)."; state_line unsupported 0 tools; return; fi
     STYLE=$(detect_style)
     if [ -z "$STYLE" ]; then
         echo "This device has neither the Hakai launcher ($LAUNCHER) nor an acvs or inmusic-mpc service."
@@ -294,7 +298,7 @@ prepare() { # shared checks for install and uninstall; sets SVC
         [ "$(id -u)" = 0 ] || die "run as root on the device"
         case "$(uname -m)" in armv7*) ;; *) die "this is for 32-bit ARM MPC OS devices (this one is $(uname -m))" ;; esac
     fi
-    need_tools || die "a tool this patch needs is missing (awk, sed, grep, cmp, mktemp, systemctl, pidof)"
+    need_tools || die "a tool this patch needs is missing (awk, sed, grep, cmp, mktemp, systemctl, pidof, wc, tr, cut, sha256sum)"
     SVC=$(mpc_service)
     [ -n "$SVC" ] || die "cannot find the MPC service (looked for acvs and inmusic-mpc)"
 }

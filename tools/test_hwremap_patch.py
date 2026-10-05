@@ -32,7 +32,7 @@ LAUNCHER_PATCHED = textwrap.dedent("""\
     #!/bin/sh
     export LD_PRELOAD="customBufferSizeMPC.so /usr/lib/hwremap.so $CURSOR_SO"
     LD_PRELOAD="/usr/lib/libforce_cursor.so /usr/lib/hwremap.so"
-    LD_PRELOAD=/usr/lib/foo.so /usr/lib/hwremap.so
+    LD_PRELOAD=/usr/lib/foo.so:/usr/lib/hwremap.so
     # a comment about LD_PRELOAD= must stay a comment
     """)
 
@@ -217,6 +217,32 @@ class Contract(Rig):
         log = read(self.log)
         self.assertIn("stop acvs", log)
         self.assertIn("start acvs", log)
+
+    def test_an_unquoted_preload_is_joined_with_a_colon(self):
+        # `LD_PRELOAD=a.so cmd` must stay one assignment: a space would make hwremap.so the command
+        self.launcher("#!/bin/sh\nLD_PRELOAD=/usr/lib/foo.so env\n")
+        r = self.patch("install", "--confirmed")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        text = read(os.path.join(self.root, "usr", "bin", "az01-launch-MPC"))
+        self.assertEqual(text, "#!/bin/sh\nLD_PRELOAD=/usr/lib/foo.so:/usr/lib/hwremap.so env\n")
+        seen = subprocess.run([SH, "-c", text], capture_output=True, text=True, timeout=30).stdout.splitlines()
+        self.assertIn("LD_PRELOAD=/usr/lib/foo.so:/usr/lib/hwremap.so", seen)
+
+    def test_a_library_that_unpacks_wrongly_is_never_installed(self):
+        text = read(SCRIPT)
+        a = text.index("\n", text.index("<<'HW_SO_HEX'")) + 1
+        digit = "0" if text[a] != "0" else "1"
+        bad = os.path.join(self.work, "bad.sh")
+        write(bad, text[:a] + digit + text[a + 1:])   # one hex digit of the embedded library changed
+        self.launcher()
+        r = subprocess.run([SH, bad, "install", "--confirmed"], env=self.env, capture_output=True, text=True, timeout=60)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("did not unpack correctly", r.stderr)
+        self.assertEqual(read(os.path.join(self.root, "usr", "bin", "az01-launch-MPC")), LAUNCHER)
+        self.assertFalse(os.path.exists(os.path.join(self.root, "usr", "lib", "hwremap.so")))
+        self.assertFalse(os.path.exists(os.path.join(self.root, "data", "hwremap", "VERSION")))
+        log = read(self.log)
+        self.assertEqual(log.count("stop acvs"), log.count("start acvs"), log)   # MPC is never left stopped
 
     def test_cancelled_before_any_write(self):
         self.launcher()

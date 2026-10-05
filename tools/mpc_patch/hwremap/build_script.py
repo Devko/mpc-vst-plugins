@@ -4,6 +4,7 @@
 The library is embedded as hex so the one script the device runs is the whole patch (docs/PATCHES.md).
 Build the library first (build.sh). Output is LF. A path argument writes there instead (tests).
 """
+import hashlib
 import os
 import sys
 
@@ -37,6 +38,8 @@ for label, body in (("mpc-live.conf", live), ("force.conf", force)):
 
 tpl = open(os.path.join(HERE, "script.template.sh"), encoding="utf-8").read()
 res = (tpl.replace("@@SO_HEX@@", hex_lines(so))
+          .replace("@@SO_SIZE@@", str(len(so)))
+          .replace("@@SO_SHA256@@", hashlib.sha256(so).hexdigest())
           .replace("@@CONF_LIVE@@", live)
           .replace("@@CONF_FORCE@@", force))
 if "@@" in res:
