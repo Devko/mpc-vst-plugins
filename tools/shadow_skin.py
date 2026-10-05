@@ -26,7 +26,7 @@ Layout file:
                                                         label_align=center needs the browser renderer, "art": "html")
     menu    cx= cy= w= h= label="..." key=<param>      (value text; tap opens MPC's native picker -- which
                                                          opens EMPTY for a VST2, see docs/NOTES.md; use popup)
-    popup   cx= cy= w= h= label="..." key=<param> [options="A,B,.."] [cols=<n>] [groups="Title:count[:RRGGBB],.."] [wheel=1] [accent=<hex>]
+    popup   cx= cy= w= h= label="..." key=<param> [options="A,B,.."] [cols=<n>] [groups="Title:count[:RRGGBB],.."] [wheel=1] [accent=<hex|none>]
                                                        (value text; tap opens a drawn option list, a pick closes it.
                                                         Needs the hidden "<param>__open" param: popup_params())
     stepper cx= cy= w= h= label="..." key=<param> [label_align=center]   (live text;
@@ -582,7 +582,7 @@ def _value_label(x, y, w, h, size, colour, just="horizontallyCentred verticallyC
                  font="Titillium Web"):
     return _sub("Label", {"version": 1, "textStyle": {"version": 1, "font": {"version": 1, "name": font,
                                                                          "style": style, "height": size},
-                                                   "colour": "ff" + colour, "justification": just, "case": "Original"},
+                                                   "colour": "00000000" if colour == "none" else "ff" + colour, "justification": just, "case": "Original"},
                           "type": "Value", "handleName": handle}, _bounds(x, y, w, h), "Value")
 
 
@@ -1100,7 +1100,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
             tb = dr.textbbox((0, 0), w["label"], font=group_font)
             tw, th = tb[2] - tb[0], tb[3] - tb[1]
             dr.text((gx - ox - tw / 2 - tb[0], gy - oy - th / 2 - tb[1]), w["label"], font=group_font, fill="#" + color)
-        for w in pops:   # the field's "opens a list" marker
+        for w in [q for q in pops if q.get("accent") != "none"]:   # the field's "opens a list" marker (accent=none: invisible field)
             x, y = w["cx"] + w["w"] // 2 - 22 - ox, w["cy"] - oy
             dr.polygon([(x - 8, y - 4), (x + 8, y - 4), (x, y + 5)], fill="#" + (w.get("accent") or ACCENT))
         im.save(path)
