@@ -364,3 +364,36 @@ func TestReadOnlyMountsAreNeverOffered(t *testing.T) {
 		t.Errorf("a writable exFAT location is offered and flagged: %+v", d2.Info.Roots)
 	}
 }
+
+// A drive named "SSD - Force" (the Force's SSD, mounted noexec): the mount point holds spaces, /proc/mounts writes them as \040.
+func TestNoexecMountWithSpacesInItsNameIsFlaggedAndRefused(t *testing.T) {
+	fd := newFakeDevice(t)
+	card := fd.addCard("SSD - Force")
+	mp := filepath.Dir(card)
+	// BusyBox df prints the mount point last, spaces and all
+	os.WriteFile(filepath.Join(fd.shims, "df"), []byte("#!/bin/sh\nfor a; do last=\"$a\"; done\ncase \"$last\" in\n\"$SSDSYNTHS\") echo 'Filesystem 1024-blocks Used Available Capacity Mounted on'; echo '/dev/sda1 1000000 1000 900000 1% '\"$SSDMP\" ;;\n*) exec /usr/bin/df \"$@\" ;;\nesac\n"), 0o755)
+	t.Setenv("SSDSYNTHS", card)
+	t.Setenv("SSDMP", mp)
+	mounts := filepath.Join(fd.dir, "mounts")
+	os.WriteFile(mounts, []byte("/dev/sda1 "+strings.ReplaceAll(mp, " ", `\040`)+" exfat rw,nosuid,nodev,noexec,relatime 0 0\n"), 0o644)
+	cfg := fd.cfg()
+	cfg.MountsFile = mounts
+	cfg.RootGlobs = shQuote(filepath.Join(fd.dir, "Synths")) + " " + shQuote(card) // paths with spaces are one shell word each
+	d, err := Dial("127.0.0.1", "secret", cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	root, ok := d.Info.root(card)
+	if !ok || root.FS != "exfat" || !root.NoExec || !root.NoSymlinks || root.FreeKB != 900000 {
+		t.Fatalf("an exFAT noexec location with a space in its name is read whole: %+v (found %v)", root, ok)
+	}
+	a := installerPkg(t, "A-1", "a-plug", "me - VST - A", fakeInstaller("A", false, 0))
+	err = RunInstall(d, root, []Item{{Pkg: a}}, t.TempDir(), &Job{ID: "x", State: "running"}, nil)
+	if err == nil || !strings.Contains(err.Error(), "noexec") {
+		t.Errorf("an install onto a noexec location must be refused: %v", err)
+	}
+	if len(fd.calls()) != 0 {
+		t.Error("MPC must not be touched when the install is refused")
+	}
+}

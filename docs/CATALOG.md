@@ -140,6 +140,7 @@ here first and move to its own repo (recommended, for community ownership) once 
 - [x] Guide pages Install, Build, Workflow and Add yours (2026-09-29): Markdown in `catalog/pages/*.md`, rendered by `tools/catalog_site.py`
       with a shared menu; checked in headless Chromium at desktop and phone width.
 - [x] (2026-09-29; live, `feed.xml` and `catalog.tsv` both served, checked 2026-10-02) Atom feed `feed.xml`; "Tested on" from optional `tested.json` in the plugin repo; contributor docs in `catalog/README.md`.
+- [x] (2026-10-03) `catalog/patches.json`, the device patches the installer app lists in its read-only step 7, is validated by `tools/patch_check.py` and published by `tools/catalog_site.py` next to `catalog.json` (`docs/PATCHES.md`).
 - [ ] Announce to the community; collect what people actually ask for before building Phase 4.
 
 ### Distribution: build-yourself (2026-09-29)
@@ -185,6 +186,13 @@ Locrian's installer uses a drop-in folder in `Synths` (`docs/CATALOG_SPEC.md`, "
       `MPC.settings.bak-*` backups (step 5; `mpc-store.sh prune`). The catalog records per version whether the installer understands `-n`
       (`defer`), so the app states the exact restart count; `mpc-store.sh` runs an older installer by itself instead of passing it `-n`.
 - [ ] Update notices honour `param_compat` (a major bump warns that saved projects will change).
+
+### Addins (2026-10-02)
+- [x] Libraries MPC preloads are a catalog kind (`addin`, `docs/ADDINS.md`): the shared LD_PRELOAD installer lives in
+      `tools/release/addin` (tested with sh and BusyBox, `tools/test_addin.sh`), `tools/release_addin.py` packages an addin,
+      `catalog_check.py` validates it, the registry, `catalog.tsv` and the site list it, and `mpc-store.sh` and the desktop app
+      install, update and remove addins in the same single MPC restart as plugins.
+- [x] Device test of released addins through the zip, `mpc-store.sh` and the desktop app (NOTES.md 2026-10-03).
 
 ### Phase 5: Nice to have
 - [ ] Automated screenshot generation of every skin page from the zip (reuses `studio.py preview`).

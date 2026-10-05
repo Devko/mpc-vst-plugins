@@ -25,10 +25,11 @@ type Config struct {
 	RootGlobs    string // where to look for plugin locations, shell words (globs allowed): "/sdcard/Synths /media/*/Synths"
 	SettingsGlob string // where MPC.settings is
 	MountsFile   string // the list of mounts, "/proc/mounts"
+	AddinsDir    string // where addins live, one folder each: "/data/mpc-addins"
 }
 
 func defaultConfig() Config {
-	return Config{Port: "22", User: "root", RemoteTmp: "/tmp", SynthsDir: "/sdcard/Synths", RootGlobs: "/sdcard/Synths /media/*/Synths", MountsFile: "/proc/mounts", SettingsGlob: "/media/az01-internal/Settings/*/MPC.settings"}
+	return Config{Port: "22", User: "root", RemoteTmp: "/tmp", SynthsDir: "/sdcard/Synths", RootGlobs: "/sdcard/Synths /media/*/Synths", MountsFile: "/proc/mounts", SettingsGlob: "/media/az01-internal/Settings/*/MPC.settings", AddinsDir: "/data/mpc-addins"}
 }
 
 type DeviceInfo struct {
@@ -45,6 +46,7 @@ type DeviceInfo struct {
 	Installed   []string                     `json:"installed"` // names of the plugin folders found in any of them
 	Store       map[string]string            `json:"store"`     // plugin id -> version recorded by this app or mpc-store.sh, in the internal drive
 	Plugins     []DevPlugin                  `json:"-"`
+	Addins      []DevAddin                   `json:"-"`
 	Stores      map[string]map[string]string `json:"-"` // root path -> plugin id -> recorded version
 }
 
@@ -58,6 +60,7 @@ type Root struct {
 	Primary    bool   `json:"primary"`
 	InContent  bool   `json:"inContent"`  // MPC lists it as a content location, so a plugin's screen shows
 	NoSymlinks bool   `json:"noSymlinks"` // FAT, exFAT and NTFS cannot store symbolic links
+	NoExec     bool   `json:"noExec"`     // mounted noexec: MPC cannot load a plugin from it
 	ID         string `json:"-"`
 }
 
@@ -106,6 +109,15 @@ type DevPlugin struct {
 	Name   string `json:"name"`
 }
 
+// DevAddin is an addin folder on the device (one with an addin.manifest). Removable: it carries its own uninstall.sh (every addin
+// installed by the addin installer does); Version is "" for an addin installed without a catalog release.
+type DevAddin struct {
+	ID        string
+	Name      string
+	Version   string
+	Removable bool
+}
+
 type Device struct {
 	client *ssh.Client
 	cfg    Config
@@ -152,10 +164,9 @@ func Dial(host, password string, cfg Config) (*Device, error) {
 	if !validHost(host) {
 		return nil, errors.New("use the address as numbers and dots (or a host name)")
 	}
+	// With no password and no key, auth is empty and the client offers only "none", which a device whose root has no
+	// password (some modified firmware) accepts.
 	auth := authMethods(password)
-	if len(auth) == 0 {
-		return nil, errors.New("enter the device's password (no SSH key was found on this computer)")
-	}
 	var fp string
 	conf := &ssh.ClientConfig{
 		User: cfg.User, Auth: auth, Timeout: 10 * time.Second,
@@ -163,6 +174,9 @@ func Dial(host, password string, cfg Config) (*Device, error) {
 	}
 	c, err := ssh.Dial("tcp", net.JoinHostPort(host, cfg.Port), conf)
 	if err != nil {
+		if len(auth) == 0 && strings.Contains(err.Error(), "unable to authenticate") {
+			return nil, errors.New("enter the device's password (no SSH key was found on this computer)")
+		}
 		return nil, fmt.Errorf("cannot log in to %s: %w", host, err)
 	}
 	d := &Device{client: c, cfg: cfg}
@@ -247,10 +261,13 @@ command -v systemctl >/dev/null 2>&1 && echo systemctl=1
 for r in %s; do
   [ -d "$r" ] && [ -w "$r" ] || continue
   rid=$(stat -L -c '%%d:%%i' "$r" 2>/dev/null)
-  set -- $(df -k "$r" 2>/dev/null | awk 'NR==2 {print $4, $NF}'); free=${1:-0}; mp=${2:-/}
-  set -- $(awk -v m="$mp" '$2 == m {t = $3; o = $4} END {print t, o}' %s 2>/dev/null); fs=${1:-}; opts=${2:-}
+  dfl=$(df -kP "$r" 2>/dev/null | awk 'NR==2 {m = $6; for (i = 7; i <= NF; i++) m = m " " $i; print $4 "\t" m}')   # the mount point may hold spaces ("/media/SSD - Force")
+  free=${dfl%%%%$TAB*}; mp=${dfl#*$TAB}; [ -n "$free" ] || free=0; [ -n "$mp" ] || mp=/
+  mpe=$(printf %%s "$mp" | sed 's/ /\\040/g')   # /proc/mounts writes a space as \040
+  set -- $(MP="$mpe" awk '$2 == ENVIRON["MP"] {t = $3; o = $4} END {print t, o}' %s 2>/dev/null); fs=${1:-}; opts=${2:-}
   case ",$opts," in *,ro,*) continue ;; esac   # a read-only mount (MPC's own content folder) cannot take plugins, even though root may "write" to it
-  printf 'root=%%s\t%%s\t%%s\t%%s\n' "$r" "$rid" "$free" "$fs"
+  nx=0; case ",$opts," in *,noexec,*) nx=1 ;; esac   # MPC cannot load a .so from a noexec mount (a Force's SSD): it lists the plugin but shows only "Load Plugin"
+  printf 'root=%%s\t%%s\t%%s\t%%s\t%%s\n' "$r" "$rid" "$free" "$fs" "$nx"
   if [ -f "$r/.mpc-store" ]; then sed "s|^|store=$r$TAB|" "$r/.mpc-store"; fi
   for d in "$r"/*/; do
     f="${d}plugin-meta.xml"; [ -f "$f" ] || continue
@@ -260,7 +277,13 @@ for r in %s; do
 done
 SET=$(ls %s 2>/dev/null | head -n 1)
 if [ -n "$SET" ]; then sed -n 's/.*<Location>\(.*\)<\/Location>.*/loc=\1/p' "$SET"; fi
-true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp), d.cfg.RootGlobs, shQuote(d.cfg.MountsFile), d.cfg.SettingsGlob)
+mval() { sed -n "s/^$1=//p" "$2" | head -n 1 | sed -e 's/^"\([^"]*\)".*/\1/;t' -e "s/^'\\([^']*\\)'.*/\\1/;t" -e 's/[[:space:]]*#.*//'; }
+for d in %s/*/; do
+  f="${d}addin.manifest"; [ -f "$f" ] || continue
+  u=0; [ -f "${d}uninstall.sh" ] && u=1
+  printf 'addin=%%s\t%%s\t%%s\t%%s\n' "$(basename "$d")" "$(mval ADDIN_VERSION "$f")" "$u" "$(mval ADDIN_NAME "$f")"
+done
+true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp), d.cfg.RootGlobs, shQuote(d.cfg.MountsFile), d.cfg.SettingsGlob, shQuote(d.cfg.AddinsDir))
 	info := DeviceInfo{Host: host, Fingerprint: fp, Synths: d.cfg.SynthsDir, Installed: []string{}, Store: map[string]string{}, Stores: map[string]map[string]string{}}
 	var lines []string
 	var mu sync.Mutex
@@ -295,7 +318,19 @@ true`, shQuote(d.cfg.SynthsDir), d.cfg.SettingsGlob, shQuote(d.cfg.RemoteTmp), d
 		case "root":
 			if len(f) >= 4 {
 				free, _ := strconv.ParseInt(strings.TrimSpace(f[2]), 10, 64)
-				cands = append(cands, Root{Path: f[0], ID: f[1], FreeKB: free, FS: f[3]})
+				cands = append(cands, Root{Path: f[0], ID: f[1], FreeKB: free, FS: f[3], NoExec: len(f) >= 5 && f[4] == "1"})
+			}
+		case "addin":
+			if len(f) >= 4 && idRe.MatchString(f[0]) {
+				name := strings.TrimSpace(f[3])
+				if i := strings.Index(name, "  #"); i >= 0 { // a trailing comment
+					name = strings.TrimSpace(name[:i])
+				}
+				name = strings.Trim(name, `"'`)
+				if name == "" {
+					name = f[0]
+				}
+				info.Addins = append(info.Addins, DevAddin{ID: f[0], Name: name, Version: strings.Trim(f[1], `"'`), Removable: f[2] == "1"})
 			}
 		case "plug":
 			if len(f) >= 4 {

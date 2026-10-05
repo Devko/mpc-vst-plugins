@@ -21,8 +21,12 @@ import os
 import re
 import shutil
 import stat
+import sys
 import tempfile
 import zipfile
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from catalog_check import max_glibc  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -167,15 +171,12 @@ See `SHA256SUMS`. Made with [mpc-vst-plugins](https://github.com/sd88me/mpc-vst-
            where="Instrument plugins" if kind == "instrument" else "Insert effects")
 open(os.path.join(root, "INSTALL.md"), "w").write(install_md)
 
-def max_glibc(path):
-    """Highest GLIBC_x.y[.z] symbol version the .so asks for, as 'x.y[.z]' (None if it needs none)."""
-    found = re.findall(rb"GLIBC_(\d+(?:\.\d+){1,2})", open(path, "rb").read())
-    return max((f.decode() for f in found), key=lambda v: tuple(map(int, v.split(".")))) if found else None
-
-
 def elf_machine(path):
     d = open(path, "rb").read(20)
-    return {40: "armv7", 62: "x86_64", 183: "aarch64", 3: "x86"}.get(int.from_bytes(d[18:20], "little"), "unknown") if d[:4] == b"\x7fELF" else "not-elf"
+    if d[:4] != b"\x7fELF":
+        return "not-elf"
+    arch = {40: "armv7", 62: "x86_64", 183: "aarch64", 3: "x86"}.get(int.from_bytes(d[18:20], "little"), "unknown")
+    return arch if arch != "armv7" or d[4:6] == b"\x01\x01" else "unknown"   # ARM, but not 32-bit little-endian
 
 
 def walk(top):
@@ -213,6 +214,8 @@ manifest = {
     "cpu": {"p99_pct": bench["p99_pct"], "max_pct": bench["max_pct"], "verdict": bench["verdict"]} if bench else None,
 }
 open(os.path.join(root, "mpc-plugin.json"), "w").write(json.dumps(manifest, indent=2) + "\n")
+# a copy travels with the installed folder, so a device-side manager can tell which version is installed
+open(os.path.join(pdir, "mpc-plugin.json"), "w").write(json.dumps(manifest, indent=2) + "\n")
 
 # MODES: the executable files and symlinks inside the plugin folder (tab separated: "x<TAB>path", "l<TAB>path<TAB>target").
 # A zip unpacked on Windows, or copied file by file, loses exec bits and turns symlinks into small text files; install.sh

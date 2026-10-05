@@ -7,7 +7,7 @@ built-in JUCE plugin host, with native MPC screen skins. Start here:
    truth, and add to it whenever you verify something new (with the date).
 2. `docs/PORTING.md`: the checklist for porting an engine or app to a plugin.
 3. `docs/BENCH.md` (CPU check) and `docs/RELEASING.md` (release zip + installer) before shipping a port.
-   `docs/ROADMAP.md`: repo features still to do.
+   `docs/ROADMAP.md`: repo features still to do. `docs/ADDINS.md`: addins (libraries MPC preloads) in the catalog.
 4. `.claude/skills/mpc-vst-plugin/SKILL.md`: the build → skin → register → test workflow and gotchas.
 
 Ground rules:
@@ -21,4 +21,7 @@ Ground rules:
   hand-written.
 - Keep the repo device-generic: no private IPs, serials or MockbaMod-specific naming. MockbaMod facts go in
   NOTES.md only where they affect behaviour.
+- Docs sync: a change that adds or alters a feature, tool, vst.json key, `defines` option, workflow or verified fact updates the docs
+  it touches in the same PR (map in the skill's "Docs sync"; the PR template asks). Date new facts and say offline vs device. If
+  none apply, write "no docs needed" in the PR. Before merging or finishing, list the recent PRs and check their docs for stale claims.
 - Commit trailers per the session's instructions; one commit per concern.

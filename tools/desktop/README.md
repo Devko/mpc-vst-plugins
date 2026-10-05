@@ -11,13 +11,13 @@ one MPC stop and start around the whole batch when the installers allow it.
 
 ## What it does, in order
 
-1. **Connect:** SSH as root with your password or a key in `~/.ssh` (no passphrase). It reads the device (32-bit ARM? `tar`?
+1. **Connect:** SSH as root with your password, a key in `~/.ssh` (no passphrase), or neither on a device whose root has no password. It reads the device (32-bit ARM? `tar`?
    `systemctl`? where is `MPC.settings`?) and refuses one that is not an MPC OS device. The device's key fingerprint is shown; nothing
    about the device is saved.
    The device scan lists every writable `Synths` location (the internal drive, and `/media/*/Synths` for cards and drives; read-only mounts such as
    MPC's own content folder are skipped, and the same storage reached by two paths is listed once). Step 3 lets you pick where to install, the
    internal drive by default, and warns when MPC does not list the folder as a content location. A drive that cannot store symbolic links
-   (FAT, exFAT, NTFS) is refused for a package that needs them, and so is a drive without room.
+   (FAT, exFAT, NTFS) is refused for a package that needs them, and so is a drive without room. A drive mounted `noexec` (a Force's SSD is) is refused too: MPC cannot load a plugin from it, so the plugin would be listed but only show "Load Plugin".
 2. **Choose:** the catalog's newest stable release of every downloadable plugin, plus any zips you drop in. A search box, kind and
    developer filters, a sort, and a "show" filter (not on the device, on the device, updates available, only the ones you ticked) keep a
    long list manageable; what you ticked stays ticked while you filter, and a bar at the bottom shows the count and an Install button.
@@ -42,6 +42,17 @@ one MPC stop and start around the whole batch when the installers allow it.
    `MPC.settings.bak-<what>-<date>` that nothing deletes. The page counts them and deletes all but the newest N (default 10, at least 1:
    the newest is never deleted, and only files named like that are touched). MPC is not stopped. `mpc-store.sh prune [--keep N]` does the
    same on the device.
+7. **Advanced: device patches** (step 7, collapsed, read only for now; `docs/PATCHES.md`): lists the patches in `patches.json` (published next to
+   `catalog.json`) and, when you open the step or press "Check the device", asks the device which are applied. A patch changes the device itself,
+   not a plugin; a row shows Not applied, Applied, Installed-not-active, or why it is not supported (for example the device's MPC checksum, or that no drive is mounted `noexec`). The app downloads the script, checks it against the manifest's sha256, copies it to a private folder on the device, runs only its
+   `status` command and removes the copy. It does not apply or undo anything; the page says how to run the script yourself. Nothing is asked of the
+   device at connect time, and not while a job runs. Tests: `patches_test.go`, and `ui_test/ui_patches.py` (a browser test with the API stubbed).
+
+**Addins** (catalog kind `addin`: libraries MPC loads when it starts, `docs/ADDINS.md`) go through the same steps. A catalog addin or a
+dropped addin zip installs to `/data/mpc-addins/<id>` with its own `install.sh -y -n`, inside the same single MPC stop and start, whatever
+location step 3 picked. Step 4 lists the addins found there after the plugins; one installed by its `install.sh` carries its own `uninstall.sh`,
+which removal runs (it takes the addin out of MPC's `LD_PRELOAD` and deletes its folder; `MPC.settings` is not touched). A folder
+without one is listed but not removable here.
 
 The catalog says, for every version, whether its installer understands `-n` (`defer` in `catalog.json`, the last column of `catalog.tsv`).
 The page uses that to state the exact number of MPC restarts before you confirm, and marks releases whose older installer restarts MPC by

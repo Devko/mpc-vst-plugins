@@ -40,16 +40,30 @@ Check: `docker run --rm hello-world` prints a short welcome message. If it does,
 On Windows with WSL, work inside your Ubuntu home folder (`cd ~`), not under `/mnt/c/`. Builds are much faster there and file permissions behave.
 
 ## Plugins you build yourself
-A plugin with the **Build it yourself** badge in the catalog has no download: its build embeds your own firmware, so nobody can publish the result. You build it once, on **your computer**, then install the result on your device with the [installer app](install.html). The device itself does not build anything.
+A plugin with the **Build it yourself** badge in the catalog has no download: its build embeds your own firmware, so nobody can publish the result. You build it once, on **your computer**, then install the result on your device. The device itself does not build anything.
 
-1. **Get your own files.** The plugin's card lists them under "You need" (for example an Elektron OS `.syx` file). Keep them somewhere you can find.
-2. **Set up your computer.** You need Docker, git and Python 3, and a Linux-style shell: macOS, Ubuntu, or Ubuntu in WSL on Windows. "Get your computer ready" above walks through it, with a check after each step.
-3. **Get the plugin's source on your computer.** This is the `git clone` step in the plugin's README: run `git clone --recursive https://github.com/<owner>/<plugin-repo>.git`, then `cd <plugin-repo>`. The card's Source link shows the repo.
-4. **Run the build command** from the plugin's card, with the path to your own file. It builds inside Docker and takes a few minutes; the first run also downloads what it needs. It stops with an error if its self-check fails rather than giving you a build that is not verified.
-5. **Install it.** The build leaves a zip in the plugin's `dist/` folder. Start the [installer app](install.html), connect, and drop that zip into the box in step 2 of the page, then press Install. (If the build command has a `-d <device-ip>` option, adding it installs straight onto the device instead.)
+**The process at a glance:**
+
+| | Step | Where |
+|---|---|---|
+| 1 | Get your own firmware or OS file | your computer |
+| 2 | Set up git, Python and Docker (once) | your computer |
+| 3 | Clone the plugin's source | your computer |
+| 4 | Run its build command | your computer (5 to 30 minutes) |
+| 5 | Install the zip it made | your device, over your network |
+
+In detail:
+
+1. **Get your own files.** The plugin's card lists them under "You need" (for example an Elektron OS `.syx` file). Download them from the manufacturer, or export them from your own hardware, and keep them in a folder whose path has no spaces. Use the exact version the card names: the build checks it.
+2. **Set up your computer.** You need Docker, git and Python 3, and a Linux-style shell: macOS, Ubuntu, or Ubuntu in WSL on Windows. "Get your computer ready" above walks through it, with a check after each step. This is a one-time job; every later build reuses it.
+3. **Get the plugin's source on your computer.** This is the `git clone` step in the plugin's README: run `git clone --recursive https://github.com/<owner>/<plugin-repo>.git`, then `cd <plugin-repo>`. The card's Source link shows the repo. `--recursive` matters: it fetches the parts the build needs.
+4. **Run the build command** from the plugin's card, with the path to your own file in quotes. It builds inside Docker and takes a few minutes (some take longer; the first run also downloads what it needs). Leave the computer awake and watch the output. It stops at the first error and names the step, and it refuses to finish if its self-check fails, rather than giving you a build that is not verified. After fixing a problem, run the same command again: finished work is reused.
+5. **Install it.** The build leaves a zip in the plugin's `dist/` folder. Start the [installer app](install.html), connect, and drop that zip into the box in step 2 of the page, then press Install. (If the build command has a `-d <device-ip>` option, adding it installs straight onto the device instead.) Save your project first: MPC restarts.
 6. **Keep the result to yourself.** It contains data derived from your firmware. Install it on your own devices only and never share or upload it.
 
-The exact command, and any extra tools it needs, are on the plugin's card and in its README.
+To update later, pull the latest source (`git pull --recurse-submodules`) and run the build command again.
+
+The exact command, and any extra tools it needs, are on the plugin's card and in its README. Step-by-step versions for the two Elektron ports: [Monomodule](https://github.com/sd88me/mpc-vst-monomodule#install) and [Machinemodule](https://github.com/sd88me/mpc-vst-machinedrum#building).
 
 ## Build your own plugin from an engine
 An MPC OS plugin is a small Linux library (`.so`) for the device's ARM processor, plus a **skin**: a folder that describes the plugin's page on the MPC screen. This repo's tools build both from one small description file, and they test the result on your PC before it goes anywhere near a device.

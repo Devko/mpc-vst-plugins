@@ -25,6 +25,7 @@ type App struct {
 	token      string
 	hosts      map[string]bool // accepted Host headers
 	catalogURL string
+	patchesURL string
 	work       string
 
 	mu      sync.Mutex
@@ -33,11 +34,16 @@ type App struct {
 	cat     []CatPlugin
 	catAt   time.Time
 	job     *Job
+
+	patches   []Patch
+	patchesAt time.Time
+	patchNote string            // why there are no patches (none published yet), shown by the page
+	patchCode map[string][]byte // verified scripts by sha256, so connecting again does not download them again
 }
 
 func NewApp(cfg Config, token, hostport, catalogURL, work string) *App {
 	port := hostport[strings.LastIndex(hostport, ":")+1:]
-	return &App{cfg: cfg, token: token, catalogURL: catalogURL, work: work, uploads: map[string]*Package{},
+	return &App{cfg: cfg, token: token, catalogURL: catalogURL, patchesURL: patchesURLFor(catalogURL), work: work, uploads: map[string]*Package{}, patchCode: map[string][]byte{},
 		hosts: map[string]bool{"127.0.0.1:" + port: true, "localhost:" + port: true}}
 }
 
@@ -59,6 +65,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/backups", a.backups)
 	mux.HandleFunc("/api/prune", a.prune)
 	mux.HandleFunc("/api/job", a.jobStatus)
+	mux.HandleFunc("/api/patches", a.patchList)
 	return a.guard(mux)
 }
 
@@ -200,6 +207,18 @@ func (a *App) catalog(w http.ResponseWriter, r *http.Request) {
 	}
 	rows := []row{}
 	for _, c := range a.cat {
+		if c.Kind == "addin" { // an addin is found by its id in the addins folder, and its folder records the version
+			iv, ok := "", false
+			if a.dev != nil {
+				for _, da := range a.dev.Info.Addins {
+					if da.ID == c.ID {
+						iv, ok = da.Version, true
+					}
+				}
+			}
+			rows = append(rows, row{c, ok, "", iv, iv != "" && iv != c.Version})
+			continue
+		}
 		dp, ok := where[c.Skin]
 		iv, at := "", ""
 		if ok {
@@ -460,6 +479,7 @@ type knownPlugin struct {
 	Known     bool     `json:"known"`
 	Keep      []string `json:"keep"`
 	Source    string   `json:"source,omitempty"`
+	Addin     bool     `json:"addin"`
 }
 
 // classify matches the device's plugin folders to the catalog and to the dropped zips. Caller holds a.mu and a.dev != nil.
@@ -492,6 +512,10 @@ func (a *App) classify() []knownPlugin {
 			kp.RootLabel = rt.Label
 		}
 		out = append(out, kp)
+	}
+	for _, da := range a.dev.Info.Addins { // listed after the plugins, as one more location; removable when it carries its uninstall.sh
+		out = append(out, knownPlugin{DevPlugin: DevPlugin{Root: a.dev.cfg.AddinsDir, Folder: da.ID, Name: da.Name}, ID: da.ID,
+			Version: da.Version, RootLabel: "Addins", Known: da.Removable, Keep: []string{}, Source: "addin", Addin: true})
 	}
 	return out
 }
@@ -571,11 +595,15 @@ func (a *App) remove(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, fmt.Sprintf("%q is not a plugin folder on the device", it.Folder))
 			return
 		}
+		if kp.Addin && !kp.Known {
+			fail(w, 400, fmt.Sprintf("the addin %s has no uninstall.sh in its folder (it was not installed by the addin installer): remove it by hand", it.Folder))
+			return
+		}
 		if !kp.Known {
 			fail(w, 400, fmt.Sprintf("%s was not installed from the catalog, so the app cannot tell which files in it are yours. Drop its release zip above to manage it, or remove it by hand.", it.Folder))
 			return
 		}
-		plans = append(plans, RemovePlan{Root: kp.Root, Folder: kp.Folder, UID: kp.UID, ID: kp.ID, Keep: kp.Keep})
+		plans = append(plans, RemovePlan{Root: kp.Root, Folder: kp.Folder, UID: kp.UID, ID: kp.ID, Keep: kp.Keep, Addin: kp.Addin})
 	}
 	if len(plans) == 0 {
 		fail(w, 400, "nothing selected")
@@ -719,4 +747,49 @@ func (a *App) prune(w http.ResponseWriter, r *http.Request) {
 	}
 	bi, _ := dev.Backups()
 	writeJSON(w, 200, map[string]any{"deleted": n, "backups": bi})
+}
+
+// patchList is read only: the manifest (cached ten minutes) and, when connected, each patch's state from its script's `status`.
+// Nothing is applied here; while a job runs the device is not asked at all.
+func (a *App) patchList(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	if a.patches == nil || time.Since(a.patchesAt) > 10*time.Minute {
+		a.mu.Unlock()
+		ps, err := FetchPatches(a.patchesURL)
+		a.mu.Lock()
+		switch {
+		case errors.Is(err, errNoPatches):
+			a.patches, a.patchesAt, a.patchNote = []Patch{}, time.Now(), "No device patches are published yet."
+		case err != nil:
+			a.mu.Unlock()
+			fail(w, 502, "cannot read the patch list: "+err.Error())
+			return
+		default:
+			a.patches, a.patchesAt, a.patchNote = ps, time.Now(), ""
+		}
+	}
+	patches, note, dev := a.patches, a.patchNote, a.dev
+	if a.job != nil {
+		if st, _, _, _ := a.job.snapshot(0); st == "running" {
+			dev, note = nil, "A job is running: patch states are checked when it is done."
+		}
+	}
+	a.mu.Unlock()
+	fetch := func(p Patch) ([]byte, error) {
+		a.mu.Lock()
+		data, ok := a.patchCode[p.Script.SHA256]
+		a.mu.Unlock()
+		if ok {
+			return data, nil
+		}
+		data, err := FetchPatchScript(p)
+		if err != nil {
+			return nil, err
+		}
+		a.mu.Lock()
+		a.patchCode[p.Script.SHA256] = data
+		a.mu.Unlock()
+		return data, nil
+	}
+	writeJSON(w, 200, map[string]any{"patches": PatchRows(dev, patches, fetch), "note": note, "connected": dev != nil})
 }

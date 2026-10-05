@@ -22,6 +22,33 @@
 #ifndef HAS_LFO_BPM
 #define HAS_LFO_BPM 0 /* 1: pass the host tempo to the DSP as "lfo_bpm" */
 #endif
+#ifndef HAS_DISPLAY_REV
+#define HAS_DISPLAY_REV 0 /* 1: the DSP changes values by itself (a worker thread, a state machine): on the readout poll
+                            * (every 100 ms, see housekeeping) read its "display_rev" and, when it changed, report every
+                            * value that moved and ask for an UpdateDisplay (status text, when= panels, meters) */
+#endif
+#ifndef PARAM_TEXT_MAX
+#define PARAM_TEXT_MAX 24 /* value text length handed to the host, NUL included. The VST2 spec says 8, JUCE's buffer is
+                           * bigger; ports that show sentences (status lines) raise it via vst.json "defines" */
+#endif
+#ifndef SAMPLE_ACCURATE
+#define SAMPLE_ACCURATE 0 /* 1 (instruments only): start each MIDI event at its VstMidiEvent.deltaFrames instead of at the
+                            * block start. The wrapper then renders exactly the frames the host asks for, in pieces of at
+                            * most 128 between events, so the engine's render() must accept any 1..128 frames (engine.h) */
+#endif
+#if SAMPLE_ACCURATE && defined(PLUG_EFFECT)
+#error "SAMPLE_ACCURATE is for instruments: an effect has no notes to place"
+#endif
+#ifdef WRAP_TRACE   /* poc/inputprobe: the port provides wrap_trace() and logs every raw host call (kind 0 = setParameter, 1 = getParameter) */
+void wrap_trace(int kind, int idx, float value);
+#define TRACE(kind, idx, value) wrap_trace(kind, idx, value)
+#else
+#define TRACE(kind, idx, value) ((void)0)
+#endif
+#ifndef HAS_TRANSPORT
+#define HAS_TRANSPORT 0 /* 1: tell the DSP when the host transport plays/stops as "transport" = "1"/"0"; a jump back
+                          * in song position while playing (a loop, a locate) is sent as "1" again */
+#endif
 #ifndef MODULE_DIR
 #define MODULE_DIR NULL /* set via vst.json "defines" for a DSP that reads its own files
                           * (ROMs, etc.) from "<module_dir>/..." (see jv880's create_instance) */
@@ -34,6 +61,7 @@
 #include "popup.h"
 
 #define DSP_BLOCK 128
+#define WRAP_EVQ 256   /* SAMPLE_ACCURATE: events queued per block; more are applied at once */
 
 /* ---- VST2 ABI (hand-written; no Steinberg SDK) -------------------------- */
 typedef struct AEffect AEffect;
@@ -74,6 +102,7 @@ enum {
     effGetVendorVersion = 49, effCanDo = 51, effGetVstVersion = 58,
 };
 enum { audioMasterAutomate = 0, audioMasterGetTime = 7, audioMasterUpdateDisplay = 42, kVstTempoValid = 1 << 10 };
+enum { kVstTransportPlaying = 1 << 1, kVstPpqPosValid = 1 << 9 };
 enum { effFlagsCanReplacing = 1 << 4, effFlagsProgramChunks = 1 << 5, effFlagsIsSynth = 1 << 8 };
 
 /* ---- per-instance state ------------------------------------------------- */
@@ -87,11 +116,23 @@ typedef struct {
     int inpos;
     double bpm;
     volatile int holdFrames[NPARAMS];  /* momentary params: frames left before reporting back to 0 (hold_ms) */
-    float shadow[NPARAMS];   /* unrounded position last set on an integer param; <0 = none */
-    signed char last_on[NPARAMS];  /* last "<key>_on" value told to the host, +1 (0 = unknown) */
+    volatile char changed[NPARAMS];  /* params the plugin changed itself (step_of on an option), to report */
+    float last_pos[NPARAMS]; /* stepped params: the last position the host asked for, in steps (-1 = none yet) */
+    float qacc[NPARAMS];     /* qlink_ticks: turn events counted toward the next step (see setParameter) */
+    signed char last_on[NPARAMS];  /* last "<key>_on" value told to the host, +1 (0 = unknown, -1 = the engine has no such key) */
+    unsigned last_text[NPARAMS];   /* hash of a text readout's last value (see housekeeping) */
+    int on_poll, text_poll;        /* frames until the next "<key>_on" poll / readout poll (see housekeeping) */
+    int playing;             /* HAS_TRANSPORT: last transport state sent */
+    double ppq;              /* HAS_TRANSPORT: song position at the last block, to spot a jump back */
     volatile char need_update_display;  /* deferred audioMasterUpdateDisplay -- see setParameter() */
+    char last_rev[16];       /* HAS_DISPLAY_REV: the "display_rev" last seen */
+    float last_norm[NPARAMS];   /* HAS_DISPLAY_REV: value last reported per param (-1 = never) */
     float open[NPARAMS];     /* popup "open" flags (popup.h): kept here, never sent to the DSP or saved */
     char chunk[8192];
+#if SAMPLE_ACCURATE
+    struct { int32_t frame; uint8_t msg[3]; } evq[WRAP_EVQ];   /* this block's MIDI, sorted by frame (see queue_midi) */
+    int nev;
+#endif
 } wrap_t;
 
 static const mpc_engine_t *g_api;
@@ -130,20 +171,25 @@ static float get_norm(wrap_t *w, int i) {
         if (g_api->get_param(w->dsp, k2, buf, sizeof buf) > 0) return atoi(buf) ? 1.0f : 0.0f;
     }
     if (g_api->get_param(w->dsp, PARAMS[i].key, buf, sizeof buf) <= 0) return PARAMS[i].def;
-    float v = str_to_norm(&PARAMS[i], buf);
-    /* An integer param is rounded on its way to the DSP, so a Q-Link nudge under one step would read back
-     * as the old value and never accumulate. Hand the host its unrounded position while the DSP still
-     * holds the value that position rounds to; if something else changed it, drop the shadow. */
-    if (PARAMS[i].int_display && !PARAMS[i].nopts && PARAMS[i].max > PARAMS[i].min && w->shadow[i] >= 0) {
-        float half = 0.5f / (PARAMS[i].max - PARAMS[i].min) + 1e-4f;
-        if (fabsf(v - w->shadow[i]) <= half) return w->shadow[i];
-        w->shadow[i] = -1;
-    }
-    return v;
+    return str_to_norm(&PARAMS[i], buf);
+}
+
+/* Where a param that moves in whole steps (an option list, a whole-number value) lands, in steps from its minimum.
+ * The host nudges it two ways: the data wheel sends the current value plus a fraction of a step, while a drag or a
+ * Q-Link sweep keeps sending positions from where it started, which just after a step still round back to the old
+ * value (the knob then flickers between two values). So round toward the way it's moving: from the host's last
+ * position while it moves continuously, else from the current value. A turn smaller than one step still moves one
+ * step, and a sweep moves steadily. */
+static float settle(float pos, float cur, float last) {
+    if (fabsf(pos - roundf(pos)) <= 0.001f) return roundf(pos);   /* on a step: a click, a preset, automation */
+    float dir = (last >= 0 && fabsf(pos - last) < 0.5f) ? pos - last : pos - cur;
+    if (dir == 0) return roundf(cur);
+    return dir > 0 ? ceilf(pos - 0.001f) : floorf(pos + 0.001f);
 }
 
 static void setParameter(AEffect *e, int32_t i, float n) {
     wrap_t *w = e->object;
+    TRACE(0, i, n);
     char buf[64];
     if (i < 0 || i >= NPARAMS) return;
     const param_t *p = &PARAMS[i];
@@ -156,7 +202,15 @@ static void setParameter(AEffect *e, int32_t i, float n) {
          * This trigger's own key is never sent to the DSP at all. */
         if (n > 0.5f) {
             const param_t *tp = &PARAMS[p->step_target];
-            if (g_api->get_param(w->dsp, tp->key, buf, sizeof buf) > 0) {
+            if (tp->nopts > 1 && g_api->get_param(w->dsp, tp->key, buf, sizeof buf) > 0) {
+                /* An option target (e.g. a synth model picked with two buttons): step by index, wrapping like
+                 * a hardware selector button, and report the new value so the host redraws what shows it. */
+                int idx = (int)lroundf(str_to_norm(tp, buf) * (tp->nopts - 1)) + (int)lroundf(p->step_delta);
+                idx = ((idx % tp->nopts) + tp->nopts) % tp->nopts;
+                norm_to_str(tp, (float)idx / (tp->nopts - 1), buf, sizeof buf);
+                g_api->set_param(w->dsp, tp->key, buf);
+                w->changed[p->step_target] = 1;
+            } else if (g_api->get_param(w->dsp, tp->key, buf, sizeof buf) > 0) {
                 float cur = (float)atof(buf) + p->step_delta;
                 if (cur < tp->min) cur = tp->min;
                 if (cur > tp->max) cur = tp->max;
@@ -177,32 +231,75 @@ static void setParameter(AEffect *e, int32_t i, float n) {
         return;
     }
     if (p->nopts > 1) {
-        /* A value on an option (button press, preset, automation) selects it. A value
-         * between options is a Q-Link/encoder nudge from the current one: step one
-         * option that way, else small nudges round back and never change state. */
-        float pos = clamp01(n) * (p->nopts - 1);
-        if (fabsf(pos - roundf(pos)) > 0.001f) {
-            nudge = 1;
-            float cur = get_norm(w, i) * (p->nopts - 1);
-            int idx = (int)lroundf(cur) + (pos > cur ? 1 : -1);
-            if (idx < 0) idx = 0;
-            if (idx > p->nopts - 1) idx = p->nopts - 1;
-            n = (float)idx / (p->nopts - 1);
+        /* A value on an option (button press, preset, automation) selects it; one between options is a
+         * Q-Link / data wheel / drag move, settled as above. A param with "qlink_ticks" > 1 instead counts small
+         * moves and steps one option per qlink_ticks of them in the same direction, like a detented knob (a slow
+         * Q-Link turn otherwise runs through a short list); turning back starts over. MPC sends Q-Link and data
+         * wheel moves alike (a small delta from the value it read back; docs/NOTES.md "Input probe"), so the
+         * wheel then takes qlink_ticks clicks per option too: opt in only where that is wanted. */
+        float pos = clamp01(n) * (p->nopts - 1), cur = get_norm(w, i) * (p->nopts - 1), idx;
+        nudge = fabsf(pos - roundf(pos)) > 0.001f;
+        if (p->qlink_ticks > 1 && nudge && fabsf(pos - cur) < 0.5f) {
+            float d = pos - cur;
+            w->last_pos[i] = pos;
+            if (d * w->qacc[i] < 0) w->qacc[i] = 0;
+            w->qacc[i] += d > 0 ? 1 : -1;
+            if (fabsf(w->qacc[i]) < p->qlink_ticks) return;   /* the host reads the same option back */
+            w->qacc[i] = 0;
+            idx = roundf(cur) + (d > 0 ? 1 : -1);
+        } else {
+            w->qacc[i] = 0;                  /* picked or jumped outright: nothing banked */
+            idx = settle(pos, cur, w->last_pos[i]);
+            w->last_pos[i] = pos;
         }
+        n = clamp01(idx / (p->nopts - 1));
+    }
+    else if (p->int_display && p->max > p->min) {
+        /* whole numbers: settled like options, or counted with "qlink_ticks" > 1 (a short range such as a MIDI
+         * channel). A move of half a step or more is a direct set (automation, a drag), not a tick. */
+        float span = p->max - p->min, pos = clamp01(n) * span, cur = get_norm(w, i) * span, steps;
+        if (p->qlink_ticks > 1 && fabsf(pos - roundf(pos)) > 0.001f && fabsf(pos - cur) < 0.5f) {
+            float d = pos - cur;
+            w->last_pos[i] = pos;
+            if (d * w->qacc[i] < 0) w->qacc[i] = 0;
+            w->qacc[i] += d > 0 ? 1 : -1;
+            if (fabsf(w->qacc[i]) < p->qlink_ticks) return;   /* the host reads the same value back */
+            w->qacc[i] = 0;
+            steps = roundf(cur) + (d > 0 ? 1 : -1);
+        } else {
+            w->qacc[i] = 0;
+            steps = settle(pos, cur, w->last_pos[i]);
+            w->last_pos[i] = pos;
+        }
+        n = clamp01(steps / span);
     }
     norm_to_str(p, n, buf, sizeof buf);
     g_api->set_param(w->dsp, PARAMS[i].key, buf);
-    w->shadow[i] = (p->int_display && !p->nopts) ? clamp01(n) : -1;
     if (PARAMS[i].momentary && n > 0.5f) w->holdFrames[i] = PARAMS[i].hold_ms > 0 ? (int)(PARAMS[i].hold_ms * 44.1f) : 1;
     if (!nudge) popup_picked(w->open, w->holdFrames, i);   /* a list pick closes it; a Q-Link nudge doesn't */
     w->need_update_display = 1;   /* deferred to processReplacing(), see the step_target branch above */
 }
 
-static float getParameter(AEffect *e, int32_t i) { return get_norm(e->object, i); }
+static float getParameter(AEffect *e, int32_t i) {
+    float v = get_norm(e->object, i);
+    TRACE(1, i, v);
+    return v;
+}
+
+static void update_transport(wrap_t *w, const VstTimeInfo *ti) {
+    int playing = (ti->flags & kVstTransportPlaying) != 0, ppq_ok = (ti->flags & kVstPpqPosValid) != 0;
+    int restart = playing && w->playing && ppq_ok && ti->ppqPos < w->ppq - 0.01;
+    if (playing != w->playing || restart) g_api->set_param(w->dsp, "transport", playing ? "1" : "0");
+    w->playing = playing;
+    if (ppq_ok) w->ppq = ti->ppqPos;
+}
 
 static void update_tempo(wrap_t *w) {
-    VstTimeInfo *ti = (VstTimeInfo *)w->master(&w->fx, audioMasterGetTime, 0, kVstTempoValid, 0, 0);
-    if (!ti || !(ti->flags & kVstTempoValid) || ti->tempo <= 0) return;
+    VstTimeInfo *ti = (VstTimeInfo *)w->master(&w->fx, audioMasterGetTime, 0,
+                                              kVstTempoValid | (HAS_TRANSPORT ? kVstPpqPosValid : 0), 0, 0);
+    if (!ti) return;
+    if (HAS_TRANSPORT) update_transport(w, ti);
+    if (!HAS_LFO_BPM || !(ti->flags & kVstTempoValid) || ti->tempo <= 0) return;
     if (fabs(ti->tempo - w->bpm) > 0.01) {
         char buf[32];
         w->bpm = ti->tempo;
@@ -213,6 +310,7 @@ static void update_tempo(wrap_t *w) {
 
 /* accumulate=1 is VST2's legacy process(), which must ADD to the output buffers; hosts here call
  * processReplacing, but a NULL e->process would crash any host that tried the old call. */
+#if !SAMPLE_ACCURATE
 static void render_frames(wrap_t *w, float **out, int32_t n, int accumulate) {
     for (int32_t i = 0; i < n; i++) {
         if (w->pos >= DSP_BLOCK) {
@@ -225,30 +323,112 @@ static void render_frames(wrap_t *w, float **out, int32_t n, int accumulate) {
         w->pos++;
     }
 }
+#endif
+
+#if SAMPLE_ACCURATE
+/* Instruments with SAMPLE_ACCURATE: no 128-frame buffering. The engine renders exactly the frames the host asked for
+ * (at most DSP_BLOCK per call), and each queued MIDI event goes in right before its own frame. An event past the end
+ * of the block (deltaFrames >= n) goes in after the last frame, i.e. at the start of the next block. */
+static void queue_midi(wrap_t *w, const uint8_t *msg, int32_t frame) {
+    if (w->nev == WRAP_EVQ) { g_api->midi(w->dsp, msg, 3); return; }   /* full: apply now, as without SAMPLE_ACCURATE */
+    if (frame < 0) frame = 0;
+    int k = w->nev++;
+    while (k > 0 && w->evq[k - 1].frame > frame) { w->evq[k] = w->evq[k - 1]; k--; }   /* stable: after equal frames */
+    w->evq[k].frame = frame;
+    memcpy(w->evq[k].msg, msg, 3);
+}
+
+static void drain_midi(wrap_t *w) {
+    for (int k = 0; k < w->nev; k++) g_api->midi(w->dsp, w->evq[k].msg, 3);
+    w->nev = 0;
+}
+
+static void render_events(wrap_t *w, float **out, int32_t n, int accumulate) {
+    int32_t i = 0;
+    int k = 0;
+    while (i < n) {
+        while (k < w->nev && w->evq[k].frame <= i) g_api->midi(w->dsp, w->evq[k++].msg, 3);
+        int32_t end = (k < w->nev && w->evq[k].frame < n) ? w->evq[k].frame : n;
+        while (i < end) {
+            int len = end - i > DSP_BLOCK ? DSP_BLOCK : (int)(end - i);
+            g_api->render(w->dsp, w->block, len);
+            for (int j = 0; j < len; j++) {
+                float l = w->block[j * 2] * (1.0f / 32768.0f), r = w->block[j * 2 + 1] * (1.0f / 32768.0f);
+                if (accumulate) { out[0][i + j] += l; out[1][i + j] += r; }
+                else { out[0][i + j] = l; out[1][i + j] = r; }
+            }
+            i += len;
+        }
+    }
+    for (; k < w->nev; k++) g_api->midi(w->dsp, w->evq[k].msg, 3);
+    w->nev = 0;
+}
+#endif
 
 static void housekeeping(AEffect *e, int32_t n) {
     wrap_t *w = e->object;
-    if (HAS_LFO_BPM) update_tempo(w);
+    if (HAS_LFO_BPM || HAS_TRANSPORT) update_tempo(w);
     /* A trigger param (e.g. Generate) fired: tell the host it is back to 0 so
      * buttons bound to it drop their highlight. Done here, not inside
      * setParameter, so the host is not re-entered from its own call. */
     for (int i = 0; i < NPARAMS; i++)
         if (w->holdFrames[i] > 0 && (w->holdFrames[i] -= n) <= 0) { w->holdFrames[i] = 0; w->master(&w->fx, audioMasterAutomate, i, 0, 0, 0.0f); }
+    for (int i = 0; i < NPARAMS; i++)
+        if (w->changed[i]) { w->changed[i] = 0; w->master(&w->fx, audioMasterAutomate, i, 0, 0, get_norm(w, i)); }
+    /* Text params are polled, not only read after a screen tap, because MIDI alone can change them (a pad plays
+     * a chord, nothing on screen touched):
+     * - list-tile selection ("<key>_on"), every 10 ms: the host doesn't re-read a button's value on UpdateDisplay,
+     *   so push a change with audioMasterAutomate (a tile lights while the pad is held);
+     * - a readout's text, every 100 ms: the host only re-reads it on UpdateDisplay, so ask for one when the text
+     *   changed (a chord name on a page without tiles stayed stale until something else was tapped).
+     * Only "display":"string" params without "poll":false are polled. A "<key>_on" the engine does not answer is
+     * asked once, then skipped. The two countdowns run independently of the block size; a readout that changes
+     * constantly (a clock) asks for at most 10 UpdateDisplays a second. Costs about one get_param per polled param per poll on the
+     * audio thread; docs/BENCH.md measures it (Chordsmith, 10 polled params: idle p99 under 4% of a block). */
+    int poll_on = (w->on_poll -= n) <= 0, poll_text = (w->text_poll -= n) <= 0;
+    if (poll_on && (w->on_poll += 441) <= 0) w->on_poll = 441;        /* keep the remainder, so the rate holds */
+    if (poll_text && (w->text_poll += 4410) <= 0) w->text_poll = 4410;   /* for any block size */
+    for (int i = 0; (poll_on || poll_text) && i < NPARAMS; i++) {
+        if (!PARAMS[i].string_display || PARAMS[i].no_poll) continue;
+        char k2[96], b2[64];   /* 64: the hash sees the first 63 characters, enough for a 47-character readout */
+        if (poll_on && w->last_on[i] >= 0) {
+            snprintf(k2, sizeof k2, "%s_on", PARAMS[i].key);
+            if (g_api->get_param(w->dsp, k2, b2, sizeof b2) > 0) {
+                int on = atoi(b2) ? 1 : 0;
+                if (w->last_on[i] != on + 1) {
+                    w->last_on[i] = (signed char)(on + 1);
+                    w->master(&w->fx, audioMasterAutomate, i, 0, 0, (float)on);
+                    w->need_update_display = 1;
+                }
+            } else
+                w->last_on[i] = -1;
+        }
+        if (poll_text && g_api->get_param(w->dsp, PARAMS[i].key, b2, sizeof b2) > 0) {
+            unsigned h = 2166136261u;   /* FNV-1a */
+            for (const char *s = b2; *s; s++) h = (h ^ (unsigned char)*s) * 16777619u;
+            if (h != w->last_text[i]) {
+                w->last_text[i] = h;
+                w->need_update_display = 1;
+            }
+        }
+    }
+    if (HAS_DISPLAY_REV && poll_text) {
+        char rev[16];
+        if (g_api->get_param(w->dsp, "display_rev", rev, sizeof rev) > 0 && strcmp(rev, w->last_rev)) {
+            snprintf(w->last_rev, sizeof w->last_rev, "%s", rev);
+            w->need_update_display = 1;
+            /* report what the engine changed by itself, so the host moves controls and re-evaluates
+             * IndexedEnabling (when= panels), not only text */
+            for (int i = 0; i < NPARAMS; i++) {
+                if (PARAMS[i].momentary || popup_is(i) || PARAMS[i].string_display) continue;
+                float v = get_norm(w, i);
+                if (fabsf(v - w->last_norm[i]) > 1e-4f) { w->last_norm[i] = v; w->master(&w->fx, audioMasterAutomate, i, 0, 0, v); }
+            }
+        }
+    }
     if (w->need_update_display) {
         w->need_update_display = 0;
         w->master(&w->fx, audioMasterUpdateDisplay, 0, 0, 0, 0.0f);
-        /* list-tile selection: the host doesn't re-read a button's value on UpdateDisplay, so push changes */
-        for (int i = 0; i < NPARAMS; i++) {
-            if (!PARAMS[i].string_display) continue;
-            char k2[96], b2[16];
-            snprintf(k2, sizeof k2, "%s_on", PARAMS[i].key);
-            if (g_api->get_param(w->dsp, k2, b2, sizeof b2) <= 0) continue;
-            int on = atoi(b2) ? 1 : 0;
-            if (w->last_on[i] != on + 1) {
-                w->last_on[i] = (signed char)(on + 1);
-                w->master(&w->fx, audioMasterAutomate, i, 0, 0, (float)on);
-            }
-        }
     }
 }
 
@@ -260,11 +440,14 @@ static int16_t f2s(float f) { f *= 32768.0f; return f >= 32767.0f ? 32767 : f <=
 static void run_block(AEffect *e, float **in, float **out, int32_t n, int accumulate) {
     wrap_t *w = e->object;
     housekeeping(e, n);
+    /* A conforming host passes real input to an effect, but a plugin scanner (and the device's own load
+     * probe) may call processReplacing with in == NULL; treat a missing input channel as silence. */
+    int have_in = in && in[0] && in[1];
     int32_t i = 0;
     while (i < n) {
         int aligned = w->inpos == 0 && w->pos >= DSP_BLOCK && n - i >= DSP_BLOCK;
         if (aligned) {
-            for (int j = 0; j < DSP_BLOCK; j++) { w->inb[2 * j] = f2s(in[0][i + j]); w->inb[2 * j + 1] = f2s(in[1][i + j]); }
+            for (int j = 0; j < DSP_BLOCK; j++) { w->inb[2 * j] = have_in ? f2s(in[0][i + j]) : 0; w->inb[2 * j + 1] = have_in ? f2s(in[1][i + j]) : 0; }
             g_api->process(w->dsp, w->inb, w->block, DSP_BLOCK);
             for (int j = 0; j < DSP_BLOCK; j++) {
                 float l = w->block[2 * j] * (1.0f / 32768.0f), r = w->block[2 * j + 1] * (1.0f / 32768.0f);
@@ -276,7 +459,7 @@ static void run_block(AEffect *e, float **in, float **out, int32_t n, int accumu
         float l = 0, r = 0;
         if (w->pos < DSP_BLOCK) { l = w->block[w->pos * 2] * (1.0f / 32768.0f); r = w->block[w->pos * 2 + 1] * (1.0f / 32768.0f); w->pos++; }
         if (accumulate) { out[0][i] += l; out[1][i] += r; } else { out[0][i] = l; out[1][i] = r; }
-        w->inb[2 * w->inpos] = f2s(in[0][i]); w->inb[2 * w->inpos + 1] = f2s(in[1][i]);
+        w->inb[2 * w->inpos] = have_in ? f2s(in[0][i]) : 0; w->inb[2 * w->inpos + 1] = have_in ? f2s(in[1][i]) : 0;
         if (++w->inpos == DSP_BLOCK) { g_api->process(w->dsp, w->inb, w->block, DSP_BLOCK); w->pos = 0; w->inpos = 0; }
         i++;
     }
@@ -287,7 +470,11 @@ static void process(AEffect *e, float **in, float **out, int32_t n) { run_block(
 static void run_block(AEffect *e, float **out, int32_t n, int accumulate) {
     wrap_t *w = e->object;
     housekeeping(e, n);
+#if SAMPLE_ACCURATE
+    render_events(w, out, n, accumulate);
+#else
     render_frames(w, out, n, accumulate);
+#endif
 }
 
 static void processReplacing(AEffect *e, float **in, float **out, int32_t n) { (void)in; run_block(e, out, n, 0); }
@@ -333,18 +520,18 @@ static intptr_t dispatcher(AEffect *e, int32_t op, int32_t idx, intptr_t v, void
         if (idx >= 0 && idx < NPARAMS) copy_str(p, PARAMS[idx].unit, 8);
         return 1;
     case effGetParamDisplay: {
-        char buf[64];
+        char buf[PARAM_TEXT_MAX > 64 ? PARAM_TEXT_MAX : 64];
         if (idx < 0 || idx >= NPARAMS) return 0;
         const param_t *pp = &PARAMS[idx];
         char k2[96];
         snprintf(k2, sizeof k2, "%s_display", pp->key);
         if (pp->dynamic_display && g_api->get_param(w->dsp, k2, buf, sizeof buf) > 0) {
-            copy_str(p, buf, 24);   /* text the DSP composes (e.g. a destination's own name) */
+            copy_str(p, buf, PARAM_TEXT_MAX);   /* text the DSP composes (e.g. a destination's own name) */
         } else if (pp->nopts) {
             int k = (int)lroundf(get_norm(w, idx) * (pp->nopts - 1));
-            copy_str(p, pp->opts[k], 24);
+            copy_str(p, pp->opts[k], PARAM_TEXT_MAX);
         } else if (g_api->get_param(w->dsp, pp->key, buf, sizeof buf) > 0) {
-            if (pp->string_display) copy_str(p, buf, 24);   /* real text (a name, a status), not a number */
+            if (pp->string_display) copy_str(p, buf, PARAM_TEXT_MAX);   /* real text (a name, a status), not a number */
             else snprintf(p, 24, "%.*f", (pp->int_display || fabs(pp->max - pp->min) > 20) ? 0 : 1, atof(buf));
         }
         return 1;
@@ -352,10 +539,17 @@ static intptr_t dispatcher(AEffect *e, int32_t op, int32_t idx, intptr_t v, void
     case effSetSampleRate: case effSetBlockSize: case effMainsChanged: return 1;
     case effProcessEvents: {
         VstEvents *ev = p;
+#if SAMPLE_ACCURATE
+        drain_midi(w);   /* left over if the host never processed the last block: late beats lost */
+#endif
         for (int i = 0; i < ev->numEvents; i++)
             if (ev->events[i]->type == 1) {
                 VstMidiEvent *m = (VstMidiEvent *)ev->events[i];
+#if SAMPLE_ACCURATE
+                queue_midi(w, (const uint8_t *)m->midiData, m->deltaFrames);
+#else
                 g_api->midi(w->dsp, m->midiData, 3);
+#endif
             }
         return 1;
     }
@@ -387,7 +581,6 @@ __attribute__((visibility("default"))) AEffect *VSTPluginMain(audioMasterCallbac
 #endif
     wrap_t *w = calloc(1, sizeof *w);
     if (!w) return NULL;
-    for (int i = 0; i < NPARAMS; i++) w->shadow[i] = -1;
 #ifdef MODULE_SUBDIR
     char data_dir[600], here[512];
     const char *module_dir = MODULE_DIR;   /* an absolute MODULE_DIR is still the fallback */
@@ -400,6 +593,7 @@ __attribute__((visibility("default"))) AEffect *VSTPluginMain(audioMasterCallbac
     if (!w->dsp) { free(w); return NULL; }
     w->master = master;
     w->pos = DSP_BLOCK;
+    for (int i = 0; i < NPARAMS; i++) w->last_pos[i] = w->last_norm[i] = -1;
     AEffect *e = &w->fx;
     e->magic = 0x56737450; /* 'VstP' */
     e->dispatcher = dispatcher;

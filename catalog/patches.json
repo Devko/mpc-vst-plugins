@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "patches": [
+    {
+      "id": "drum-pad-layout",
+      "title": "16-pad drum layout for selected plugins",
+      "summary": "Machinedrum Module / Machinemodule, 6W6, 8W8, CW-78, 9W9, TR-MPC and Lucky Dip get MPC's drum layout with all 16 pads lit.",
+      "author": "sd88me",
+      "license": "MIT",
+      "docs": "tools/mpc_patch/README.md",
+      "script": {
+        "url": "https://raw.githubusercontent.com/sd88me/mpc-vst-plugins/6ddf68cf92b3f1c0bdd322231ed133c0cc2eed48/tools/mpc_patch/mpc-drum-pad-patch.sh",
+        "sha256": "ec69edaaf5b1ce57d3937d2ec967d34bd5257d5faa15d1520b8cb51422dfefe7"
+      },
+      "supports": {"os": "MPC OS 3.9.1.2", "arch": "armv7l", "mpc_md5": ["592eebc8e1ce0797dc8c98e7002143b8"]},
+      "modifies": ["/usr/bin/MPC"],
+      "backup": "/sdcard/MPC-backup",
+      "restarts_mpc": true,
+      "reversible": true
+    },
+    {
+      "id": "drive-exec",
+      "title": "Drive exec: run plugins from a noexec drive (a Force's SSD)",
+      "summary": "UNTESTED on a device by this project (testers wanted, see issue #150). MPC cannot load a plugin from a drive mounted noexec: it is listed but only shows Load Plugin. This makes one folder of the drive (Synths) executable, through a small boot-time service; the drive itself stays noexec.",
+      "author": "timomacquis (adapted by sd88me)",
+      "license": "MIT",
+      "docs": "tools/mpc_patch/drive_exec/README.md",
+      "script": {
+        "url": "https://raw.githubusercontent.com/sd88me/mpc-vst-plugins/fe7e399a2ed994cb78a0aed08681343c1250ff27/tools/mpc_patch/drive_exec/drive-exec-patch.sh",
+        "sha256": "85ae102b14e16db2c3fee11829a3e15d2f65459b0d32325a4bbb34cb9bd9b642"
+      },
+      "supports": {"os": "MPC OS Gen1 (tried on a Force, MPC OS 3.9.1)", "arch": "armv7l"},
+      "modifies": ["/etc/drive-exec", "/etc/systemd/system/drive-exec.timer", "/usr/lib/systemd/system/drive-exec-bootstrap.service", "/media/<your drive>/Synths (an executable bind mount of the folder)"],
+      "backup": "/data/mpc-vst-plugins/backups",
+      "restarts_mpc": false,
+      "reversible": true
+    }
+  ]
+}

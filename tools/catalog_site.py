@@ -96,7 +96,8 @@ def tsv(catalog, helpers):
     """catalog.tsv for shell clients (tools/mpc-store.sh, BusyBox sh has no JSON): a header, one '#file' line per helper file
     with its sha256, then one 'plugin' line per stable, non-yanked version of every downloadable (distribution 'release') plugin:
     plugin id version latest kind name skin uid param_compat size sha256 url user_data defer   (tab separated, '-' when empty; defer is 1
-    when the zip's installer understands -n, 0 when it restarts MPC by itself)."""
+    when the zip's installer understands -n, 0 when it restarts MPC by itself). An addin (kind 'addin') has no skin or uid ('-'):
+    it installs to /data/mpc-addins/<id>."""
     out = ["#mpc-catalog-tsv 1"]
     for name, path in helpers:
         out.append("#file\t%s\t%s" % (name, hashlib.sha256(open(path, "rb").read()).hexdigest()))
@@ -107,8 +108,8 @@ def tsv(catalog, helpers):
             if v.get("yanked") or v.get("channel", "stable") != "stable" or not v.get("url"):
                 continue
             m = v["manifest"]
-            row = ["plugin", p["id"], v["version"], "1" if v["version"] == p.get("latest") else "0", p["kind"], p["name"], m["skin"],
-                   m["uid"], v.get("param_compat", 1), v["size"], v["sha256"], v["url"], ",".join(m.get("user_data", [])) or "-",
+            row = ["plugin", p["id"], v["version"], "1" if v["version"] == p.get("latest") else "0", p["kind"], p["name"], m.get("skin") or "-",
+                   m.get("uid") or "-", v.get("param_compat", 1), v["size"], v["sha256"], v["url"], ",".join(m.get("user_data", [])) or "-",
                    "1" if v.get("defer") else "0"]
             out.append("\t".join(_f(x) for x in row))
     return "\n".join(out) + "\n"
@@ -130,6 +131,7 @@ def main():
     ap.add_argument("--catalog", default="catalog/dist/catalog.json")
     ap.add_argument("--out", default="catalog/dist/site")
     ap.add_argument("--pages", default="catalog/pages", help="folder of guide pages (Markdown)")
+    ap.add_argument("--patches", default="catalog/patches.json", help="device patches the installer app may offer (docs/PATCHES.md); published as patches.json if it exists")
     ap.add_argument("--base-url", default="", help="public site URL, for the feed's self link")
     a = ap.parse_args()
     catalog = json.load(open(a.catalog, encoding="utf-8"))
@@ -145,6 +147,12 @@ def main():
         open(os.path.join(a.out, pg["slug"] + ".html"), "w", encoding="utf-8").write(render_page(pg, pages))
     open(os.path.join(a.out, "feed.xml"), "w", encoding="utf-8").write(atom(catalog, a.base_url))
     shutil.copy(a.catalog, os.path.join(a.out, "catalog.json"))
+    if os.path.isfile(a.patches):   # the installer app reads it from next to catalog.json; a manifest that fails its checks is not published
+        import patch_check
+        errors, _ = patch_check.check(json.load(open(a.patches, encoding="utf-8")))
+        if errors:
+            raise SystemExit("catalog/patches.json is not valid:\n  " + "\n  ".join(errors))
+        shutil.copy(a.patches, os.path.join(a.out, "patches.json"))
     for name, path in helpers:   # the files a device downloads next to catalog.tsv, checked against the hashes listed in it
         shutil.copy(path, os.path.join(a.out, name))
     open(os.path.join(a.out, "catalog.tsv"), "w", encoding="utf-8", newline="\n").write(tsv(catalog, helpers))
