@@ -41,7 +41,7 @@ else
     "pip install -q --no-warn-script-location --target /tmp/p pillow >/dev/null 2>&1; PYTHONPATH=/tmp/p python3 /mv/tools/gen_vst.py '$PORT/vst.json'"
 fi
 
-# 3. the plugin (armhf, glibc 2.31 (bullseye) so it loads on MPC OS 2.x (glibc 2.32) as well as 3.x (2.39); keep the highest symbol <= 2.32)
+# 3. the plugin (armhf, glibc 2.31 (bullseye) so it loads on MPC OS 2.x (glibc 2.32) as well as 3.x (2.39); keep the highest symbol <= 2.32 or the plugin is listed as MPC OS 3.x only)
 # All-C sources (every port so far): unchanged single gcc command (byte-identical Maze builds).
 # Any .cpp source (e.g. a real emulator engine like jv880's): vst2_wrap.c is always plain C
 # (gcc -std=gnu11; it uses void*-to-typed-pointer conversions g++ rejects), so each source compiles

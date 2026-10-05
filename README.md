@@ -58,8 +58,8 @@ authors, listed in the catalog, and installed by people on their own units.
   (layout, checksums, glibc and CPU limits), smoke-tested on a real device and only then published. Each version
   shows its SHA-256 and what it was tested on.
 - **Loads on MPC OS 2.x and 3.x; pages are verified on 3.x only.** Plugins are built against glibc 2.31, so they load
-  on older firmware (glibc 2.32, e.g. MPC OS 2.15) as well as current (2.39). The catalog refuses anything that needs
-  more than 2.32. On 2.x the touchscreen page does not appear yet (see the note at the top).
+  on older firmware (glibc 2.32, e.g. MPC OS 2.15) as well as current (2.39). A plugin that needs more than 2.32 (up to 2.36) is
+  still listed, marked "MPC OS 3.x only"; the catalog refuses more than 2.36. On 2.x the touchscreen page does not appear yet (see the note at the top).
 - **Tested on a Force** (MPC OS 3.9.1) as the reference device. Other Gen1 MPC OS devices (Live and Live II, One, X,
   Key 61) run the same `MPC` program. A user's MPC One on MPC OS 2.15 is what led to the glibc 2.31 builds; reports
   from other models are welcome. Gen2 devices (e.g. Live III) are reported to be more locked down.
@@ -162,7 +162,7 @@ What's next is in [docs/ROADMAP.md](docs/ROADMAP.md).
 2. The `.so` exports `VSTPluginMain` (VST2 ABI, hand-written, no Steinberg SDK). Build for armhf against glibc 2.31
    (`arm32v7/gcc:11-bullseye`, which `tools/build_port.sh` uses) so it loads on MPC OS 2.x (glibc 2.32) and 3.x (2.39). A
    newer toolchain binds `pthread_create` and friends to `GLIBC_2.34`, which older firmware cannot load; the catalog
-   check rejects anything above 2.32. Audio is 44.1 kHz in 128-frame blocks.
+   check lists anything above 2.32 (up to 2.36) as MPC OS 3.x only and rejects more than that. Audio is 44.1 kHz in 128-frame blocks.
 3. A skin folder `/sdcard/Synths/<manufacturer> - VST - <name>/` (`version.xml`, `Plugin Skins/TUI.json`,
    `Q-Links.json`) gives it a native screen. Controls bind to `"Parameter N"`, the VST parameter index.
 
@@ -172,7 +172,7 @@ What is known, details in [docs/NOTES.md](docs/NOTES.md)):
 
 - **Loading works on 2.x, with a build that fits its glibc.** MPC OS 2.x has an older glibc (about 2.32; 3.x and the
   Force have 2.39). Builds that needed `GLIBC_2.34` (older Dexed and JV-880 releases) were listed by MPC but showed only
-  "Load Plugin"; those releases are yanked from the catalog, and current builds need 2.32 or less and load. The
+  "Load Plugin"; those releases are yanked from the catalog, and current builds need 2.32 or less and load. A build that does need more is now still listed, marked MPC OS 3.x only, and the installers warn before putting it on a 2.x device. The
   log line to look for is `Attempting to load VST: ...` / `Initialising VST: ...` in `journalctl -u inmusic-mpc`.
 - **The service has another name.** On 2.15.1 MPC runs as `inmusic-mpc`, not `acvs`. The installer app and current
   release zips detect it; zips built before that fix aborted with "Unit acvs.service not loaded".

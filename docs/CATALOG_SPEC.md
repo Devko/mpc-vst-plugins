@@ -53,7 +53,7 @@ anywhere, engines must find their data next to it (`wrapper/plugin_dir.h`, `MODU
 | `extras` | data shipped next to the `.so`, relative to the plugin folder |
 | `user_data` | list of folders inside the plugin folder that hold the user's own files; the installer keeps them (and moves them in from `/sdcard/vst` for an old-layout install) |
 | `arch` | ELF machine of the `.so`; the catalog accepts `armv7` only |
-| `max_glibc` | highest `GLIBC_x.y` symbol version needed; the catalog limit is 2.32 (MPC OS 2.x) |
+| `max_glibc` | highest `GLIBC_x.y` symbol version needed. Up to 2.32 (MPC OS 2.x) it can be 2.x-compatible; above that and up to 2.36 it is listed as MPC OS 3.x only (a warning); above 2.36 is an error (MPC OS 3.x has 2.39, the catalog toolchain 2.36) |
 | `os_compat` | `["2.x", "3.x"]` or `["3.x"]`: the MPC OS generations the plugin works on. `release.py` computes it (`tools/skin_compat.py`); a developer may narrow `["2.x", "3.x"]` to `["3.x"]` by hand, never widen it |
 | `about`, `requires` | one-line description; extra requirements |
 | `source_repo`, `license` | `owner/name` on GitHub; SPDX id. **Required for the catalog** |
@@ -61,7 +61,7 @@ anywhere, engines must find their data next to it (`wrapper/plugin_dir.h`, `MODU
 
 ## Validator rules (`catalog_check.py`)
 Errors (exit 1): unsafe paths; missing required file; manifest missing a field or wrong schema; bad id/version;
-`param_compat` != major; arch not armv7; GLIBC above 2.32; `.so` not ELF; a file missing from or wrong in `SHA256SUMS`;
+`param_compat` != major; arch not armv7; GLIBC above 2.36 (2.33 to 2.36 only warns, and the version is listed as MPC OS 3.x only); `.so` not ELF; a file missing from or wrong in `SHA256SUMS`;
 a plugin folder (`portable/<skin>/`) that is missing `version.xml`, `Plugin Skins/TUI.json`, `plugin-meta.xml`, the `.so` or
 an extra; a `plugin-meta.xml` whose `file=` is not `%payload-path%/<skin>/<so>` or whose `uid`/`name` disagree with the manifest;
 an `os_compat` that is not `["2.x","3.x"]` or `["3.x"]`, or that claims 2.x when the check below does not confirm it;
