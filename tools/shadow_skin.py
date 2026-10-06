@@ -240,12 +240,17 @@ TEXT_WEIGHTS = {"regular": "Regular", "400": "Regular", "semibold": "SemiBold", 
                 "700": "Bold", "light": "Light", "300": "Light"}
 TEXT_JUST = {"left": "left verticallyCentred", "center": "horizontallyCentred verticallyCentred",
              "right": "right verticallyCentred"}
+# talign= defaults: readouts centre their text (as they did before talign= existed, so existing skins keep their look);
+# list rows start it at the left edge.
+READOUT_JUST = TEXT_JUST["center"]
+ROW_JUST = TEXT_JUST["left"]
 
 
 def live_text(w, size, colour, just):
     """A readout's or list row's live text style, overridable per line: tsize= (px), tcolor= (hex), tweight=
-    (regular|semibold|bold|light or 400/600/700/300), talign= (left|center|right), tfont= (Titillium Web or Roboto,
-    the families MPC renders). -> (size, colour, justification, style, font, signature for the component name)."""
+    (regular|semibold|bold|light or 400/600/700/300), talign= (left|center|right; readouts default to center, list
+    rows to left), tfont= (Titillium Web or Roboto, the families MPC renders).
+    -> (size, colour, justification, style, font, signature for the component name)."""
     size = float(w.get("tsize", size))
     colour = w.get("tcolor", colour).lstrip("#")
     style = TEXT_WEIGHTS.get(str(w.get("tweight", "semibold")).lower(), "SemiBold")
@@ -981,8 +986,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
             elif kind == "readout":
                 x, y, rw, rh = w["cx"] - w["w"] // 2, w["cy"] - w["h"] // 2, w["w"], w["h"]
                 dot = w.get("style") == "dotmatrix"
-                size, colour, just, style, font, sig = live_text(w, 26.0, DISPLAY_INK if dot else ACCENT,
-                                                                 "left verticallyCentred")
+                size, colour, just, style, font, sig = live_text(w, 26.0, DISPLAY_INK if dot else ACCENT, READOUT_JUST)
                 pad = int(w.get("tpad", 8))
                 key = "shReadout_%s%dx%d%s_p%d" % ("dot_" if dot else "", rw, rh, sig, pad) if sig or pad != 8 else \
                     "shReadout_%s%dx%d" % ("dot_" if dot else "", rw, rh)
@@ -1021,7 +1025,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                             "tile|%d|%d|%d|%d|%s|%s|%d" % (x, y, tw, th, (TILE_ON or LCD) if border else LCD, SEG_ON if border else LINE, border)
                         script += ["clear|" + under(), drawn,
                                    "crop|%s|%d|%d|%d|%d" % (art("%s_%s" % (img, state)), x, y, tw, th)]
-                    size, colour, just, style, font, sig = live_text(w, 24.0, ACCENT, "left verticallyCentred")
+                    size, colour, just, style, font, sig = live_text(w, 24.0, ACCENT, ROW_JUST)
                     # tx=/ty=/ttw=/tth= place the row's text inside the card (default: the whole row, 12 px in)
                     lx, ly = int(w.get("tx", 12)), int(w.get("ty", 0))
                     lw, lh = int(w.get("ttw", tw - lx - 12)), int(w.get("tth", th - ly))

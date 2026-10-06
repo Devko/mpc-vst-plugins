@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Offline unit tests for shadow_skin geometry/invariants that don't need the art toolchain or a device:
-seg_rects honouring sw=, the two filmstrip frame-count conventions, and html_art's inlined SVGs keeping their ids
-and classes apart. No device: python3 tools/test_shadow_skin.py"""
+seg_rects honouring sw=, the talign= defaults, the two filmstrip frame-count conventions, and html_art's inlined
+SVGs keeping their ids and classes apart. No device: python3 tools/test_shadow_skin.py"""
 import os
 import re
 import sys
@@ -79,6 +79,21 @@ class StudioPreviewTabs(unittest.TestCase):
         after = studio.tab_components(tui["pageData"]["tabs"][0], {})
         self.assertEqual([c["componentData"]["type"] for c in before], [c["componentData"]["type"] for c in after])
 
+
+class TextAlignDefaults(unittest.TestCase):
+    """Readouts centre their text unless talign= says otherwise (skins built before talign= existed keep their look);
+    list rows start at the left."""
+
+    def test_readouts_default_to_centred(self):
+        self.assertEqual(shadow_skin.live_text({}, 26.0, "ffffff", shadow_skin.READOUT_JUST)[2],
+                         "horizontallyCentred verticallyCentred")
+
+    def test_list_rows_default_to_left(self):
+        self.assertEqual(shadow_skin.live_text({}, 24.0, "ffffff", shadow_skin.ROW_JUST)[2], "left verticallyCentred")
+
+    def test_talign_overrides_the_default(self):
+        self.assertEqual(shadow_skin.live_text({"talign": "left"}, 26.0, "ffffff", shadow_skin.READOUT_JUST)[2],
+                         "left verticallyCentred")
 
 class ListOrder(unittest.TestCase):
     W = {"key": "slot", "cols": 2, "rows": 3}

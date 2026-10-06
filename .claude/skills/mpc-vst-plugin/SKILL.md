@@ -144,6 +144,9 @@ Parameter entries feeding `gen_vst.py` (`tools/params.py` format) can carry:
   the PNGs are drawn; off by default, every other port keeps its current look.
 - `scale_names=1` in `layout.conf` makes the knob and toggle names MPC draws follow `label_scale` (21 px × it,
   toggle box grown to fit); without it they stay the fixed 15-17 px / 120 px box every existing skin has.
+- A `readout` or `list` line can style its live text: `tsize=`, `tcolor=`, `tweight=`, `talign=` (left|center|right),
+  `tfont=`, and `tpad=` on readouts (`shadow_skin.live_text`). Readouts are centred and list rows start at the left
+  unless `talign=` says otherwise.
 - A `"display": "string"` param is polled every 10 ms for `<key>_on` (list tiles lit from MIDI) and every 100 ms
   for text changes (readouts refreshed without a tap); `"poll": false` on the param turns that off for one
   whose text only changes on a tap or whose `get_param()` is costly.
