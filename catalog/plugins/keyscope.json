@@ -1,0 +1,16 @@
+{
+  "id": "keyscope",
+  "name": "Keyscope",
+  "author": "jacob-sabella",
+  "repo": "jacob-sabella/mpc-vst-keyscope",
+  "kind": "effect",
+  "style": "utility",
+  "tags": [
+    "key-detection",
+    "chord-detection",
+    "tuner",
+    "analyzer"
+  ],
+  "license": "MIT",
+  "summary": "Listens to any track and names its key, chord, bass note and tuning, from the spectrum of the whole mix; the audio passes through untouched."
+}
