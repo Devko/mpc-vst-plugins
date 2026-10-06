@@ -230,6 +230,11 @@ static void setParameter(AEffect *e, int32_t i, float n) {
         w->need_update_display = 1;
         return;
     }
+    if (p->nudge_gain > 1 && p->nopts <= 1 && p->max > p->min) {
+        /* "nudge_gain": a small move (data wheel click, Q-Link event) is multiplied; a bigger one is a drag or a jump */
+        const float cur = get_norm(w, i), d = n - cur;
+        if (d != 0 && fabsf(d) < 0.02f) n = clamp01(cur + d * p->nudge_gain);
+    }
     if (p->nopts > 1) {
         /* A value on an option (button press, preset, automation) selects it; one between options is a
          * Q-Link / data wheel / drag move, settled as above. A param with "qlink_ticks" > 1 instead counts small

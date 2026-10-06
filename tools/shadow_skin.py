@@ -815,7 +815,7 @@ def build(layout_path, params, skin_dir, art_bin, png_from_ppm):
                     _sub("Knob", {"version": 5, "knobType": "FilmStrip", "filmStrip": "sh_knob_r%d%s.png" % (r, sfx),
                                   "numFrames": ROT_FRAMES, "invert": False, "dragOrientation": "Vertical",
                                   "handleName": "Data"}, _bounds((cw - s) // 2, 0, s, s), "Knob"),
-                    _name_label(0, name_y, cw, name_h, NAME_FONT("knob"), INK),
+                    _name_label(0, name_y, cw, name_h, NAME_FONT("knob"), ink),
                     _sub("Label", {"version": 1, "textStyle": {"version": 1, "font": {"version": 1, "name": "Titillium Web",
                                                                                      "style": "SemiBold", "height": 22.0 * LABEL_SCALE},
                                                                "colour": "ff" + dim,
@@ -1306,5 +1306,8 @@ def write_skin(outdir, vendor, name, layout_path, params, art_bin, mpc_os=None):
         "\t<identifier>%s.vst.%s</identifier>\n\t<version>1.0.0.0</version>\n</plugincontent>\n"
         % (vendor, name.lower().replace(" ", "")))
     for f, obj in (("TUI.json", tui), ("Q-Links.json", qlinks), ("Q-Links - 8by1.json", qlinks)):
-        json.dump(obj, open(os.path.join(skin, f), "w"), indent=4)
+        # a huge TUI.json (every nested Q-Link page repeats its tab's layout) is written compact: the indentation alone is
+        # about 3/4 of the file, which MPC has to read and parse when the plugin loads. Small skins stay byte-identical.
+        text = json.dumps(obj, separators=(",", ":"))
+        open(os.path.join(skin, f), "w").write(text if len(text) > 8_000_000 else json.dumps(obj, indent=4))
     return d
