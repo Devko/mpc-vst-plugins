@@ -1068,6 +1068,9 @@ Size per load is frames × frame area × 4: filmstrip frames are square (`square
 (the display; `card1` is the GPU and refuses KMS ioctls) has one active CRTC with an 800x1280 XRGB8888 buffer, linear
 (modifier 0), so GETFB2 + PRIME export + mmap gives the exact screen. The panel is portrait: rotate 270 degrees. The plugin
 area is 1280x628 at y=110 of the upright image. `tools/screenshot.sh` does all of it.
+Same on an MPC Key 37 (MPC 3.9.1.2, 2026-10-05): the same 800x1280 portrait scanout, upright after the rotation, and
+`--plugin` crops both an instrument's edit screen and an insert effect's screen cleanly (both headers are 110 px tall).
+The catalog shots for NAM, Chordsmith and Keyscope were taken this way.
 
 ## 2026-10-03: patches step (read only) in the installer app, offline only
 Design in `docs/PATCHES.md`. Built so far: the drum-pad patch script v4 (`status` ends with a `STATE` line; `install --confirmed` skips the typed question; `status` unmounts the bind mount of `/` that it opened, which v1-v3 left mounted: found by reading the script, fixed and checked with shimmed `mount`/`umount`/`mountpoint`), `catalog/patches.json` + `tools/patch_check.py` (the site build publishes it only if it validates), and step 7 of the app (list and `status` only; no apply). Checked on the host only: `tools/test_patches.py` (13 tests: the script contract against a synthetic stand-in for the MPC binary with its checksums rewritten, the checker, the site build), `go test -race` in `tools/desktop` (new `patches_test.go`, six mutations each fail a test), and `tools/desktop/ui_test/ui_patches.py` (Chromium, API stubbed). **Not run:** `tools/mpc_patch/test_script.sh` with Akai's real MPC (not in the repo), the app against a real Force, or any apply/undo from the app (not built).
