@@ -24,8 +24,25 @@ static void cards(void) {
     snprintf(k, sizeof k, "card%d_1", r);
     if (!strcmp(F("vis"), "0")) { printf("  card %d: -\n", r); continue; }
     printf("  card %d: %-13s [%s|%s] state=%s inst=%s chan=%s cpu=%s old=%s tested=%s(%s) %s %s %s %s | %s\n", r, get(k), F("init"), F("kindtxt"),
-           F("state"), F("inst"), F("chan"), F("cpu"), F("old"), F("tested"), F("tested_txt"), F("ver"), F("from"), F("size"), F("sha"), F("meta"));
+           F("state"), F("inst"), F("chan"), F("cpu"), F("old"), F("tested"), F("tested_txt"), F("ver"), F("from"), F("size"), F("info"), F("meta"));
   }
+}
+
+static void details(void) {
+  printf("  view=%s shot=%s [%s] %s | %s | state=%s inst=%s nav=%s%s card1 vis=%s\n", get("view"), get("d_shot"), get("d_init"),
+         get("d_name"), get("d_by"), get("d_state"), get("d_inst"), get("nav_prev"), get("nav_next"), get("r1_vis"));
+  printf("    v%s %s %s released %s, %s downloads, cpu %s (%s), tested %s (%s)\n", get("d_f_version"), get("d_f_channel"), get("d_f_size"),
+         get("d_f_released"), get("d_f_downloads"), get("d_f_cpu"), get("d_cpuk"), get("d_f_tested"), get("d_testk"));
+  for (int i = 1; i <= 4; i++) { char k[8]; snprintf(k, sizeof k, "d_sum%d", i); printf("    |%s|\n", get(k)); }
+  printf("    %s (%s)\n", get("d_wn_head"), get("d_wnk"));
+  for (int i = 1; i <= 3; i++) { char k[8]; snprintf(k, sizeof k, "d_wn%d", i); printf("    |%s|\n", get(k)); }
+  printf("    tags:");
+  for (int i = 1; i <= 8; i++) { char k[10], t[10]; snprintf(k, sizeof k, "d_tag%dv", i); snprintf(t, sizeof t, "d_tagt%d", i); if (!strcmp(get(k), "1")) printf(" %s", get(t)); }
+  printf("\n");
+}
+
+static void prompt(void) {
+  printf("  confirm=%s |%s|%s|\n", get("confirm"), get("confirm_txt1"), get("confirm_txt2"));
 }
 
 static void wait_for(const char *key, const char *val) {
@@ -40,20 +57,48 @@ int main(int argc, char **argv) {
   printf("net=%s problem=%s (%s) empty=%s disk=%s %s upd_badge=%s count=%s\n", get("net"), get("problem"), get("problem_txt"), get("empty"),
          get("disk"), get("disk_txt"), get("upd_badge"), get("upd_count"));
   if (argc > 1 && !strcmp(argv[1], "addins")) {   /* the offline fixture (tests/fixture.py, tests/addins.sh) */
-    set("kind", "3"); printf("ADDINS\n"); cards();
-    printf("remove alpha (card 1), install beta (card 2), remove gamma (card 3: made by hand, refused)\n");
-    press("r1_more"); press("r1_remove"); press("r2_act"); press("r3_more"); press("r3_remove"); cards();
+    set("kind", "3"); printf("ADDINS (DISCOVER: only the one not installed)\n"); cards();
+    printf("install beta (card 1)\n"); press("r1_act"); cards();
+    set("tab", "1"); printf("INSTALLED: remove alpha (card 1), remove gamma (card 2: made by hand, refused)\n"); cards();
+    press("r1_more"); press("r1_remove"); press("r2_more"); press("r2_remove"); cards();
     press("apply"); wait_for("apply_state", "3"); cards();
-    press("apply"); sleep(1); cards();
+    press("apply"); prompt(); press("confirm_go"); sleep(1); cards();
     e->destroy(m); return 0;
   }
-  printf("DISCOVER\n"); cards(); press("page_next"); cards(); press("page_next"); cards();
+  printf("DISCOVER\n"); cards();
+  printf("details: tap card 2, BACK, thumbnail of card 1, page arrows ignored, queue from the details, BACK\n");
+  set("card2_1", "1"); details(); press("d_back"); printf("  view=%s\n", get("view"));
+  press("r1_open"); press("page_next"); details(); press("d_act"); details(); press("d_act"); press("d_back"); cards();
+  printf("tag search: details of card 1, its first tag, then clear\n");
+  press("r1_open"); press("d_tag1"); printf("  view=%s hdr=%s chip=%s\n", get("view"), get("hdr"), get("tag_txt")); cards();
+  press("tag_clear"); printf("  hdr=%s\n", get("hdr")); cards();
+  printf("search: type C H O, match rows, DONE; the chip reopens it; back, clear; the chip's x clears it\n");
+  press("search_btn"); printf("  kb=%s hdr=%s |%s| %s\n", get("kb"), get("hdr"), get("q_txt"), get("kb_count"));
+  press("k_C"); press("k_H"); press("k_O");
+  printf("  |%s| %s\n  row1 %s [%s] %s | %s | state=%s\n  row2 %s [%s] %s | state=%s\n", get("q_txt"), get("kb_count"), get("sr1_vis"), get("sr1_init"),
+         get("sr1_name"), get("sr1_meta"), get("sr1_state"), get("sr2_vis"), get("sr2_init"), get("sr2_name"), get("sr2_state"));
+  press("k_done"); printf("  kb=%s hdr=%s chip=%s\n", get("kb"), get("hdr"), get("q_chip")); cards();
+  press("search_btn"); press("k_back"); printf("  kb=%s |%s|\n", get("kb"), get("q_txt")); press("k_clear"); printf("  |%s| %s\n", get("q_txt"), get("kb_count"));
+  press("k_space"); press("k_D"); press("k_X"); press("k_7"); printf("  |%s| %s\n", get("q_txt"), get("kb_count"));
+  press("sr1_open"); printf("  details of the match: view=%s kb=%s %s\n", get("view"), get("d_name"), get("kb")); press("d_back");
+  press("q_clear"); printf("  hdr=%s chip=%s\n", get("hdr"), get("q_chip"));
+  printf("sort menu: open, a tap outside closes it; open again, Most downloaded; then Name; filter menu: Effects, then All\n");
+  press("sort_btn"); printf("  sort_open=%s hl=%s\n", get("sort_open"), get("sort_hl")); press("menu_close"); printf("  sort_open=%s\n", get("sort_open"));
+  press("sort_btn"); press("sort_pick3"); printf("  sort=%s (%s) open=%s\n", get("sort"), get("sort_txt"), get("sort_open")); cards();
+  press("sort_pick4"); printf("  sort_pick while closed: sort=%s\n", get("sort"));
+  press("sort_btn"); press("sort_pick4"); printf("  sort=%s (%s)\n", get("sort"), get("sort_txt")); cards();
+  press("kind_btn"); printf("  kind_open=%s hl=%s\n", get("kind_open"), get("kind_hl")); press("kind_pick3"); printf("  kind=%s (%s)\n", get("kind"), get("kind_txt")); cards();
+  press("kind_btn"); press("kind_pick1"); press("sort_btn"); press("sort_pick1"); printf("  back to %s, %s\n", get("kind_txt"), get("sort_txt"));
+  press("page_next"); cards(); press("page_next"); cards();
   set("tab", "2"); printf("UPDATES\n"); cards();
   set("tab", "1"); printf("INSTALLED\n"); cards();
   set("tab", "0"); set("kind", "2"); printf("EFFECTS\n"); cards(); set("kind", "0");
-  printf("menu on card 1 (if installed), then queue card 2 and UPDATE ALL\n");
-  press("r1_more"); cards(); press("r1_remove"); press("r2_act"); press("update_all"); cards();
+  printf("INSTALLED: menu on card 1 (if any), then DISCOVER: queue card 2 and UPDATE ALL\n");
+  set("tab", "1"); press("r1_more"); cards(); set("tab", "0"); press("r1_remove"); press("r2_act"); press("update_all"); cards();
   press("apply"); wait_for("apply_state", "3"); cards();
-  press("apply"); sleep(1); cards();
+  printf("APPLY again: the restart prompt; CANCEL keeps it ready, a tab tap is ignored while it shows\n");
+  press("apply"); prompt(); set("tab", "1"); printf("  tab=%s\n", get("tab")); press("confirm_cancel"); prompt();
+  printf("  apply_state=%s\n", get("apply_state"));
+  press("apply"); prompt(); press("confirm_go"); sleep(1); cards();
   e->destroy(m); return 0;
 }

@@ -11,12 +11,17 @@ MPC restarts. Add **Plugin Manager** to a plugin track.
 | # | Do | Expect |
 |---|---|---|
 | 1 | Open the plugin | Within ~10 s the footer says `N plugins available · M updates available`; your installed plugins show **INSTALLED** or **UPDATE** |
-| 2 | Tabs, filters, page arrows, tap cards | The list follows; the tapped card gets a red outline; text fits its place |
+| 2 | Tabs and page arrows | The list follows; text fits its place |
 | 3 | On a small plugin you don't have (e.g. Acid): **INSTALL**, then **APPLY** | The button turns to *INSTALL · QUEUED*; a progress bar under the status, then *Ready* in amber |
 | 4 | **APPLY** (now *RESTART & APPLY*) | MPC restarts by itself within ~10 s; the new plugin is in the plugin list and plays |
 | 5 | Reopen the manager | That plugin shows **INSTALLED** |
 | 6 | **⋮** on it, **REMOVE**, **APPLY** twice | MPC restarts; the plugin is gone from the list |
-| 7 | **Addins** filter: **INSTALL** one, **APPLY** twice; reopen, **⋮**, **REMOVE**, **APPLY** twice | A folder appears under `/data/mpc-addins/` and the addin works after the restart; after the removal the folder is gone |
+| 7 | Filter and **Sort** menus at the top; tap outside a menu | The list follows the choice; the card's last line shows the sort field; a tap outside closes the menu |
+| 8 | Tap a card | Its details: screenshot, facts, description, *What's new*; **BACK** returns |
+| 9 | Tap a tag in the details | The list shows the plugins with that tag and a `#tag ×` chip at the top; **×** clears it |
+| 10 | **🔍**, type a few letters, **DONE** | Matches show above the keys while typing; DONE leaves them as cards with the search chip at the top |
+| 11 | Queue an install, **APPLY**, wait for *Ready*, **APPLY**, then **CANCEL** | A prompt lists the change; CANCEL closes it and the change stays ready |
+| 12 | **Addins** filter: **INSTALL** one, **APPLY** twice; reopen, **⋮**, **REMOVE**, **APPLY** twice | A folder appears under `/data/mpc-addins/` and the addin works after the restart; after the removal the folder is gone |
 
 If a red banner says *Can't install on this MPC* (`No install location`, `No systemd-run`, `No unzip`, ...), stop there and
 report it: that is exactly what we need to know.

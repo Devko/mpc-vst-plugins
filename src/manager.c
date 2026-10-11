@@ -33,6 +33,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "shots.h"
+
 /* mpc-vst-plugins wrapper/engine.h, positional */
 typedef struct {
     void *(*create)(const char *data_dir);
@@ -48,7 +50,7 @@ typedef struct {
 #define CATALOG_URL "https://sd88me.github.io/mpc-vst-plugins/catalog.json"   /* tests: a file:// fixture */
 #endif
 #define WORK "/tmp/pluginmgr"
-#define MAXPKG 64
+#define MAXPKG 256
 #define ROWS 3      /* plugin cards per page */
 #ifndef ADDINS_DIR
 #define ADDINS_DIR "/data/mpc-addins"   /* one folder per addin id, as mpc-vst-plugins' addin installer lays them out */
@@ -60,6 +62,13 @@ typedef struct {
 typedef struct {
     char id[48], name[48], author[32], kind[16], dist[16], latest[24], url[512], sha[72];
     char style[32], tags[96], channel[16], cpu[8], tested[48];   /* the card's badges and meta line */
+    char summary[720];    /* the detail view's text */
+    char alltags[200];    /* every tag, as "|a|b|" (tag search, the detail view's tag buttons) */
+    char date[12], cpu_pct[12], whatsnew[480];   /* the latest version's release date, CPU p99, What's new */
+    char updated[12], first[12];   /* last release (catalog "updated"), first release: the sort orders */
+    int downloads, nver, wn_kind;   /* wn_kind: 1 notes, 2 "First release."/"No release notes." */
+    char *notes, *about;  /* while parsing only: the chosen version's release notes and manifest "about" */
+    char *vnotes, *vabout;   /* while parsing only: the same for the version being read */
     long long size;
     char installed[24];   /* "" not installed, "?" installed (version unknown), else the version */
     char synths[200];     /* the Synths folder it is installed in; an addin: its own folder under ADDINS_DIR */
@@ -80,6 +89,15 @@ typedef struct {
     int quit, job, busy, ready;   /* ready: a prepared apply.sh waits for the second APPLY press */
     pkg_t pkg[MAXPKG];
     int npkg, page, sel, menu;    /* sel, menu: pkg indexes (-1 none); menu = the card showing Reinstall/Remove */
+    char detail[48];              /* the plugin in the detail view (its id: pkg indexes change on a refresh), "" the list */
+    char tag[32];                 /* tag search (a tag tapped in the detail view), "" none */
+    unsigned vis_rev;             /* visible()'s cache: the rev it was worked out at (+1, so 0 = none), its list */
+    int vis_n, vis_idx[MAXPKG];
+    int confirm;                  /* the restart prompt is open (the second APPLY); only shown while ready */
+    int sort;                     /* 0 last updated, 1 newest (first release), 2 most downloaded, 3 name */
+    int menu_open;                /* the header's dropdown that is open: 0 none, 1 filter, 2 sort */
+    int kb;                       /* the search keyboard is open */
+    char q[28];                   /* the search (typed on the drawn keyboard), "" none */
     int tab, kindf;               /* 0 discover, 1 installed, 2 updates; 0 all, 1 instruments, 2 effects, 3 addins */
     int online, loaded, failed;   /* catalog reachable; ever loaded; the last APPLY failed (offer RETRY) */
     int sticky, status_kind;      /* status set by the worker or an action (else the queue summary); 0 ok, 1 warn, 2 error */
@@ -275,22 +293,38 @@ static int download(mgr_t *m, const pkg_t *p, const char *path) {
 
 static const char *ws(const char *p) { while (*p == ' ' || *p == '\n' || *p == '\r' || *p == '\t') p++; return p; }
 
-static const char *jstr(const char *p, char *out, size_t n) {   /* p at '"'; returns past the closing quote */
+/* p at '"'; returns past the closing quote. \uXXXX becomes UTF-8 (surrogate pairs: '?'); \n a space, or kept with nl */
+static const char *jstr_nl(const char *p, char *out, size_t n, int nl) {
     size_t k = 0;
     if (*p != '"') return NULL;
     for (p++; *p && *p != '"'; p++) {
-        char c = *p;
+        char c = *p, u8[4];
+        int len = 1;
+        u8[0] = c;
         if (c == '\\') {
             c = *++p;
             if (!c) return NULL;
-            if (c == 'n') c = ' ';
-            else if (c == 'u') { c = '?'; for (int i = 0; i < 4 && p[1]; i++) p++; }
+            u8[0] = c == 'n' ? (nl ? '\n' : ' ') : c == 't' || c == 'r' ? ' ' : c;
+            if (c == 'u') {
+                unsigned cp = 0;
+                for (int i = 0; i < 4; i++) {
+                    char h = *++p;
+                    if (!h) return NULL;
+                    cp = cp * 16 + (h >= 'a' ? h - 'a' + 10 : h >= 'A' ? h - 'A' + 10 : h - '0');
+                }
+                if (cp < 0x80) u8[0] = (char)cp;
+                else if (cp < 0x800) { u8[0] = (char)(0xc0 | cp >> 6); u8[1] = (char)(0x80 | (cp & 63)); len = 2; }
+                else if (cp >= 0xd800 && cp < 0xe000) u8[0] = '?';
+                else { u8[0] = (char)(0xe0 | cp >> 12); u8[1] = (char)(0x80 | (cp >> 6 & 63)); u8[2] = (char)(0x80 | (cp & 63)); len = 3; }
+            }
         }
-        if (out && k + 1 < n) out[k++] = c;
+        if (out && k + len < n) { memcpy(out + k, u8, len); k += len; }
+        else if (out) n = k + 1;   /* full: drop the rest, never half a character */
     }
     if (out && n) out[k] = 0;
     return *p == '"' ? p + 1 : NULL;
 }
+static const char *jstr(const char *p, char *out, size_t n) { return jstr_nl(p, out, n, 0); }
 
 static const char *jskip(const char *p) {
     p = ws(p);
@@ -335,11 +369,20 @@ static const char *jobject(const char *p, member_fn f, void *ud) {
     }
 }
 
-typedef struct { char version[24], url[512], sha[72], channel[16], cpu[8], tested[48]; long long size; int yanked; } ver_t;
+#define NOTES_MAX 4096   /* release notes kept per version while parsing (What's new is near the top) */
+typedef struct { char version[24], url[512], sha[72], channel[16], cpu[8], cpu_pct[12], tested[48], date[12];
+                 long long size; int yanked; char *notes, *about; } ver_t;
 typedef struct { char s[48]; } str_t;
+typedef struct { char verdict[8], pct[12]; } cpu_t;
 
-static const char *verdict_member(const char *k, const char *v, void *ud) {
-    return *v == '"' && !strcmp(k, "verdict") ? jstr(v, ((str_t *)ud)->s, sizeof ((str_t *)ud)->s) : NULL;
+static const char *cpu_member(const char *k, const char *v, void *ud) {
+    cpu_t *c = ud;
+    if (*v == '"' && !strcmp(k, "verdict")) return jstr(v, c->verdict, sizeof c->verdict);
+    if (!strcmp(k, "p99_pct") && ((*v >= '0' && *v <= '9') || *v == '.')) snprintf(c->pct, sizeof c->pct, "%.1f%%", atof(v));
+    return NULL;
+}
+static const char *about_member(const char *k, const char *v, void *ud) {
+    return *v == '"' && !strcmp(k, "about") ? jstr_nl(v, (char *)ud, NOTES_MAX, 1) : NULL;
 }
 static const char *device_member(const char *k, const char *v, void *ud) {
     return *v == '"' && !strcmp(k, "device") ? jstr(v, ((str_t *)ud)->s, sizeof ((str_t *)ud)->s) : NULL;
@@ -349,12 +392,16 @@ static const char *ver_member(const char *k, const char *v, void *ud) {
     ver_t *x = ud;
     if (!strcmp(k, "channel") && *v == '"') return jstr(v, x->channel, sizeof x->channel);
     if (!strcmp(k, "size") && *v >= '0' && *v <= '9') { x->size = atoll(v); return NULL; }
-    if (!strcmp(k, "cpu") && *v == '{') {   /* the bench verdict: PASS, WARN or FAIL */
-        str_t t = {{0}};
-        const char *q = jobject(v, verdict_member, &t);
-        snprintf(x->cpu, sizeof x->cpu, "%s", t.s);
+    if (!strcmp(k, "cpu") && *v == '{') {   /* the bench verdict (PASS, WARN or FAIL) and p99 load */
+        cpu_t t = {{0}, {0}};
+        const char *q = jobject(v, cpu_member, &t);
+        snprintf(x->cpu, sizeof x->cpu, "%s", t.verdict);
+        snprintf(x->cpu_pct, sizeof x->cpu_pct, "%s", t.pct);
         return q;
     }
+    if (!strcmp(k, "date") && *v == '"') return jstr(v, x->date, sizeof x->date);
+    if (!strcmp(k, "notes") && *v == '"' && x->notes) return jstr_nl(v, x->notes, NOTES_MAX, 1);
+    if (!strcmp(k, "manifest") && *v == '{' && x->about) return jobject(v, about_member, x->about);
     if (!strcmp(k, "tested") && *v == '[') {   /* devices it was tested on: the first one */
         const char *q = ws(v + 1);
         while (q && *q == '{') {
@@ -393,15 +440,20 @@ static const char *pkg_member(const char *k, const char *v, void *ud) {
         if (!strcmp(k, "author")) return jstr(v, x->author, sizeof x->author);
         if (!strcmp(k, "kind")) return jstr(v, x->kind, sizeof x->kind);
         if (!strcmp(k, "distribution")) return jstr(v, x->dist, sizeof x->dist);
-        if (!strcmp(k, "latest")) return jstr(v, x->latest, sizeof x->latest);
+        if (!strcmp(k, "latest")) return x->url[0] ? NULL : jstr(v, x->latest, sizeof x->latest);   /* after "versions": the pick stands */
         if (!strcmp(k, "style")) return jstr(v, x->style, sizeof x->style);
+        if (!strcmp(k, "summary")) return jstr(v, x->summary, sizeof x->summary);
     }
+    if (!strcmp(k, "downloads") && *v >= '0' && *v <= '9') { x->downloads = atoi(v); return NULL; }
+    if (!strcmp(k, "updated") && *v == '"') return jstr(v, x->updated, sizeof x->updated);
     if (!strcmp(k, "tags") && *v == '[') {   /* the first two, for the meta line */
         const char *q = ws(v + 1);
         for (int c = 0; q && *q == '"'; c++) {
             char t[32];
             q = jstr(q, t, sizeof t);
             if (q && c < 2) snprintf(x->tags + strlen(x->tags), sizeof x->tags - strlen(x->tags), "%s%s", c ? "  \xc2\xb7  " : "", t);
+            if (q && strlen(x->alltags) + strlen(t) + 2 < sizeof x->alltags)
+                snprintf(x->alltags + strlen(x->alltags), sizeof x->alltags - strlen(x->alltags), "%s%s|", x->alltags[0] ? "" : "|", t);
             q = q ? ws(q) : NULL;
             if (q && *q == ',') q = ws(q + 1);
         }
@@ -419,21 +471,35 @@ static const char *pkg_member(const char *k, const char *v, void *ud) {
         }
         return p + 1;
     }
-    if (!strcmp(k, "versions") && *v == '[') {   /* the latest version's download, unless it was yanked */
+    if (!strcmp(k, "versions") && *v == '[') {
+        /* The version to offer: "latest" if it came first; else (catalog.json lists "versions" first, newest first) the
+         * newest stable one that isn't yanked, or the newest beta for a plugin with no stable release. */
         const char *p = ws(v + 1);
         if (*p == ']') return p + 1;
         for (;;) {
             ver_t ver = {0};
+            ver.notes = x->vnotes;
+            ver.about = x->vabout;
+            if (ver.notes) ver.notes[0] = 0;
+            if (ver.about) ver.about[0] = 0;
             p = jobject(p, ver_member, &ver);
             if (!p) return NULL;
-            if (!ver.yanked && !x->url[0] && ver.url[0] && (!x->latest[0] || !strcmp(ver.version, x->latest))) {
+            if (!ver.yanked) x->nver++;
+            if (!ver.yanked && ver.date[0] && (!x->first[0] || strcmp(ver.date, x->first) < 0)) snprintf(x->first, sizeof x->first, "%s", ver.date);
+            int pinned = x->latest[0] && !x->url[0], beta = !strcmp(ver.channel, "beta");
+            if (!ver.yanked && ver.url[0] && (pinned ? !strcmp(ver.version, x->latest)
+                                                     : !x->url[0] || (!strcmp(x->channel, "beta") && !beta))) {
                 snprintf(x->url, sizeof x->url, "%s", ver.url);
                 snprintf(x->sha, sizeof x->sha, "%s", ver.sha);
                 snprintf(x->channel, sizeof x->channel, "%s", ver.channel);
                 snprintf(x->cpu, sizeof x->cpu, "%s", ver.cpu);
                 snprintf(x->tested, sizeof x->tested, "%s", ver.tested);
+                snprintf(x->date, sizeof x->date, "%s", ver.date);
+                snprintf(x->cpu_pct, sizeof x->cpu_pct, "%s", ver.cpu_pct);
                 x->size = ver.size;
-                if (!x->latest[0]) snprintf(x->latest, sizeof x->latest, "%s", ver.version);
+                snprintf(x->latest, sizeof x->latest, "%s", ver.version);
+                if (x->notes && ver.notes) snprintf(x->notes, NOTES_MAX, "%s", ver.notes);
+                if (x->about && ver.about) snprintf(x->about, NOTES_MAX, "%s", ver.about);
             }
             p = ws(p);
             if (*p == ',') { p = ws(p + 1); continue; }
@@ -443,6 +509,86 @@ static const char *pkg_member(const char *k, const char *v, void *ud) {
     return NULL;
 }
 
+/* Markdown (len bytes of in) as one plain line: no emphasis, code marks, headings or images; links as their text;
+ * list items as "* "; newlines as spaces */
+static void md_line(const char *in, int len, char *out, int n) {
+    int k = 0, bol = 1;
+    for (int i = 0; i < len && k < n - 4; i++) {
+        char c = in[i];
+        if (c == '\r') continue;
+        if (c == '\n') { bol = 1; if (k && out[k - 1] != ' ') out[k++] = ' '; continue; }
+        if (bol) {
+            while (i < len && (in[i] == ' ' || in[i] == '#' || in[i] == '>')) i++;
+            if (i + 1 < len && (in[i] == '-' || in[i] == '*') && in[i + 1] == ' ') { out[k++] = '\xe2'; out[k++] = '\x80'; out[k++] = '\xa2'; out[k++] = ' '; i += 2; }
+            bol = 0;
+            if (i >= len) break;
+            c = in[i];
+        }
+        if (c == '!' && i + 1 < len && in[i + 1] == '[') {   /* an image: drop it */
+            const char *e = memchr(in + i, ')', len - i);
+            if (e) { i = (int)(e - in); continue; }
+        }
+        if (c == '[') {   /* [text](url): the text */
+            const char *e = memchr(in + i, ']', len - i);
+            if (e && e + 1 < in + len && e[1] == '(') {
+                const char *u = memchr(e, ')', in + len - e);
+                for (const char *t = in + i + 1; t < e && k < n - 4; t++) out[k++] = *t;
+                if (u) { i = (int)(u - in); continue; }
+            }
+        }
+        if (c == '*' || c == '`' || (c == '_' && i + 1 < len && in[i + 1] == '_')) continue;
+        if (c == ' ' && k && out[k - 1] == ' ') continue;
+        out[k++] = c;
+    }
+    while (k && out[k - 1] == ' ') k--;
+    out[k] = 0;
+}
+
+static int line_is(const char *l, const char *word) {   /* a heading line whose text starts with word (any case) */
+    if (*l != '#') return 0;
+    while (*l == '#' || *l == ' ') l++;
+    return !strncasecmp(l, word, strlen(word));
+}
+
+/* The detail view's "What's new": the release notes' "What's new" / "Changes" section; else, past the first release,
+ * their first paragraph unless it just describes the plugin (the summary or the manifest's "about"); else
+ * "First release." or "No release notes." (agreed 2026-10-05) */
+static void whats_new(pkg_t *x) {
+    const char *nt = x->notes ? x->notes : "";
+    x->wn_kind = 2;
+    x->whatsnew[0] = 0;
+    for (const char *l = nt; *l; l = strchr(l, '\n') ? strchr(l, '\n') + 1 : l + strlen(l)) {
+        if (line_is(l, "what") || line_is(l, "change")) {
+            const char *b = strchr(l, '\n'), *e;
+            if (!b) break;
+            for (e = ++b; *e && !(*e == '#' && (e == b || e[-1] == '\n')); e++) {}
+            md_line(b, (int)(e - b), x->whatsnew, sizeof x->whatsnew);
+            if (x->whatsnew[0]) { x->wn_kind = 1; return; }
+            break;
+        }
+    }
+    if (x->nver > 1) {
+        const char *b = nt, *e;
+        for (;;) {   /* the first paragraph that isn't a heading or an image */
+            while (*b == '\n' || *b == '\r' || *b == ' ') b++;
+            if ((*b == '#' || *b == '!') && strchr(b, '\n')) { b = strchr(b, '\n'); continue; }
+            break;
+        }
+        e = strstr(b, "\n\n");
+        char para[480], about[480];
+        md_line(b, e ? (int)(e - b) : (int)strlen(b), para, sizeof para);
+        const char *ab = x->about ? x->about : "", *ae = strstr(ab, "\n\n");
+        md_line(ab, ae ? (int)(ae - ab) : (int)strlen(ab), about, sizeof about);
+        int cut = 60;
+        if (para[0] && strncmp(para, x->summary, cut) && strncmp(para, about, cut)) {
+            snprintf(x->whatsnew, sizeof x->whatsnew, "%s", para);
+            x->wn_kind = 1;
+            return;
+        }
+    }
+    snprintf(x->whatsnew, sizeof x->whatsnew, "%s", x->nver > 1 ? "No release notes." : "First release.");
+}
+
 typedef struct { pkg_t *pkg; int n; } list_t;
 
 static const char *top_member(const char *k, const char *v, void *ud) {
@@ -450,14 +596,26 @@ static const char *top_member(const char *k, const char *v, void *ud) {
     if (strcmp(k, "plugins") || *v != '[') return NULL;
     const char *p = ws(v + 1);
     if (*p == ']') return p + 1;
+    char *notes = malloc(NOTES_MAX), *about = malloc(NOTES_MAX), *vnotes = malloc(NOTES_MAX), *vabout = malloc(NOTES_MAX);
+    #define FREE_NOTES() (free(notes), free(about), free(vnotes), free(vabout))
+    if (!notes || !about || !vnotes || !vabout) { FREE_NOTES(); return NULL; }
     for (;;) {
         pkg_t x;
         memset(&x, 0, sizeof x);
+        x.notes = notes;
+        x.about = about;
+        x.vnotes = vnotes;
+        x.vabout = vabout;
+        notes[0] = about[0] = 0;
         p = jobject(p, pkg_member, &x);
-        if (!p) return NULL;
+        if (!p) { FREE_NOTES(); return NULL; }
+        whats_new(&x);
+        x.notes = x.about = x.vnotes = x.vabout = NULL;
         if (x.id[0] && l->n < MAXPKG) l->pkg[l->n++] = x;
         p = ws(p);
         if (*p == ',') { p = ws(p + 1); continue; }
+        FREE_NOTES();
+        #undef FREE_NOTES
         return *p == ']' ? p + 1 : NULL;
     }
 }
@@ -899,7 +1057,7 @@ static void prepare(mgr_t *m, pkg_t *q) {
 }
 
 static void do_prepare(mgr_t *m) {
-    pkg_t *q = calloc(MAXPKG, sizeof *q);   /* 64 KB: kept off MPC's small thread stacks */
+    pkg_t *q = calloc(MAXPKG, sizeof *q);   /* ~256 KB: kept off MPC's small thread stacks */
     if (q) prepare(m, q);
     free(q);
 }
@@ -955,7 +1113,42 @@ static int has_update(const pkg_t *p) {   /* a known older version, or an old-la
 }
 
 /* the cards of the current tab and filter; build-yourself plugins (no download) are left out: not plug and play */
-static int visible(const mgr_t *m, int *idx) {
+static int nth_tag(const pkg_t *p, int k, char *b, int n) {   /* tag k (0-based) of p into b; 0 when it has fewer */
+    const char *t = p->alltags;
+    for (int i = 0; *t == '|' && t[1]; i++) {
+        const char *e = strchr(t + 1, '|');
+        if (!e) break;
+        if (i == k) { snprintf(b, n, "%.*s", (int)(e - t - 1), t + 1); return 1; }
+        t = e;
+    }
+    return 0;
+}
+
+static int has_tag(const pkg_t *p, const char *tag) {
+    char want[40];
+    snprintf(want, sizeof want, "|%s|", tag);
+    return strstr(p->alltags, want) != NULL;
+}
+
+static int sorts_before(const mgr_t *m, int a, int b) {   /* in the current sort; ties by name */
+    const pkg_t *p = &m->pkg[a], *q = &m->pkg[b];
+    int c = m->sort == 0 ? strcmp(q->updated, p->updated) : m->sort == 1 ? strcmp(q->first, p->first)
+          : m->sort == 2 ? (q->downloads > p->downloads) - (q->downloads < p->downloads) : 0;
+    return c ? c < 0 : strcasecmp(p->name, q->name) < 0;
+}
+
+static int has_text(const char *hay, const char *needle) {   /* case-insensitive substring */
+    size_t n = strlen(needle);
+    for (; *hay; hay++)
+        if (!strncasecmp(hay, needle, n)) return 1;
+    return 0;
+}
+
+static int matches(const pkg_t *p, const char *q) {   /* the search: name, author or a tag */
+    return has_text(p->name, q) || has_text(p->author, q) || has_text(p->alltags, q);
+}
+
+static int visible_now(const mgr_t *m, int *idx) {
     int n = 0;
     for (int i = 0; i < m->npkg; i++) {
         const pkg_t *p = &m->pkg[i];
@@ -963,23 +1156,44 @@ static int visible(const mgr_t *m, int *idx) {
         if (m->kindf == 1 && strcmp(p->kind, "instrument")) continue;
         if (m->kindf == 2 && strcmp(p->kind, "effect")) continue;
         if (m->kindf == 3 && !is_addin(p)) continue;
+        if (m->tab == 0 && installed(p)) continue;   /* DISCOVER: what isn't on this MPC yet */
+        if (m->tag[0] && !has_tag(p, m->tag)) continue;
+        if (m->q[0] && !matches(p, m->q)) continue;
         if (m->tab == 1 && !installed(p)) continue;
         if (m->tab == 2 && !has_update(p)) continue;
         idx[n++] = i;
     }
+    for (int a = 1; a < n; a++)   /* insertion sort, stable; n is small */
+        for (int b = a; b > 0 && sorts_before(m, idx[b], idx[b - 1]); b--) { int t = idx[b]; idx[b] = idx[b - 1]; idx[b - 1] = t; }
     return n;
+}
+
+/* The cards' plugins, in order. The screen asks for dozens of values every refresh, each needing this list, so it is
+ * worked out once per change: anything that changes it (a tap, the worker) bumps m->rev. Called with mu held. */
+static int visible(const mgr_t *m, int *idx) {
+    mgr_t *w = (mgr_t *)m;
+    if (w->vis_rev != m->rev + 1) { w->vis_n = visible_now(m, w->vis_idx); w->vis_rev = m->rev + 1; }
+    memcpy(idx, m->vis_idx, sizeof(int) * m->vis_n);
+    return m->vis_n;
 }
 
 enum { S_NONE, S_INSTALL, S_UPDATE, S_INSTALLED, S_Q_INSTALL, S_Q_UPDATE, S_Q_REMOVE, S_DISABLED, S_MENU };
 
-static int card_state(const mgr_t *m, int i) {
+static int pkg_state(const mgr_t *m, int i) {   /* card_state() without the card's menu */
     const pkg_t *p = &m->pkg[i];
-    if (m->menu == i) return S_MENU;
     if (p->queued == Q_REMOVE) return S_Q_REMOVE;
     if (p->queued == Q_INSTALL) return installed(p) ? S_Q_UPDATE : S_Q_INSTALL;
     if (m->dev->problem[0] && !installed(p)) return S_DISABLED;
     if (!installed(p)) return S_INSTALL;
     return has_update(p) ? S_UPDATE : S_INSTALLED;
+}
+
+static int card_state(const mgr_t *m, int i) { return m->menu == i ? S_MENU : pkg_state(m, i); }
+
+static int detail_of(const mgr_t *m) {   /* the detail view's pkg index, -1 when the list shows */
+    for (int i = 0; m->detail[0] && i < m->npkg; i++)
+        if (!strcmp(m->pkg[i].id, m->detail)) return i;
+    return -1;
 }
 
 static int count_updates(const mgr_t *m) {
@@ -992,6 +1206,19 @@ static int count_queued(const mgr_t *m) {
     int n = 0;
     for (int i = 0; i < m->npkg; i++) n += m->pkg[i].queued != 0;
     return n;
+}
+
+static void changes_text(const mgr_t *m, char *b, int n) {   /* the restart prompt's list: +new, old > new, -removed */
+    int k = 0;
+    b[0] = 0;
+    for (int i = 0; i < m->npkg && k < n; i++) {
+        const pkg_t *p = &m->pkg[i];
+        const char *sep = k ? "\xc2\xa0\xc2\xb7  " : "";   /* no-break space: a wrapped line never starts with the dot */
+        if (p->queued == Q_REMOVE) k += snprintf(b + k, n - k, "%s\xe2\x88\x92 %s", sep, p->name);
+        else if (p->queued && installed(p) && strcmp(p->installed, "?"))
+            k += snprintf(b + k, n - k, "%s%s %s > %s", sep, p->name, p->installed, p->latest);
+        else if (p->queued) k += snprintf(b + k, n - k, "%s+ %s %s", sep, p->name, p->latest);
+    }
 }
 
 static void queue_text(const mgr_t *m, char *b, int n) {
@@ -1014,6 +1241,49 @@ static void initials(const char *name, char *b) {   /* first letters of the firs
     b[k] = 0;
 }
 
+static int shot(const char *id) {   /* its r<N>_shot option: 1 + its index in SHOTS, 0: none */
+    for (int i = 0; i < (int)(sizeof SHOTS / sizeof *SHOTS); i++)
+        if (!strcmp(SHOTS[i], id)) return i + 1;
+    return 0;
+}
+
+/* line `want` (0-based) of s word-wrapped at `width` characters; the last of `lines` ends in "..." when text is left */
+static void wrap_line(const char *s, int want, int lines, int width, char *b, int n) {
+    for (int l = 0;; l++) {
+        while (*s == ' ') s++;
+        const char *e = s, *sp = NULL;
+        int c = 0;
+        for (; *e && c < width; e++) {
+            if ((*e & 0xc0) != 0x80) c++;
+            if (*e == ' ') sp = e;
+        }
+        while ((*e & 0xc0) == 0x80) e++;
+        int more = *e != 0;
+        if (more && sp && *e != ' ') e = sp;
+        if (l == want) {
+            int len = (int)(e - s);
+            if (l == lines - 1 && more) {
+                while (len > 0 && s[len - 1] == ' ') len--;
+                snprintf(b, n, "%.*s\xe2\x80\xa6", len, s);
+            } else snprintf(b, n, "%.*s", len, s);
+            if (!b[0]) snprintf(b, n, " ");
+            return;
+        }
+        s = e;
+    }
+}
+
+static void short_date(const char *iso, char *b, int n) {   /* "2026-10-02" -> "2 Oct", with the year when not this one */
+    static const char *mon[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    int y, mo, d;
+    time_t now = time(NULL);
+    struct tm tm;
+    localtime_r(&now, &tm);
+    if (sscanf(iso, "%d-%d-%d", &y, &mo, &d) != 3 || mo < 1 || mo > 12) { snprintf(b, n, "\xe2\x80\x94"); return; }
+    if (y == tm.tm_year + 1900) snprintf(b, n, "%d %s", d, mon[mo - 1]);
+    else snprintf(b, n, "%d %s %d", d, mon[mo - 1], y);
+}
+
 static void spaced(const char *in, char *out, int n) {   /* catalog slugs ("fm-synth") as words */
     int k = 0;
     for (; *in && k < n - 1; in++) out[k++] = *in == '-' ? ' ' : *in;
@@ -1026,10 +1296,11 @@ static void card_field(const mgr_t *m, int i, const char *f, char *b, int n) {
     b[0] = 0;
     if (!strcmp(f, "vis")) snprintf(b, n, "%d", p != NULL && m->loaded);
     else if (!p) snprintf(b, n, !strcmp(f, "state") || !strcmp(f, "inst") || !strcmp(f, "chan") || !strcmp(f, "cpu") ||
-                                 !strcmp(f, "old") || !strcmp(f, "tested") ? "0" : " ");
+                                 !strcmp(f, "old") || !strcmp(f, "tested") || !strcmp(f, "shot") ? "0" : " ");
     else if (!strcmp(f, "state")) snprintf(b, n, "%d", card_state(m, i));
     else if (!strcmp(f, "inst")) snprintf(b, n, "%d", installed(p));
     else if (!strcmp(f, "init")) initials(p->name, b);
+    else if (!strcmp(f, "shot")) snprintf(b, n, "%d", shot(p->id));
     else if (!strcmp(f, "kindtxt")) snprintf(b, n, "%s", is_addin(p) ? "ADDIN" : !strcmp(p->kind, "effect") ? "FX" : "INST");
     else if (!strcmp(f, "meta")) {
         char st[32], tg[96];
@@ -1048,7 +1319,11 @@ static void card_field(const mgr_t *m, int i, const char *f, char *b, int n) {
     else if (!strcmp(f, "size")) {
         if (p->size >= 1000000) snprintf(b, n, "%.1f MB", p->size / 1e6);
         else snprintf(b, n, "%lld KB", p->size / 1000);
-    } else if (!strcmp(f, "sha")) snprintf(b, n, "sha %.7s", p->sha);
+    } else if (!strcmp(f, "info")) {   /* what the list is sorted by */
+        char d[24];
+        if (m->sort == 2) snprintf(b, n, "%d download%s", p->downloads, p->downloads == 1 ? "" : "s");
+        else { short_date(m->sort == 1 ? p->first : p->updated, d, sizeof d); snprintf(b, n, "%s %s", m->sort == 1 ? "Released" : "Updated", d); }
+    }
     else snprintf(b, n, "0");   /* the triggers */
 }
 
@@ -1094,51 +1369,119 @@ static void requeue(mgr_t *m, pkg_t *p, int q) {   /* any change to the queue dr
     m->menu = -1;
 }
 
+static void act(mgr_t *m, int i, const char *f) {   /* act, reinstall or remove on pkg i (mu held, not busy) */
+    pkg_t *p = &m->pkg[i];
+    int st = pkg_state(m, i);
+    m->sel = i;
+    if (!strcmp(f, "act")) {
+        if (st == S_INSTALL || st == S_UPDATE) requeue(m, p, Q_INSTALL);
+        else if (st == S_Q_INSTALL || st == S_Q_UPDATE || st == S_Q_REMOVE) requeue(m, p, 0);
+        else if (st == S_DISABLED) say_locked(m, ERR, "Installing is turned off on this MPC (%s)", m->dev->problem);
+    } else if (!installed(p)) {
+        /* the menu (Reinstall, Remove) is only on installed plugins */
+    } else if (!strcmp(f, "more")) m->menu = m->menu == i ? -1 : i;
+    else if (!strcmp(f, "reinstall")) requeue(m, p, Q_INSTALL);
+    else if (!strcmp(f, "remove")) {
+        if (p->legacy && is_addin(p)) { m->menu = -1; say_locked(m, ERR, "%s was installed by hand: update it first, then remove it", p->name); }
+        else if (p->legacy) { m->menu = -1; say_locked(m, ERR, "%s is an old-style install: update it first, then remove it", p->name); }
+        else requeue(m, p, Q_REMOVE);
+    }
+}
+
 static void mgr_set_param(void *inst, const char *key, const char *val) {
     mgr_t *m = inst;
     double v = atof(val);
+    if (!access(WORK "/trace", F_OK) && strcmp(key, "display_rev"))   /* touch /tmp/pluginmgr/trace: log every input */
+        logf_("set %s=%s", key, val);
     pthread_mutex_lock(&m->mu);
     int idx[MAXPKG], nv = visible(m, idx), pages = nv ? (nv + ROWS - 1) / ROWS : 1;
     int busy = m->busy == J_PREPARE || m->busy == J_LAUNCH;
-    if (!strcmp(key, "tab") || !strcmp(key, "kind")) {   /* option params: the index as a number */
-        int o = (int)(v + 0.5);
-        if (key[0] == 't') m->tab = o; else m->kindf = o;
+    if (m->confirm && (!m->ready || busy)) m->confirm = 0;   /* nothing left to restart for */
+    if (m->confirm) {   /* the restart prompt takes every tap until it is answered */
+        if (v >= 0.5 && !strcmp(key, "confirm_cancel")) m->confirm = 0;   /* the prepared queue stays ready */
+        else if (v >= 0.5 && !strcmp(key, "confirm_go")) {
+            m->confirm = 0;
+            if (m->ready && !busy) { m->ready = 0; post(m, J_LAUNCH); }
+        }
+    } else if (v >= 0.5 && !strcmp(key, "search_btn")) {   /* the header's search button or search chip: type */
+        m->kb = 1;
+        m->menu_open = 0;
+        m->detail[0] = 0;
+        m->tag[0] = 0;
+        m->menu = -1;
+    } else if (v >= 0.5 && !strcmp(key, "q_clear")) { m->q[0] = 0; m->kb = 0; m->page = 0; }
+    else if (v >= 0.5 && m->kb && !strncmp(key, "k_", 2)) {   /* a key */
+        const char *k = key + 2;
+        size_t l = strlen(m->q);
+        if (!strcmp(k, "done") || !strcmp(k, "hide")) m->kb = 0;
+        else if (!strcmp(k, "clear")) m->q[0] = 0;
+        else if (!strcmp(k, "back")) { if (l) m->q[l - 1] = 0; }
+        else if (l + 1 < sizeof m->q && (!strcmp(k, "space") ? l && m->q[l - 1] != ' ' : k[0] && !k[1])) {
+            m->q[l] = !strcmp(k, "space") ? ' ' : k[0];
+            m->q[l + 1] = 0;
+        }
         m->page = 0;
         m->menu = -1;
-    } else if (!strncmp(key, "card", 4)) {   /* a tap anywhere on a card selects it (both toggle directions) */
+    } else if (v >= 0.5 && m->kb && !strncmp(key, "sr", 2) && (key[2] == '1' || key[2] == '2') && key[3] == '_') {   /* a match row */
+        int k = key[2] - '1';
+        if (k < nv && !strcmp(key + 4, "open")) {
+            m->kb = 0;
+            m->sel = idx[k];
+            snprintf(m->detail, sizeof m->detail, "%s", m->pkg[idx[k]].id);
+        } else if (k < nv && !strcmp(key + 4, "act") && !busy) act(m, idx[k], "act");
+    } else if (!strcmp(key, "tab") || !strcmp(key, "kind") || !strcmp(key, "sort")) {   /* option params: the index as a number
+                                                                                       * (and how the host restores them) */
+        int o = (int)(v + 0.5);
+        if (key[0] == 't') m->tab = o; else if (key[0] == 'k') m->kindf = o; else m->sort = o < 0 || o > 3 ? 0 : o;
+        m->page = 0;
+        m->menu = -1;
+        m->menu_open = 0;
+        if (key[0] != 's') m->detail[0] = 0;   /* the sort, restored with the project, leaves things be */
+    } else if (!strncmp(key, "card", 4)) {   /* a tap anywhere on a card selects it and opens its details (both toggle
+                                                 * directions); not before the catalog loaded, so a restored value can't */
         int r = key[4] - '1', k = m->page * ROWS + r;
-        if (k >= 0 && k < nv) { m->sel = idx[k]; if (m->menu != idx[k]) m->menu = -1; }
+        if (m->loaded && !m->detail[0] && k >= 0 && k < nv) {
+            m->sel = idx[k];
+            m->menu = -1;
+            snprintf(m->detail, sizeof m->detail, "%s", m->pkg[idx[k]].id);
+        }
     } else if (v < 0.5) {
         /* the other params are triggers: act on press only */
-    } else if (!strcmp(key, "page_prev") && m->page > 0) { m->page--; m->menu = -1; }
-    else if (!strcmp(key, "page_next") && m->page + 1 < pages) { m->page++; m->menu = -1; }
+    } else if (!strcmp(key, "menu_close")) m->menu_open = 0;   /* a tap outside an open dropdown */
+    else if (!strcmp(key, "kind_btn") || !strcmp(key, "sort_btn")) {   /* opens only: a quick second tap (or a bounce)
+                                                                         * before the menu is drawn must not close it */
+        m->menu_open = key[0] == 'k' ? 1 : 2;
+    } else if ((!strncmp(key, "kind_pick", 9) || !strncmp(key, "sort_pick", 9)) && key[9] >= '1' && key[9] <= '4' &&
+               m->menu_open == (key[0] == 'k' ? 1 : 2)) {   /* a row of the open menu */
+        if (key[0] == 'k') m->kindf = key[9] - '1'; else m->sort = key[9] - '1';
+        m->menu_open = 0;
+        m->page = 0;
+        m->menu = -1;
+        m->detail[0] = 0;
+    } else if (!strcmp(key, "d_back")) { m->detail[0] = 0; m->menu = -1; }
+    else if (!strcmp(key, "tag_clear")) { m->tag[0] = 0; m->page = 0; }
+    else if (!strncmp(key, "d_tag", 5) && key[5] >= '1' && key[5] <= '8') {   /* a tag button: list the plugins with that tag (in the current tab) */
+        int i = detail_of(m);
+        if (i >= 0 && nth_tag(&m->pkg[i], key[5] - '1', m->tag, sizeof m->tag)) { m->detail[0] = 0; m->menu = -1; m->page = 0; m->q[0] = 0; }
+    } else if (key[0] == 'd' && key[1] == '_') {   /* d_act, d_more, d_reinstall, d_remove */
+        int i = detail_of(m);
+        if (i >= 0 && !busy) act(m, i, key + 2);
+    } else if (!strcmp(key, "page_prev") && !m->detail[0] && m->page > 0) { m->page--; m->menu = -1; }   /* hidden by the details */
+    else if (!strcmp(key, "page_next") && !m->detail[0] && m->page + 1 < pages) { m->page++; m->menu = -1; }
     else if (!strcmp(key, "refresh")) post(m, J_REFRESH);
     else if (!strcmp(key, "update_all") && !busy) {
         for (int i = 0; i < m->npkg; i++) if (has_update(&m->pkg[i]) && !m->pkg[i].queued) requeue(m, &m->pkg[i], Q_INSTALL);
     } else if (!strcmp(key, "apply") && !busy) {
-        if (m->ready) { m->ready = 0; post(m, J_LAUNCH); }
+        if (m->ready) m->confirm = 1;   /* restart only from the prompt */
         else if (count_queued(m) && !m->dev->problem[0]) post(m, J_PREPARE);
-    } else if (key[0] == 'r' && key[1] >= '1' && key[1] <= '3' && key[2] == '_') {
+    } else if (key[0] == 'r' && key[1] >= '1' && key[1] <= '3' && key[2] == '_' && !m->detail[0]) {
         int k = m->page * ROWS + key[1] - '1';
         const char *f = key + 3;
-        pkg_t *p = k < nv ? &m->pkg[idx[k]] : NULL;
-        if (p && !busy) {
-            int i = idx[k], st = card_state(m, i);
-            m->sel = i;
-            if (!strcmp(f, "act")) {
-                if (st == S_INSTALL || st == S_UPDATE) requeue(m, p, Q_INSTALL);
-                else if (st == S_Q_INSTALL || st == S_Q_UPDATE || st == S_Q_REMOVE) requeue(m, p, 0);
-                else if (st == S_DISABLED) say_locked(m, ERR, "Installing is turned off on this MPC (%s)", m->dev->problem);
-            } else if (!installed(p)) {
-                /* the menu (Reinstall, Remove) is only on installed plugins */
-            } else if (!strcmp(f, "more")) m->menu = m->menu == i ? -1 : i;
-            else if (!strcmp(f, "reinstall")) requeue(m, p, Q_INSTALL);
-            else if (!strcmp(f, "remove")) {
-                if (p->legacy && is_addin(p)) { m->menu = -1; say_locked(m, ERR, "%s was installed by hand: update it first, then remove it", p->name); }
-                else if (p->legacy) { m->menu = -1; say_locked(m, ERR, "%s is an old-style install: update it first, then remove it", p->name); }
-                else requeue(m, p, Q_REMOVE);
-            }
-        }
+        if (k < nv && !strcmp(f, "open")) {   /* the thumbnail */
+            m->sel = idx[k];
+            m->menu = -1;
+            snprintf(m->detail, sizeof m->detail, "%s", m->pkg[idx[k]].id);
+        } else if (k < nv && !busy) act(m, idx[k], f);
     }
     m->rev++;
     pthread_mutex_unlock(&m->mu);
@@ -1146,13 +1489,27 @@ static void mgr_set_param(void *inst, const char *key, const char *val) {
 
 static int mgr_get_param(void *inst, const char *key, char *b, int n) {
     mgr_t *m = inst;
+    size_t kl = strlen(key);
+    /* The wrapper asks every text param for "<key>_on" (a list tile's selection) every 10 ms until it is told there is
+     * none: only the cards' titles have one. Answering the others kept ~60 lookups running every 10 ms. */
+    if (kl > 3 && !strcmp(key + kl - 3, "_on") && !(!strncmp(key, "card", 4) && key[4] >= '1' && key[4] <= '3')) return 0;
     pthread_mutex_lock(&m->mu);
     int idx[MAXPKG], nv = visible(m, idx), pages = nv ? (nv + ROWS - 1) / ROWS : 1, ok = 1;
     if (m->page >= pages) m->page = pages - 1;
     int upd = count_updates(m), q = count_queued(m), busy = m->busy == J_PREPARE || m->busy == J_LAUNCH;
+    int d = detail_of(m);
+    if (d < 0) m->detail[0] = 0;   /* gone from the catalog on a refresh */
     if (!strcmp(key, "display_rev")) snprintf(b, n, "%u", m->rev);
     else if (!strcmp(key, "tab")) snprintf(b, n, "%d", m->tab);
     else if (!strcmp(key, "kind")) snprintf(b, n, "%d", m->kindf);
+    else if (!strcmp(key, "sort")) snprintf(b, n, "%d", m->sort);
+    else if (!strcmp(key, "kind_open")) snprintf(b, n, "%d", m->menu_open == 1);
+    else if (!strcmp(key, "sort_open")) snprintf(b, n, "%d", m->menu_open == 2);
+    else if (!strcmp(key, "kind_hl")) snprintf(b, n, "%d", m->menu_open == 1 ? 1 + (m->kindf & 3) : 0);   /* the open menu's current row */
+    else if (!strcmp(key, "sort_hl")) snprintf(b, n, "%d", m->menu_open == 2 ? 1 + (m->sort & 3) : 0);
+    else if (!strcmp(key, "kind_txt")) snprintf(b, n, "%s", (const char *[]){"ALL", "INSTRUMENTS", "EFFECTS", "ADDINS"}[m->kindf & 3]);
+    else if (!strcmp(key, "sort_txt")) snprintf(b, n, "%s", (const char *[]){"UPDATED", "NEWEST", "DOWNLOADS", "NAME"}[m->sort & 3]);
+    else if (!strcmp(key, "dd")) snprintf(b, n, "%d", m->tag[0] || m->q[0] || !m->dev->problem[0]);   /* the dropdowns: not over the problem banner */
     else if (!strcmp(key, "net")) snprintf(b, n, "%d", !m->online);
     else if (!strcmp(key, "disk")) snprintf(b, n, "%d", (int)(m->disk_used * 10 + 0.5));   /* bar steps 0..10 */
     else if (!strcmp(key, "disk_txt")) snprintf(b, n, "%s", m->disk_free[0] ? m->disk_free : " ");
@@ -1161,17 +1518,30 @@ static int mgr_get_param(void *inst, const char *key, char *b, int n) {
     else if (!strcmp(key, "problem")) snprintf(b, n, "%d", m->dev->problem[0] != 0);
     else if (!strcmp(key, "problem_txt"))
         snprintf(b, n, "Can't install on this MPC: %s  \xc2\xb7  details in " WORK "/device.txt", m->dev->problem);
-    else if (!strcmp(key, "empty")) snprintf(b, n, "%d", !m->loaded ? (m->online || m->busy == J_REFRESH ? 0 : 1) : nv == 0 ? 2 : 0);
-    else if (!strcmp(key, "empty_txt"))
+    else if (!strcmp(key, "empty")) snprintf(b, n, "%d", d >= 0 ? 0 : !m->loaded ? (m->online || m->busy == J_REFRESH ? 0 : 1) : nv == 0 ? 2 : 0);
+    else if (!strcmp(key, "empty_txt")) {
+        int addins = 0;
+        for (int i = 0; i < m->npkg; i++) addins += is_addin(&m->pkg[i]) && m->pkg[i].url[0];
         snprintf(b, n, "%s", m->tab == 2 ? "Everything is up to date" : m->tab == 1 ? "No catalog plugins installed yet"
-                                                                       : m->kindf == 3 ? "No addins in the catalog yet" : "No plugins match this filter");
-    else if (!strcmp(key, "nav_prev")) snprintf(b, n, "%d", m->page > 0);
-    else if (!strcmp(key, "nav_next")) snprintf(b, n, "%d", m->page + 1 < pages);
+                             : m->kindf == 3 && !addins ? "No addins in the catalog yet" : "Everything here is already installed");
+    }
+    else if (!strcmp(key, "nav_prev")) snprintf(b, n, "%d", d < 0 && m->page > 0);
+    else if (!strcmp(key, "nav_next")) snprintf(b, n, "%d", d < 0 && m->page + 1 < pages);
     else if (!strcmp(key, "page_txt")) snprintf(b, n, "%d / %d", m->page + 1, pages);
+    else if (!strcmp(key, "summary") && m->q[0])
+        snprintf(b, n, "%d match%s for \xe2\x80\x9c%s\xe2\x80\x9d  \xc2\xb7  %d update%s available", nv, nv == 1 ? "" : "es", m->q, upd, upd == 1 ? "" : "s");
+    else if (!strcmp(key, "summary") && m->tag[0])
+        snprintf(b, n, "%d %s%s tagged \xe2\x80\x9c%s\xe2\x80\x9d  \xc2\xb7  %d update%s available", nv, m->kindf == 3 ? "addin" : "plugin",
+                 nv == 1 ? "" : "s", m->tag, upd, upd == 1 ? "" : "s");
     else if (!strcmp(key, "summary"))
         snprintf(b, n, "%d %s%s %s  \xc2\xb7  %d update%s available", nv, m->kindf == 3 ? "addin" : "plugin", nv == 1 ? "" : "s",
                  m->tab == 1 ? "installed" : m->tab == 2 ? "to update" : "available", upd, upd == 1 ? "" : "s");
-    else if (!strcmp(key, "status")) { if (m->sticky) snprintf(b, n, "%s", m->status); else queue_text(m, b, n); }
+    else if (!strcmp(key, "status")) {
+        if (m->sticky) snprintf(b, n, "%s", m->status);
+        else if (m->tag[0] && !q) snprintf(b, n, "Tap the tag at the top to see everything again.");
+        else if (m->q[0] && !q) snprintf(b, n, "Tap \xc3\x97 on the search at the top to see everything again.");
+        else queue_text(m, b, n);
+    }
     else if (!strcmp(key, "status_kind")) snprintf(b, n, "%d", m->sticky ? m->status_kind : OK);
     else if (!strcmp(key, "busy")) snprintf(b, n, "%d", m->downloading);
     else if (!strcmp(key, "progress"))   /* bar steps 1..20 while downloading, 0 (no bar) otherwise */
@@ -1180,14 +1550,102 @@ static int mgr_get_param(void *inst, const char *key, char *b, int n) {
     else if (!strcmp(key, "apply_state"))   /* 0 off, 1 apply, 2 preparing, 3 ready (restart), 4 retry */
         snprintf(b, n, "%d", busy ? 2 : m->ready ? 3 : m->failed && q ? 4 : q && !m->dev->problem[0] ? 1 : 0);
     else if (!strncmp(key, "card", 4) && key[4] >= '1' && key[4] <= '3') {   /* card<r>_1: the name, and its selection */
-        int k = m->page * ROWS + key[4] - '1', i = k < nv ? idx[k] : -1;
+        int k = m->page * ROWS + key[4] - '1', i = k < nv && d < 0 ? idx[k] : -1;
         if (strstr(key, "_on")) snprintf(b, n, "%d", i >= 0 && i == m->sel);
         else snprintf(b, n, "%s", i >= 0 ? m->pkg[i].name : " ");
     } else if (key[0] == 'r' && key[1] >= '1' && key[1] <= '3' && key[2] == '_') {
         int k = m->page * ROWS + key[1] - '1';
-        card_field(m, k < nv ? idx[k] : -1, key + 3, b, n);
-    } else if (!strcmp(key, "refresh") || !strcmp(key, "page_prev") || !strcmp(key, "page_next") ||
-               !strcmp(key, "update_all") || !strcmp(key, "apply") || !strcmp(key, "noop")) snprintf(b, n, "0");
+        card_field(m, k < nv && d < 0 ? idx[k] : -1, key + 3, b, n);
+    } else if (!strcmp(key, "view")) snprintf(b, n, "%d", d >= 0);
+    else if (!strcmp(key, "confirm")) snprintf(b, n, "%d", m->confirm && m->ready && !busy);
+    else if (!strcmp(key, "confirm_txt1") || !strcmp(key, "confirm_txt2")) {
+        char c[1024];
+        changes_text(m, c, sizeof c);
+        wrap_line(c, key[11] - '1', 2, 58, b, n);
+    }
+    else if (!strcmp(key, "hdr")) snprintf(b, n, "%d", m->tag[0] ? 2 : m->q[0] ? 3 : m->dev->problem[0] ? 1 : 0);   /* search, problem, tag, query */
+    else if (!strcmp(key, "kb")) snprintf(b, n, "%d", m->kb);
+    else if (!strcmp(key, "q_txt")) snprintf(b, n, "%s|", m->q);
+    else if (!strcmp(key, "q_chip")) snprintf(b, n, "%s", m->q[0] ? m->q : " ");
+    else if (!strcmp(key, "kb_count")) {
+        if (!m->kb) snprintf(b, n, " ");
+        else if (!m->q[0]) snprintf(b, n, "Type part of a name, author or tag");
+        else snprintf(b, n, "%d match%s in name, author and tags%s", nv, nv == 1 ? "" : "es", nv > 2 ? "  \xc2\xb7  DONE shows them all" : "");
+    }
+    else if (!strncmp(key, "sr", 2) && (key[2] == '1' || key[2] == '2') && key[3] == '_') {   /* the keyboard's match rows */
+        int k = key[2] - '1', i = m->kb && m->q[0] && k < nv ? idx[k] : -1;
+        const char *f = key + 4;
+        if (!strcmp(f, "vis")) snprintf(b, n, "%d", i >= 0);
+        else if (!strcmp(f, "state")) snprintf(b, n, "%d", i >= 0 ? pkg_state(m, i) : 0);
+        else if (i < 0) snprintf(b, n, !strcmp(f, "act") || !strcmp(f, "open") ? "0" : " ");
+        else if (!strcmp(f, "init")) initials(m->pkg[i].name, b);
+        else if (!strcmp(f, "name")) snprintf(b, n, "%s", m->pkg[i].name);
+        else if (!strcmp(f, "meta")) {
+            const pkg_t *p = &m->pkg[i];
+            char st[32], tg[96];
+            spaced(p->style, st, sizeof st);
+            spaced(p->tags, tg, sizeof tg);
+            snprintf(b, n, "%s%s%s%s%s", p->author, st[0] ? "  \xc2\xb7  " : "", st, tg[0] ? "  \xc2\xb7  " : "", tg);
+        } else snprintf(b, n, "0");
+    }
+    else if (!strcmp(key, "tag_txt")) snprintf(b, n, "#%s", m->tag);
+    else if (!strcmp(key, "d_shot")) snprintf(b, n, "%d", d >= 0 ? 1 + shot(m->pkg[d].id) : 0);   /* 0 hidden, 1 none */
+    else if (key[0] == 'd' && key[1] == '_' && d < 0)   /* no detail view: option params at 0 (hidden), text blank */
+        snprintf(b, n, !strcmp(key, "d_state") || !strcmp(key, "d_inst") || !strcmp(key, "d_cpuk") || !strcmp(key, "d_testk") ||
+                       !strcmp(key, "d_wnk") || (!strncmp(key, "d_tag", 5) && key[5] != 't') || !strcmp(key, "d_more") ? "0" : " ");
+    else if (!strcmp(key, "d_name")) snprintf(b, n, "%s", m->pkg[d].name);
+    else if (!strcmp(key, "d_init") || !strcmp(key, "d_inst")) card_field(m, d, key + 2, b, n);
+    else if (!strcmp(key, "d_state")) snprintf(b, n, "%d", card_state(m, d));
+    else if (!strcmp(key, "d_by")) {
+        const pkg_t *p = &m->pkg[d];
+        char st[32];
+        spaced(p->style, st, sizeof st);
+        snprintf(b, n, "by %s  \xc2\xb7  %s%s%s", p->author, is_addin(p) ? "Addin" : !strcmp(p->kind, "effect") ? "Effect" : "Instrument",
+                 st[0] ? "  \xc2\xb7  " : "", st);
+    }
+    else if (!strcmp(key, "d_f_version")) snprintf(b, n, "%s", m->pkg[d].latest);
+    else if (!strcmp(key, "d_f_channel")) snprintf(b, n, "%s", !strcmp(m->pkg[d].channel, "beta") ? "Beta" : "Stable");
+    else if (!strcmp(key, "d_f_size")) {
+        const pkg_t *p = &m->pkg[d];
+        if (p->size >= 1000000) snprintf(b, n, "%.1f MB", p->size / 1e6);
+        else snprintf(b, n, "%lld KB", p->size / 1000);
+    } else if (!strcmp(key, "d_f_released")) {   /* "2026-10-04" -> "4 Oct 2026" */
+        static const char *mon[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+        int y, mo, dd;
+        if (sscanf(m->pkg[d].date, "%d-%d-%d", &y, &mo, &dd) == 3 && mo >= 1 && mo <= 12) snprintf(b, n, "%d %s %d", dd, mon[mo - 1], y);
+        else snprintf(b, n, "\xe2\x80\x94");
+    } else if (!strcmp(key, "d_f_downloads")) snprintf(b, n, "%d", m->pkg[d].downloads);
+    else if (!strcmp(key, "d_cpuk")) {   /* 0 hidden, 1 pass, 2 warn, 3 fail, 4 no bench */
+        const char *c = m->pkg[d].cpu;
+        snprintf(b, n, "%d", !strcmp(c, "PASS") ? 1 : !strcmp(c, "WARN") ? 2 : !strcmp(c, "FAIL") ? 3 : 4);
+    } else if (!strcmp(key, "d_f_cpu")) {
+        const pkg_t *p = &m->pkg[d];
+        if (p->cpu[0]) snprintf(b, n, "%s%s%s", p->cpu_pct, p->cpu_pct[0] ? "  \xc2\xb7  " : "", p->cpu);
+        else snprintf(b, n, "no bench");
+    } else if (!strcmp(key, "d_testk")) snprintf(b, n, "%d", m->pkg[d].tested[0] ? 1 : 2);   /* 0 hidden, 1 yes, 2 not yet */
+    else if (!strcmp(key, "d_f_tested")) {
+        const char *t = m->pkg[d].tested;
+        snprintf(b, n, "%s", !t[0] ? "not yet" : !strncmp(t, "Akai ", 5) ? t + 5 : t);
+    } else if (!strncmp(key, "d_sum", 5) && key[5] >= '1' && key[5] <= '4')
+        wrap_line(m->pkg[d].summary, key[5] - '1', 4, 100, b, n);
+    else if (!strcmp(key, "d_wnk")) snprintf(b, n, "%d", m->pkg[d].wn_kind);   /* 0 hidden, 1 notes, 2 fallback */
+    else if (!strcmp(key, "d_wn_head")) snprintf(b, n, "WHAT'S NEW IN %s", m->pkg[d].latest);
+    else if (!strcmp(key, "d_tags_head")) snprintf(b, n, "%s", m->pkg[d].alltags[0] ? "TAGS  \xc2\xb7  TAP ONE TO FIND SIMILAR PLUGINS" : " ");
+    else if (!strncmp(key, "d_wn", 4) && key[4] >= '1' && key[4] <= '3')
+        wrap_line(m->pkg[d].whatsnew, key[4] - '1', 3, 108, b, n);
+    else if (!strncmp(key, "d_tag", 5)) {   /* d_tag<k>: the button, d_tag<k>v: shown, d_tagt<k>: its text */
+        char t[40];
+        int k = key[5] == 't' ? key[6] - '1' : key[5] - '1', has = k >= 0 && k < 8 && nth_tag(&m->pkg[d], k, t, sizeof t);
+        if (key[5] == 't') snprintf(b, n, "#%s", has ? t : "");
+        else snprintf(b, n, "%d", key[6] == 'v' && has);
+    }
+    else if (!strcmp(key, "refresh") || !strcmp(key, "page_prev") || !strcmp(key, "page_next") ||
+               !strcmp(key, "update_all") || !strcmp(key, "apply") || !strcmp(key, "noop") || !strcmp(key, "d_back") ||
+               !strcmp(key, "d_act") || !strcmp(key, "d_more") || !strcmp(key, "d_reinstall") || !strcmp(key, "d_remove") ||
+               !strcmp(key, "tag_clear") || !strcmp(key, "confirm_cancel") || !strcmp(key, "confirm_go") ||
+               !strcmp(key, "menu_close") || !strcmp(key, "kind_btn") || !strcmp(key, "sort_btn") ||
+               !strcmp(key, "search_btn") || !strcmp(key, "q_clear") || !strncmp(key, "k_", 2) ||
+               ((!strncmp(key, "kind_pick", 9) || !strncmp(key, "sort_pick", 9)) && key[9])) snprintf(b, n, "0");
     else ok = 0;
     pthread_mutex_unlock(&m->mu);
     return ok;

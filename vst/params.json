@@ -21,6 +21,140 @@
    ]
   },
   {
+   "key": "sort",
+   "name": "Sort",
+   "options": [
+    "UPDATED",
+    "NEWEST",
+    "DOWNLOADS",
+    "NAME"
+   ]
+  },
+  {
+   "key": "dd",
+   "name": "Dropdowns shown",
+   "options": [
+    "off",
+    "on"
+   ]
+  },
+  {
+   "key": "kind_txt",
+   "name": "Filter text",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "sort_txt",
+   "name": "Sort text",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "kind_btn",
+   "name": "Filter menu",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "sort_btn",
+   "name": "Sort menu",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "kind_open",
+   "name": "Filter menu open",
+   "options": [
+    "off",
+    "on"
+   ]
+  },
+  {
+   "key": "sort_open",
+   "name": "Sort menu open",
+   "options": [
+    "off",
+    "on"
+   ]
+  },
+  {
+   "key": "menu_close",
+   "name": "Close menu",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "kind_hl",
+   "name": "Filter menu selection",
+   "options": [
+    "none",
+    "All",
+    "Instruments",
+    "Effects",
+    "Addins"
+   ]
+  },
+  {
+   "key": "sort_hl",
+   "name": "Sort menu selection",
+   "options": [
+    "none",
+    "UPDATED",
+    "NEWEST",
+    "DOWNLOADS",
+    "NAME"
+   ]
+  },
+  {
+   "key": "kind_pick1",
+   "name": "Filter 1",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "kind_pick2",
+   "name": "Filter 2",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "kind_pick3",
+   "name": "Filter 3",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "kind_pick4",
+   "name": "Filter 4",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "sort_pick1",
+   "name": "Sort 1",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "sort_pick2",
+   "name": "Sort 2",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "sort_pick3",
+   "name": "Sort 3",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "sort_pick4",
+   "name": "Sort 4",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
    "key": "net",
    "name": "Network",
    "options": [
@@ -319,8 +453,8 @@
    "display": "string"
   },
   {
-   "key": "r1_sha",
-   "name": "Card 1 sha",
+   "key": "r1_info",
+   "name": "Card 1 sorted by",
    "type": "readout",
    "display": "string"
   },
@@ -461,8 +595,8 @@
    "display": "string"
   },
   {
-   "key": "r2_sha",
-   "name": "Card 2 sha",
+   "key": "r2_info",
+   "name": "Card 2 sorted by",
    "type": "readout",
    "display": "string"
   },
@@ -603,8 +737,8 @@
    "display": "string"
   },
   {
-   "key": "r3_sha",
-   "name": "Card 3 sha",
+   "key": "r3_info",
+   "name": "Card 3 sorted by",
    "type": "readout",
    "display": "string"
   },
@@ -652,6 +786,1197 @@
    "name": "Badge",
    "type": "trigger",
    "momentary": true
+  },
+  {
+   "key": "r1_open",
+   "name": "Card 1 details",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "r2_open",
+   "name": "Card 2 details",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "r3_open",
+   "name": "Card 3 details",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "view",
+   "name": "Details shown",
+   "options": [
+    "list",
+    "detail"
+   ]
+  },
+  {
+   "key": "d_back",
+   "name": "Back",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "hdr",
+   "name": "Header",
+   "options": [
+    "search",
+    "problem",
+    "tag",
+    "query"
+   ]
+  },
+  {
+   "key": "tag_txt",
+   "name": "Tag search",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "tag_clear",
+   "name": "Clear tag search",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "d_name",
+   "name": "Detail name",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_init",
+   "name": "Detail initials",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_by",
+   "name": "Detail author",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_state",
+   "name": "Detail state",
+   "options": [
+    "none",
+    "install",
+    "update",
+    "installed",
+    "q_install",
+    "q_update",
+    "q_remove",
+    "disabled",
+    "menu"
+   ]
+  },
+  {
+   "key": "d_inst",
+   "name": "Detail installed",
+   "options": [
+    "no",
+    "yes"
+   ]
+  },
+  {
+   "key": "d_act",
+   "name": "Detail action",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "d_more",
+   "name": "Detail menu",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "d_reinstall",
+   "name": "Detail reinstall",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "d_remove",
+   "name": "Detail remove",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "d_f_version",
+   "name": "Detail version",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_f_channel",
+   "name": "Detail channel",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_f_size",
+   "name": "Detail size",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_f_released",
+   "name": "Detail released",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_f_downloads",
+   "name": "Detail downloads",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_f_cpu",
+   "name": "Detail cpu",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_f_tested",
+   "name": "Detail tested",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_cpuk",
+   "name": "Detail CPU verdict",
+   "options": [
+    "hidden",
+    "pass",
+    "warn",
+    "fail",
+    "none"
+   ]
+  },
+  {
+   "key": "d_testk",
+   "name": "Detail tested",
+   "options": [
+    "hidden",
+    "yes",
+    "no"
+   ]
+  },
+  {
+   "key": "d_sum1",
+   "name": "Detail summary 1",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_sum2",
+   "name": "Detail summary 2",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_sum3",
+   "name": "Detail summary 3",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_sum4",
+   "name": "Detail summary 4",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_wnk",
+   "name": "Detail whats new kind",
+   "options": [
+    "hidden",
+    "notes",
+    "none"
+   ]
+  },
+  {
+   "key": "d_tags_head",
+   "name": "Detail tags heading",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_wn_head",
+   "name": "Detail whats new heading",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_wn1",
+   "name": "Detail whats new 1",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_wn2",
+   "name": "Detail whats new 2",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_wn3",
+   "name": "Detail whats new 3",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_tag1",
+   "name": "Tag 1",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "d_tag1v",
+   "name": "Tag 1 shown",
+   "options": [
+    "off",
+    "on"
+   ]
+  },
+  {
+   "key": "d_tagt1",
+   "name": "Tag 1 text",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_tag2",
+   "name": "Tag 2",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "d_tag2v",
+   "name": "Tag 2 shown",
+   "options": [
+    "off",
+    "on"
+   ]
+  },
+  {
+   "key": "d_tagt2",
+   "name": "Tag 2 text",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_tag3",
+   "name": "Tag 3",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "d_tag3v",
+   "name": "Tag 3 shown",
+   "options": [
+    "off",
+    "on"
+   ]
+  },
+  {
+   "key": "d_tagt3",
+   "name": "Tag 3 text",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_tag4",
+   "name": "Tag 4",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "d_tag4v",
+   "name": "Tag 4 shown",
+   "options": [
+    "off",
+    "on"
+   ]
+  },
+  {
+   "key": "d_tagt4",
+   "name": "Tag 4 text",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_tag5",
+   "name": "Tag 5",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "d_tag5v",
+   "name": "Tag 5 shown",
+   "options": [
+    "off",
+    "on"
+   ]
+  },
+  {
+   "key": "d_tagt5",
+   "name": "Tag 5 text",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_tag6",
+   "name": "Tag 6",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "d_tag6v",
+   "name": "Tag 6 shown",
+   "options": [
+    "off",
+    "on"
+   ]
+  },
+  {
+   "key": "d_tagt6",
+   "name": "Tag 6 text",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_tag7",
+   "name": "Tag 7",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "d_tag7v",
+   "name": "Tag 7 shown",
+   "options": [
+    "off",
+    "on"
+   ]
+  },
+  {
+   "key": "d_tagt7",
+   "name": "Tag 7 text",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "d_tag8",
+   "name": "Tag 8",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "d_tag8v",
+   "name": "Tag 8 shown",
+   "options": [
+    "off",
+    "on"
+   ]
+  },
+  {
+   "key": "d_tagt8",
+   "name": "Tag 8 text",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "confirm",
+   "name": "Restart prompt",
+   "options": [
+    "off",
+    "on"
+   ]
+  },
+  {
+   "key": "confirm_txt1",
+   "name": "Restart changes 1",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "confirm_txt2",
+   "name": "Restart changes 2",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "confirm_cancel",
+   "name": "Cancel restart",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "confirm_go",
+   "name": "Restart and apply",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "kb",
+   "name": "Keyboard shown",
+   "options": [
+    "off",
+    "on"
+   ]
+  },
+  {
+   "key": "search_btn",
+   "name": "Search",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "q_clear",
+   "name": "Clear search",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "q_txt",
+   "name": "Search text",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "q_chip",
+   "name": "Search chip",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "kb_count",
+   "name": "Search matches",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "k_Q",
+   "name": "Key Q",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_W",
+   "name": "Key W",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_E",
+   "name": "Key E",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_R",
+   "name": "Key R",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_T",
+   "name": "Key T",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_Y",
+   "name": "Key Y",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_U",
+   "name": "Key U",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_I",
+   "name": "Key I",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_O",
+   "name": "Key O",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_P",
+   "name": "Key P",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_A",
+   "name": "Key A",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_S",
+   "name": "Key S",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_D",
+   "name": "Key D",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_F",
+   "name": "Key F",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_G",
+   "name": "Key G",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_H",
+   "name": "Key H",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_J",
+   "name": "Key J",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_K",
+   "name": "Key K",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_L",
+   "name": "Key L",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_Z",
+   "name": "Key Z",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_X",
+   "name": "Key X",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_C",
+   "name": "Key C",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_V",
+   "name": "Key V",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_B",
+   "name": "Key B",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_N",
+   "name": "Key N",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_M",
+   "name": "Key M",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_1",
+   "name": "Key 1",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_2",
+   "name": "Key 2",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_3",
+   "name": "Key 3",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_4",
+   "name": "Key 4",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_5",
+   "name": "Key 5",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_6",
+   "name": "Key 6",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_7",
+   "name": "Key 7",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_8",
+   "name": "Key 8",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_9",
+   "name": "Key 9",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_0",
+   "name": "Key 0",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_space",
+   "name": "Key space",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_back",
+   "name": "Key back",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_clear",
+   "name": "Key clear",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_done",
+   "name": "Key done",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_hide",
+   "name": "Key hide",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "sr1_vis",
+   "name": "Match 1 shown",
+   "options": [
+    "off",
+    "on"
+   ]
+  },
+  {
+   "key": "sr1_init",
+   "name": "Match 1 initials",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "sr1_name",
+   "name": "Match 1 name",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "sr1_meta",
+   "name": "Match 1 meta",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "sr1_state",
+   "name": "Match 1 state",
+   "options": [
+    "none",
+    "install",
+    "update",
+    "installed",
+    "q_install",
+    "q_update",
+    "q_remove",
+    "disabled",
+    "menu"
+   ]
+  },
+  {
+   "key": "sr1_act",
+   "name": "Match 1 action",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "sr1_open",
+   "name": "Match 1 details",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "sr2_vis",
+   "name": "Match 2 shown",
+   "options": [
+    "off",
+    "on"
+   ]
+  },
+  {
+   "key": "sr2_init",
+   "name": "Match 2 initials",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "sr2_name",
+   "name": "Match 2 name",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "sr2_meta",
+   "name": "Match 2 meta",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "sr2_state",
+   "name": "Match 2 state",
+   "options": [
+    "none",
+    "install",
+    "update",
+    "installed",
+    "q_install",
+    "q_update",
+    "q_remove",
+    "disabled",
+    "menu"
+   ]
+  },
+  {
+   "key": "sr2_act",
+   "name": "Match 2 action",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "sr2_open",
+   "name": "Match 2 details",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "r1_shot",
+   "name": "Card 1 screenshot",
+   "options": [
+    "none",
+    "acid",
+    "airwindows-air3",
+    "airwindows-buttercomp2",
+    "airwindows-chamber2",
+    "airwindows-chorusensemble",
+    "airwindows-console7channel",
+    "airwindows-density2",
+    "airwindows-galactic",
+    "airwindows-galactic2",
+    "airwindows-galactic3",
+    "airwindows-galacticvibe",
+    "airwindows-infinity2",
+    "airwindows-kalienspaceship",
+    "airwindows-kcathedral5",
+    "airwindows-kcosmos",
+    "airwindows-mackity",
+    "airwindows-matrixverb",
+    "airwindows-pitchdelay",
+    "airwindows-tapedelay2",
+    "airwindows-tovinyl4",
+    "airwindows-verbity2",
+    "airwindows-zacidlowpass",
+    "airwindows-zlowpass2",
+    "aphex",
+    "boris-granular",
+    "braids",
+    "chordism",
+    "chordsmith",
+    "clementine-xt",
+    "crate-digger",
+    "denis",
+    "dexed-dx7",
+    "dub-force-siren",
+    "effectforce",
+    "elements",
+    "euclidier",
+    "fizzik",
+    "glass-spheres",
+    "grids",
+    "groove-bank",
+    "helm",
+    "hera",
+    "jv-880",
+    "keyscope",
+    "liminal-hz",
+    "lucky-dip",
+    "machinemodule",
+    "maze-sequencer",
+    "maze-voice",
+    "meowsynth",
+    "monksynth",
+    "mono-voice",
+    "monomodule",
+    "morpho-pe",
+    "mpc-plaits",
+    "mr-drums",
+    "mr-hyde",
+    "mutable-vibe",
+    "nam",
+    "nusaw",
+    "obxd",
+    "omni-sampler",
+    "open303",
+    "ottmpc",
+    "overcast",
+    "plateauxxl",
+    "plugin-manager",
+    "polyforce",
+    "profit-08",
+    "raffosynth",
+    "rings-fx",
+    "rings",
+    "rmxxxl",
+    "sturm-tp",
+    "subforce",
+    "tr-6w6",
+    "tr-8w8",
+    "tr-9w9",
+    "tr-cw78",
+    "tr-mpc-tap-fx",
+    "tr-mpc",
+    "vibe-fx",
+    "warps",
+    "wurl"
+   ]
+  },
+  {
+   "key": "r2_shot",
+   "name": "Card 2 screenshot",
+   "options": [
+    "none",
+    "acid",
+    "airwindows-air3",
+    "airwindows-buttercomp2",
+    "airwindows-chamber2",
+    "airwindows-chorusensemble",
+    "airwindows-console7channel",
+    "airwindows-density2",
+    "airwindows-galactic",
+    "airwindows-galactic2",
+    "airwindows-galactic3",
+    "airwindows-galacticvibe",
+    "airwindows-infinity2",
+    "airwindows-kalienspaceship",
+    "airwindows-kcathedral5",
+    "airwindows-kcosmos",
+    "airwindows-mackity",
+    "airwindows-matrixverb",
+    "airwindows-pitchdelay",
+    "airwindows-tapedelay2",
+    "airwindows-tovinyl4",
+    "airwindows-verbity2",
+    "airwindows-zacidlowpass",
+    "airwindows-zlowpass2",
+    "aphex",
+    "boris-granular",
+    "braids",
+    "chordism",
+    "chordsmith",
+    "clementine-xt",
+    "crate-digger",
+    "denis",
+    "dexed-dx7",
+    "dub-force-siren",
+    "effectforce",
+    "elements",
+    "euclidier",
+    "fizzik",
+    "glass-spheres",
+    "grids",
+    "groove-bank",
+    "helm",
+    "hera",
+    "jv-880",
+    "keyscope",
+    "liminal-hz",
+    "lucky-dip",
+    "machinemodule",
+    "maze-sequencer",
+    "maze-voice",
+    "meowsynth",
+    "monksynth",
+    "mono-voice",
+    "monomodule",
+    "morpho-pe",
+    "mpc-plaits",
+    "mr-drums",
+    "mr-hyde",
+    "mutable-vibe",
+    "nam",
+    "nusaw",
+    "obxd",
+    "omni-sampler",
+    "open303",
+    "ottmpc",
+    "overcast",
+    "plateauxxl",
+    "plugin-manager",
+    "polyforce",
+    "profit-08",
+    "raffosynth",
+    "rings-fx",
+    "rings",
+    "rmxxxl",
+    "sturm-tp",
+    "subforce",
+    "tr-6w6",
+    "tr-8w8",
+    "tr-9w9",
+    "tr-cw78",
+    "tr-mpc-tap-fx",
+    "tr-mpc",
+    "vibe-fx",
+    "warps",
+    "wurl"
+   ]
+  },
+  {
+   "key": "r3_shot",
+   "name": "Card 3 screenshot",
+   "options": [
+    "none",
+    "acid",
+    "airwindows-air3",
+    "airwindows-buttercomp2",
+    "airwindows-chamber2",
+    "airwindows-chorusensemble",
+    "airwindows-console7channel",
+    "airwindows-density2",
+    "airwindows-galactic",
+    "airwindows-galactic2",
+    "airwindows-galactic3",
+    "airwindows-galacticvibe",
+    "airwindows-infinity2",
+    "airwindows-kalienspaceship",
+    "airwindows-kcathedral5",
+    "airwindows-kcosmos",
+    "airwindows-mackity",
+    "airwindows-matrixverb",
+    "airwindows-pitchdelay",
+    "airwindows-tapedelay2",
+    "airwindows-tovinyl4",
+    "airwindows-verbity2",
+    "airwindows-zacidlowpass",
+    "airwindows-zlowpass2",
+    "aphex",
+    "boris-granular",
+    "braids",
+    "chordism",
+    "chordsmith",
+    "clementine-xt",
+    "crate-digger",
+    "denis",
+    "dexed-dx7",
+    "dub-force-siren",
+    "effectforce",
+    "elements",
+    "euclidier",
+    "fizzik",
+    "glass-spheres",
+    "grids",
+    "groove-bank",
+    "helm",
+    "hera",
+    "jv-880",
+    "keyscope",
+    "liminal-hz",
+    "lucky-dip",
+    "machinemodule",
+    "maze-sequencer",
+    "maze-voice",
+    "meowsynth",
+    "monksynth",
+    "mono-voice",
+    "monomodule",
+    "morpho-pe",
+    "mpc-plaits",
+    "mr-drums",
+    "mr-hyde",
+    "mutable-vibe",
+    "nam",
+    "nusaw",
+    "obxd",
+    "omni-sampler",
+    "open303",
+    "ottmpc",
+    "overcast",
+    "plateauxxl",
+    "plugin-manager",
+    "polyforce",
+    "profit-08",
+    "raffosynth",
+    "rings-fx",
+    "rings",
+    "rmxxxl",
+    "sturm-tp",
+    "subforce",
+    "tr-6w6",
+    "tr-8w8",
+    "tr-9w9",
+    "tr-cw78",
+    "tr-mpc-tap-fx",
+    "tr-mpc",
+    "vibe-fx",
+    "warps",
+    "wurl"
+   ]
+  },
+  {
+   "key": "d_shot",
+   "name": "Detail screenshot",
+   "options": [
+    "hidden",
+    "none",
+    "acid",
+    "airwindows-air3",
+    "airwindows-buttercomp2",
+    "airwindows-chamber2",
+    "airwindows-chorusensemble",
+    "airwindows-console7channel",
+    "airwindows-density2",
+    "airwindows-galactic",
+    "airwindows-galactic2",
+    "airwindows-galactic3",
+    "airwindows-galacticvibe",
+    "airwindows-infinity2",
+    "airwindows-kalienspaceship",
+    "airwindows-kcathedral5",
+    "airwindows-kcosmos",
+    "airwindows-mackity",
+    "airwindows-matrixverb",
+    "airwindows-pitchdelay",
+    "airwindows-tapedelay2",
+    "airwindows-tovinyl4",
+    "airwindows-verbity2",
+    "airwindows-zacidlowpass",
+    "airwindows-zlowpass2",
+    "aphex",
+    "boris-granular",
+    "braids",
+    "chordism",
+    "chordsmith",
+    "clementine-xt",
+    "crate-digger",
+    "denis",
+    "dexed-dx7",
+    "dub-force-siren",
+    "effectforce",
+    "elements",
+    "euclidier",
+    "fizzik",
+    "glass-spheres",
+    "grids",
+    "groove-bank",
+    "helm",
+    "hera",
+    "jv-880",
+    "keyscope",
+    "liminal-hz",
+    "lucky-dip",
+    "machinemodule",
+    "maze-sequencer",
+    "maze-voice",
+    "meowsynth",
+    "monksynth",
+    "mono-voice",
+    "monomodule",
+    "morpho-pe",
+    "mpc-plaits",
+    "mr-drums",
+    "mr-hyde",
+    "mutable-vibe",
+    "nam",
+    "nusaw",
+    "obxd",
+    "omni-sampler",
+    "open303",
+    "ottmpc",
+    "overcast",
+    "plateauxxl",
+    "plugin-manager",
+    "polyforce",
+    "profit-08",
+    "raffosynth",
+    "rings-fx",
+    "rings",
+    "rmxxxl",
+    "sturm-tp",
+    "subforce",
+    "tr-6w6",
+    "tr-8w8",
+    "tr-9w9",
+    "tr-cw78",
+    "tr-mpc-tap-fx",
+    "tr-mpc",
+    "vibe-fx",
+    "warps",
+    "wurl"
+   ]
   }
  ]
 }
