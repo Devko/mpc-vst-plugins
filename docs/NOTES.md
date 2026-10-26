@@ -1727,3 +1727,17 @@ Maschine 4, Rhythmbank 6; JV-880, Dexed and Profit-8 show all theirs. Existing b
   own binary. Built with `tools/mpc310_on_391/` (2 copies of the salt found in the image, as in the binary).
 - Caveats: 3.10 may rewrite `MPC.settings` (the stick backs it up first); projects saved in 3.10 may not open in 3.9.1.
 
+
+## 2026-10-26: Xenia (Waldorf Microwave XT emulation) port started (offline only, no ROM, no device)
+Own repo `mpc-vst-xenia` (Gen2 only, GPL-3.0), built like the Osirus port. "Xenia" is gearmulator's name for its Microwave XT plugin (`waldi/xt/xtLib`, on `wLib`, the
+68k `mc68k` emulator and the DSP56300 JIT); unlike Osirus there was no Schwung glue to adapt, so `src/dsp/xenia_engine.cpp` drives `xt::Device` through
+`synthLib::Plugin` itself. Facts so far, all from source and offline runs, none from a ROM or a device:
+- ROM: `xt::RomLoader::findROM()` takes a 256 kB `.bin` starting `C0 DE`, or two 128 kB halves (starting `C0 00` / `DE 00`), or an OS update `.mid` (166-171 kB) over a full ROM; the highest version wins.
+- Parameters: single parameter change sysex `F0 3E 0E <dev> 20 <part> <idxH> <idxL> <raw> F7`; `xt::State` caches the edit buffer and ROM singles (bank A/B, `getSingle` offsets 0 and 100)
+  and forwards to the device; a ROM single is fetched by a `SingleRequest` (`00 <bank> <prog>`) the device answers with a 265-byte dump (name at byte 247, 16 chars).
+- The device runs at 40 kHz with 4 output channels (main 0/1); `Plugin` resamples to the host's rate. Boot is synchronous inside the `xt::Device` constructor (runs the firmware until `isBootCompleted`).
+- Offline: the wrapper host test passes with the engine linked (x86, ASan/UBSan, no ROM: the engine reports "No Microwave XT ROM in xenia/roms/"); an aarch64 `xenia.so` links with `--no-undefined`.
+  A Debian bookworm toolchain (the Docker image) keeps glibc <= 2.36; an Ubuntu 24.04 cross toolchain links `__isoc23_strtol` (GLIBC_2.38), which the catalog would reject.
+- A Chromium without Docker can render the skin: `pip install --target` Playwright, a `sitecustomize.py` that gives `launch()` the installed browser's `executable_path`, and `tools/gen_vst.py` / `studio.py preview` run unchanged.
+- Popup lists of 97 options (wavetable names) open as a 9-column x 11-row panel with `cw=118`; a list of 128 numbered options (LFO delay, arp tempo) cannot fit and is a knob instead.
+Open: the first boot of a ROM, level, CPU on a Live III, everything on a device. Status and next steps: `mpc-vst-xenia/docs/DEVELOPMENT.md`.
