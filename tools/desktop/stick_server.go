@@ -156,3 +156,36 @@ func (a *App) stickBuild(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]any{"out": out, "firmware": scan.Firmware, "hits": scan.Hits})
 }
+
+// stickEasy writes the community plugin manager's pinned prebuilt stick (easystick.go) to a drive or folder.
+func (a *App) stickEasy(w http.ResponseWriter, r *http.Request) {
+	if !postOnly(w, r) {
+		return
+	}
+	var in struct{ Out string }
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&in); err != nil || in.Out == "" {
+		fail(w, 400, "choose a folder or drive to write the stick to")
+		return
+	}
+	out := filepath.Clean(in.Out)
+	if st, err := os.Stat(out); err == nil && st.IsDir() {
+		// Check emptiness before spending a download on a drive we'd refuse.
+		des, _ := os.ReadDir(out)
+		for _, d := range des {
+			if !isHousekeeping(d.Name()) {
+				fail(w, 400, out+" is not empty; pick an empty folder (or an empty, freshly formatted USB stick)")
+				return
+			}
+		}
+	}
+	data, err := fetchEasyStick()
+	if err != nil {
+		fail(w, 502, err.Error())
+		return
+	}
+	if err := WriteEasyStick(out, data); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"out": out, "version": easyStickVersion})
+}

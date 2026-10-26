@@ -190,6 +190,27 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
 </div>
 
 <div id="stick-mode" hidden>
+<section id="es">
+  <h2>Plugin install stick (no SSH or connection needed)</h2>
+  <p class="sub"><b>What this is for:</b> browsing and installing community plugins on the MPC's own screen, with no computer
+  connection, password or setup. This writes a ready-made USB stick; you plug it into the device and confirm one prompt.</p>
+  <p class="sub"><b>Works on:</b> Gen1 MPC (Live/One/X/Key), Force and Gen2 (Live III, One G2, Key(s) G2), on MPC OS 3.9.1 and 3.10.
+  One stick fits every device and picks the right version itself. <b>Gen2 is a beta, not yet tested on hardware.</b></p>
+  <p class="sub"><b>Credit:</b> the on-device manager is <a href="https://github.com/Eurikon/plugin-manager-usb-for-open-mpc" target="_blank" rel="noopener">Plugin Manager USB for OPEN MPC</a>
+  by Eurikon (MIT). This installer downloads his release (<span id="es-ver"></span>, checked against a fixed checksum) and copies it to your stick.</p>
+  <div id="es-drives"></div>
+  <div class="row">
+    <label class="f">Empty USB stick or folder<input id="es-out" type="text" placeholder="pick a mounted stick below, or Browse" spellcheck="false"></label>
+    <button id="es-out-browse" type="button">Browse…</button>
+    <button class="primary" id="es-build" type="button">Download and write…</button>
+  </div>
+  <p class="msg" id="es-msg" role="status" aria-live="polite"></p>
+  <p class="small"><b>On the device:</b> MPC OS 3.9.1: insert the stick and choose Open. MPC OS 3.10: first import
+  <code>Plugin Manager helper.xpa</code> from the stick once (Browser, Load, extract to the internal MPC Documents, restart), then
+  insert the stick and choose Open, or hold Shift + Menu for two seconds. Save your project first: opening the manager stops MPC.</p>
+</section>
+<details id="dadv" class="collapse">
+<summary><h2>Advanced: build a stick from your own firmware (SSH, put back addins, preset plugin list)</h2><span class="hint">Show</span></summary>
 <section id="st-intro">
   <p class="sub"><b>What this is for:</b> installing the plugin manager (and other catalog plugins) on a device you have no SSH
   access to at all -- no connecting, no password, no setup. You build a small USB stick here; it does the rest on the device
@@ -199,7 +220,7 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
   Nothing is installed until you confirm the prompt on the device's own screen.</p>
   <p class="sub"><b>Works on:</b> Gen1 MPC (Live/One/X/Key), Force, and Gen2 (Live III, One G2, Key(s) G2) -- but only on
   <b>MPC OS up to 3.9.1</b>. Akai closed this route in <b>MPC OS 3.10</b> and later; a stick built here will not work on a
-  device already updated past that.</p>
+  device already updated past that. Use the plugin install stick above for 3.10.</p>
   <p class="sub"><b>Gen2 devices specifically:</b> their storage can't be made to remember changes the way Gen1/Force can. The
   plugin manager itself, once installed, stays. But anything else this does -- putting back addins you'd already installed,
   or the optional SSH access below -- is undone by every reboot, so you'd reinsert the stick and confirm the prompt again
@@ -267,6 +288,7 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
   </div>
   <p class="msg" id="st-buildmsg" role="status" aria-live="polite"></p>
 </section>
+</details>
 </div>
 
 <footer>Community-provided software. Installing runs a script as root on your device and edits MPC's settings (a backup is made first). Downloads are checked against the catalog's checksums before anything is copied.</footer>
@@ -841,6 +863,30 @@ $("st-build").addEventListener("click", function () {
         : "Copy everything in " + r.out + " (hidden files too) to the root of a USB stick, then";
       msg($("st-buildmsg"), "Wrote " + r.out + ". " + where + " insert it into the MPC/Force and confirm the prompt on the device.", "ok");
     }).catch(function (e) { msg($("st-buildmsg"), e.message, "err"); });
+});
+
+
+/* Easy stick: download the pinned community manager stick and write it to a drive. */
+$("es-ver").textContent = "v1.2.0-beta.1";
+$("es-out-browse").addEventListener("click", function () { openBrowse("dir", $("es-out"), $("es-out").value.trim()); });
+api("/api/drives").then(function (r) {
+  var ds = r.drives || []; if (!ds.length) return;
+  var box = $("es-drives"); box.innerHTML = '<p class="small">Mounted drives: </p>';
+  var ul = el("ul", "list"); box.appendChild(ul);
+  ds.forEach(function (d) {
+    var li = el("li"); var b = el("button", "linkbtn", d.label + " (" + d.path + ")");
+    b.type = "button"; b.onclick = function () { $("es-out").value = d.path; };
+    li.appendChild(b); ul.appendChild(li);
+  });
+}).catch(function () {});
+$("es-build").addEventListener("click", function () {
+  var out = $("es-out").value.trim();
+  if (!out) { msg($("es-msg"), "Pick an empty USB stick or folder first.", "err"); return; }
+  msg($("es-msg"), "Downloading and writing…");
+  api("/api/stick/easy", { Out: out }).then(function (r) {
+    var where = stickOutIsAMountedDrive(out) ? "That's a mounted drive, so it's already on the stick." : "Copy everything in " + r.out + " (hidden files too) to the root of a FAT32 or exFAT USB stick.";
+    msg($("es-msg"), "Wrote " + r.version + " to " + r.out + ". " + where + " Eject it safely, then follow the steps below for your MPC OS.", "ok");
+  }).catch(function (e) { msg($("es-msg"), e.message, "err"); });
 });
 
 api("/api/version").then(function (v) {
