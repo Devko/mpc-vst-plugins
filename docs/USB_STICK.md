@@ -15,6 +15,17 @@ Do you want to run it?" prompt code, 3.10 adds `*.scriptpkg` and `/usr/bin/az01-
 salted hash. This matches TheKikGen's prediction below. **A stick built by this tool will not be accepted once a device is
 updated to 3.10+;** it still works on any device still on 3.9.1 (or an earlier Gen1/Force build using the same scheme).
 
+## Easy stick: Eurikon's prebuilt release (2026-10-27, offline-tested only)
+
+The desktop app's no-SSH mode now leads with Eurikon's own stick (`Eurikon/plugin-manager-usb-for-open-mpc`, MIT, pinned to
+`v1.2.0-beta.1`, sha256 checked, see `tools/desktop/easystick.go`). Why: it needs no user firmware, and it is the only route that
+covers MPC OS 3.10, where our salted-hash stick (below) no longer works. One zip serves every device: `open.sh` picks the armv7 or
+aarch64 runtime by `uname -m`; on 3.9.1 the stock prompt launches it, on 3.10 the user first imports `Plugin Manager helper.xpa`
+(a controller profile) once. v1.2.0-beta.1 adds the Gen2 runtime; its author has only Gen1 hardware, so Gen2 is a beta until
+tested on a Live III. Not done: SSH and addin reapply on his stick. His `open.sh`, `setup.sh` and `launch.sh` are covered by
+`autorun.check`, so we cannot add a hook without the salt; the ask to him is an optional unchecked `extras/run.sh` that his
+`open.sh` runs when present. The firmware-built stick below stays as the Advanced option for that.
+
 ## How the route works
 
 MPC OS up to 3.9.1 (Gen1 and Force) has a stock "USB script" reader. A stick with `autorun/autorun.json`, `autorun/autorun.check`

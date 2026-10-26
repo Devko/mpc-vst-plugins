@@ -9,6 +9,13 @@ It uses the same release zips and the same `install.sh` as every other route (`d
 path. What it adds: a friendly page, one copy of each zip over SSH (as a tar stream, so executable bits and symlinks survive), and
 one MPC stop and start around the whole batch when the installers allow it.
 
+The same mode opens with an **easy stick** (`tools/desktop/easystick.go`, added 2026-10-27, offline-tested only): it downloads
+the community "Plugin Manager USB for OPEN MPC" release by Eurikon (MIT; <https://github.com/Eurikon/plugin-manager-usb-for-open-mpc>),
+pinned to one version and checked against a fixed SHA-256 (`easyStickVersion`/`easyStickSHA256`; bump both after testing a new
+release, never "latest": the stick runs as root), and unpacks it onto an empty drive. It needs no firmware: the bundle carries the
+OS 3.9.1 autorun route and the OS 3.10 controller helper, and picks the Gen1 or Gen2 runtime on the device. The firmware-built stick
+below moves under **Advanced** (SSH and addin reapply, which the easy stick does not do).
+
 A second, independent mode (the tab at the top, "Plugin install (no SSH or connection needed)") is for a device you have no SSH
 access to yet: it builds the no-SSH autorun stick (`docs/USB_STICK.md`, `tools/usb_stick/*.py` -- this is a Go port of the same
 algorithm, `tools/desktop/stick.go`, so the app needs no Python) from your device's own stock Akai firmware image. It opens with a

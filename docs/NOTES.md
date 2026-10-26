@@ -1727,3 +1727,9 @@ Maschine 4, Rhythmbank 6; JV-880, Dexed and Profit-8 show all theirs. Existing b
   own binary. Built with `tools/mpc310_on_391/` (2 copies of the salt found in the image, as in the binary).
 - Caveats: 3.10 may rewrite `MPC.settings` (the stick backs it up first); projects saved in 3.10 may not open in 3.9.1.
 
+## 2026-10-27: desktop installer "easy stick" (offline; device test pending)
+
+- Eurikon's `v1.2.0-beta.1` zip (sha256 `8e8aa956...ab22`, 1.8 MB) read offline: a universal stick (`autorun/` for 3.9.1, `Plugin Manager helper.xpa` for 3.10, runtimes `armv7` and `aarch64`); `open.sh` chooses by `uname -m`; Gen2 uses `/data/Settings/MPC/MPC.settings` and prefers `/nvme/Synths`. He has Gen1 hardware only. Nothing from it was run on a device yet.
+- `tools/desktop/easystick.go`: downloads the pinned release, checks the hash, unpacks onto an empty drive (path-traversal refused, nothing written if any name is unsafe). Go tests green (docker golang:1.26).
+- Our firmware-built stick is kept under Advanced (SSH, addin reapply). Our previous Force/Live III stick was backed up to `~/stick-backup-ours-2026-10-27` (outside the repo; contains `autorun.check`, not the salt).
+
