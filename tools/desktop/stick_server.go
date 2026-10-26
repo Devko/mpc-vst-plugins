@@ -189,3 +189,8 @@ func (a *App) stickEasy(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]any{"out": out, "version": easyStickVersion})
 }
+
+// stickEasyInfo tells the page which release the easy stick will download, so the page never hardcodes it.
+func (a *App) stickEasyInfo(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, map[string]string{"version": easyStickVersion})
+}

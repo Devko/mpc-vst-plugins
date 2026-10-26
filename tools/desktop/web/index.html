@@ -867,7 +867,7 @@ $("st-build").addEventListener("click", function () {
 
 
 /* Easy stick: download the pinned community manager stick and write it to a drive. */
-$("es-ver").textContent = "v1.2.0-beta.1";
+api("/api/stick/easyinfo").then(function (r) { $("es-ver").textContent = r.version; }).catch(function () { $("es-ver").textContent = "a pinned release"; });
 $("es-out-browse").addEventListener("click", function () { openBrowse("dir", $("es-out"), $("es-out").value.trim()); });
 api("/api/drives").then(function (r) {
   var ds = r.drives || []; if (!ds.length) return;
