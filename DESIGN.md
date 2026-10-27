@@ -131,15 +131,18 @@ Candidates are the **`SynthContentLocations` entries** read from `MPC.settings`,
 ## 6b. The catalog browser screen (your idea, 2026-10-27)
 
 Wanted: **thinner rows so more fit on a page, a small thumbnail on each row, and a tap on the thumbnail opens a bigger preview.**
-Today: 3 cards per page (`#define ROWS 3`, `src/manager.c`; read, not run).
+Today (poloq 1.2.0, `f01948b`; read, not run): 3 cards per page (`#define ROWS 3`, 118 px tall in a 1280 x 628 plugin area). **Each card
+already carries a baked screenshot** (184 x 92, `images/shots/<id>.png`, 84 ids at this commit), picked by `when=r<N>_shot:<id>`
+buttons that `vst/shots.py` writes into `layout.conf` (255 lines = 85 ids x 3 rows) and `src/shots.h`; a tap on it (`r1_open`) opens the
+details page with a bigger picture (270 x 135, `d_shot`). A plugin added to the catalog after `shots.py` ran "keeps its initials".
+So your idea is mostly a **density** change, not a new feature: more, thinner rows, a smaller thumbnail, and a preview that opens on a tap.
 
-Constraints found in poloq's tree and in PR #8's `vst/make_thumbs.py` (read, not run):
-- **A skin cannot load a picture from the network.** The thumbnails are baked into the plugin at build time as a filmstrip (frames stacked
-  down one PNG). PR #8 uses 140x69 frames (about 2:1, the plugin screen's shape), the initials as a fallback, **frame 0 as the
-  generic picture for catalog entries newer than the build**, and at most 127 plugins (the meter filmstrip holds 128 frames).
-- The big preview in PR #8 is 560x275, and a strip may be at most 12288 px tall (`shadow_skin.MAX_STRIP`), so about 44 big frames per strip: 111+ entries need three strips.
-- So: a plugin added to the catalog after the build shows the generic thumbnail until the manager is rebuilt. Make that explicit on
-  screen ("preview comes with the next update"), and rebuild the manager from the catalog in CI (M5).
+Constraints:
+- **A skin cannot load a picture from the network.** Every picture is baked into the plugin (see 6c for swapping during a restart).
+- The per-id `when=` buttons make `layout.conf` grow with rows x ids: 5 rows would be about 425 lines for 85 ids. Poloq's PR #8 instead bakes a
+  filmstrip (frames stacked down one PNG, 140 x 69 per frame, frame 0 generic, at most 127 plugins; big picture 560 x 275, 44 frames per
+  strip because a strip may be at most 12288 px). Pick one after measuring MPC's load time for the layout on the Live III.
+- A plugin newer than the build shows initials or the generic frame until the next build or thumbnail pack (6c).
 
 Design:
 1. **Row**: thumbnail (about 70x35, scaled from the 140x69 frame or its own smaller frame), name, one line of author · tags, badges,
@@ -199,7 +202,7 @@ adapt `docs/UPSTREAM_TESTING.md`, plus: unlisted target shows the banner; a list
 |---|---|---|
 | M0 | Baseline: run `tests/run.sh` on poloq's code as is | **2026-10-27 (offline): the fake devices and the addin flow pass; the wrapper host test did not.** It failed two checks on poloq's unmodified `f01948b` against today's wrapper (`tick 1 steps one option` and the parameter-0 toggle), and `run.sh` hid that (a pipe). **Fixed in M1** (below). Needs network, Docker `gcc:12` and the `mpc-vst-plugins` checkout next to this folder |
 | M1 | Merge PR #12; rename (id, uid, work folder); build aarch64; clean host test | **done 2026-10-27 (offline).** aarch64 build OK; `tests/run.sh` exits 1 when the host test fails (`pipefail`); with the `mpc-vst-plugins` change (branch `host-test-live-params`: `"live": true` params, option tests skip parameter 0) the host test passes and `run.sh` exits 0. Until that change is merged, run with `MPC_VST` pointing at a checkout that has it |
-| M2 | Section 5 target policy + fake devices | **M2a done 2026-10-27 (offline):** no filesystem whitelist (rw + not noexec + not tmpfs/ramfs/squashfs/erofs/iso9660/cramfs); no fallback, only usable `SynthContentLocations` entries (problem "No install location", every location and its reason in `device.txt`); `tests/devices/*.expect` are checked, new fake devices `gen2-310-unlisted`, `gen2-nvme-slash` (CRLF + trailing slash), `exfat-sd` (#9), `volatile-location`; a fake `/tmp/pm-mounts` (test builds only) stands in for `/proc/mounts`. **Still to do:** target picker on screen (#10), symlink probe per package, the Advanced switch for an unlisted folder, on-screen wording of the red banner |
+| M2 | Section 5 target policy + fake devices | **M2a done 2026-10-27 (offline):** no filesystem whitelist (rw + not noexec + not tmpfs/ramfs/squashfs/erofs/iso9660/cramfs); no fallback, only usable `SynthContentLocations` entries (problem "No install location", every location and its reason in `device.txt`); `tests/devices/*.expect` are checked, new fake devices `gen2-310-unlisted`, `gen2-nvme-slash` (CRLF + trailing slash), `exfat-sd` (#9), `volatile-location`; a fake `/tmp/pm-mounts` (test builds only) stands in for `/proc/mounts`. **M2b-1 done 2026-10-27 (offline):** a package whose `MODES` lists a symlink is refused, before MPC is stopped, when the target cannot store links (`Linky: needs a drive that stores symbolic links, and <target> does not. Nothing on the MPC was changed.`); test fixture `Linky` + `PM_NOLINKS` hook. **Still to do:** target picker on screen (#10), the Advanced switch for an unlisted folder, on-screen wording of the red banner |
 | M3 | Section 6 (catalog size, manifest), section 7 (rollback), and the 4b items marked M3 (zip inspection, glibc notes, `.mpc-store`, `user_data`, `-n` count) | `catalog-111`, `no-manifest-zip`, `apply-fails` pass |
 | M4 | History file, local zips, self-update, register orphan folders, backup pruning (4b) | offline pass |
 | M5 | Screen rework: thin rows, thumbnails, preview (section 6b; ask FullPace before copying PR #8) | device run |

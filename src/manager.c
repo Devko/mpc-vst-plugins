@@ -724,6 +724,31 @@ static int good_target(const char *loc) {
     return !bad_target(loc, why, sizeof why);
 }
 
+/* Can this folder hold a symbolic link? FAT, exFAT and NTFS cannot (Gen2's internal /nvme is exFAT). Asked of a package that needs
+ * links, not of a drive in general: most plugins ship none. */
+static int can_link(const char *dir) {
+#ifdef FS_ANY
+    if (getenv("PM_NOLINKS")) return 0;   /* tests: a container's overlay stores links, an exFAT drive does not */
+#endif
+    char l[320];
+    snprintf(l, sizeof l, "%s/.pm-link-test", dir);
+    unlink(l);
+    int ok = symlink("x", l) == 0;
+    unlink(l);
+    return ok;
+}
+
+/* does the unpacked package's MODES file (install.sh restores these after a copy that loses them) list a symbolic link? ("l", tab, ...) */
+static int needs_links(const char *pkgdir) {
+    char f[600], line[1024];
+    int n = 0;
+    snprintf(f, sizeof f, "%s/MODES", pkgdir);
+    FILE *fp = fopen(f, "r");
+    while (fp && fgets(line, sizeof line, fp)) if (line[0] == 'l' && line[1] == '\t') { n = 1; break; }
+    if (fp) fclose(fp);
+    return n;
+}
+
 /* the Synths folder this plugin runs from: proof that MPC loads plugins (and their skins) from there */
 static void own_synths(char *out, size_t n) {
     Dl_info di;
@@ -990,6 +1015,7 @@ static void prepare(mgr_t *m, pkg_t *q) {
     pthread_mutex_unlock(&m->mu);
     char path[512], cmd[1400];
     const char *err = NULL;
+    char why[300];
     int i;
     for (i = 0; i < nq && !err; i++) {
         pkg_t *p = &q[i];
@@ -1010,6 +1036,14 @@ static void prepare(mgr_t *m, pkg_t *q) {
         }
         if (d) closedir(d);
         if (!p->dir[0]) err = "is not a valid package";
+        else if (!is_addin(p) && p->queued == Q_INSTALL && needs_links(p->dir)) {
+            const char *t = p->synths[0] && good_target(p->synths) ? p->synths : m->dev->target;
+            if (t[0] && !can_link(t)) {
+                snprintf(why, sizeof why, "needs a drive that stores symbolic links, and %s does not", t);
+                err = why;
+                break;
+            }
+        }
     }
     FILE *f = err ? NULL : fopen(WORK "/apply.sh", "w");
     if (!err && !f) err = "apply.sh could not be written";

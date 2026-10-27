@@ -31,5 +31,19 @@ for aid, name, ver in ADDINS:
                     "versions": [{"version": ver, "size": len(data), "sha256": hashlib.sha256(data).hexdigest(),
                                   "url": "file:///p/vst/build/tests/" + os.path.basename(zpath), "channel": "stable",
                                   "date": "2026-01-01", "yanked": False}]})
+# a plugin (not an addin) whose package needs a symbolic link (MODES line "l"): refused on a drive that cannot store links
+import zipfile
+lz = os.path.join(out, "Linky-1.0.0-mpc-armv7.zip")
+with zipfile.ZipFile(lz, "w") as z:
+    for name, body in (("install.sh", "#!/bin/sh\nexit 0\n"), ("uninstall.sh", "#!/bin/sh\nexit 0\n"),
+                       ("MODES", "x\tinstall.sh\nl\tlib/a.so\tb.so\n"), ("mpc-plugin.json", "{}\n")):
+        z.writestr("Linky-1.0.0/" + name, body)
+data = open(lz, "rb").read()
+plugins.append({"id": "linky", "name": "Linky", "author": "acme", "repo": "acme/mpc-vst-linky", "kind": "instrument",
+                "license": "MIT", "summary": "A stand-in plugin whose package needs a symbolic link.", "style": "utility", "tags": ["test"],
+                "distribution": "release", "latest": "1.0.0",
+                "versions": [{"version": "1.0.0", "size": len(data), "sha256": hashlib.sha256(data).hexdigest(),
+                              "url": "file:///p/vst/build/tests/" + os.path.basename(lz), "channel": "stable",
+                              "date": "2026-01-01", "yanked": False}]})
 json.dump({"schema": 1, "plugins": plugins}, open(os.path.join(out, "catalog.json"), "w"), indent=1)
-print("fixture: %d addins in %s" % (len(plugins), out))
+print("fixture: %d packages in %s" % (len(plugins), out))

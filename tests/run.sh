@@ -37,4 +37,16 @@ echo "-- apply.sh:"; grep -E "^(sh|echo)" /tmp/openmpc-pm/apply.sh
 grep -q "/install.sh'"'"' -y -n -t '"'"'/data/mpc-addins/beta-addin'"'"'" /tmp/openmpc-pm/apply.sh
 grep -q "/data/mpc-addins/alpha-addin/uninstall.sh'"'"' -y -n -t '"'"'/data/mpc-addins/alpha-addin'"'"'" /tmp/openmpc-pm/apply.sh
 ! grep -q gamma /tmp/openmpc-pm/apply.sh
-echo "addins OK"'
+echo "addins OK"
+echo "== links (offline fixture): a package that needs a symbolic link"
+rm -rf /media /sdcard /nvme /synths /data /tmp/openmpc-pm /tmp/pm-mounts; mkdir -p /media
+sh tests/devices/mpc-one.sh
+PM_NOLINKS=1 /tmp/drive_addins links > /tmp/links-no.out
+grep -F "Linky: needs a drive that stores symbolic links, and /media/az01-internal/Synths does not. Nothing on the MPC was changed." /tmp/links-no.out
+grep -q "apply_state 4" /tmp/links-no.out
+[ ! -f /tmp/openmpc-pm/apply.sh ] || { echo "FAIL: apply.sh written for a refused package"; exit 1; }
+rm -rf /tmp/openmpc-pm; /tmp/drive_addins links > /tmp/links-yes.out
+! grep -q "symbolic links" /tmp/links-yes.out
+grep -q "apply_state 3" /tmp/links-yes.out
+grep -q "/linky.*install.sh\|Linky-1.0.0/install.sh" /tmp/openmpc-pm/apply.sh
+echo "links OK"'

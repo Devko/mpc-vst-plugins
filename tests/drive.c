@@ -65,6 +65,13 @@ int main(int argc, char **argv) {
     press("apply"); prompt(); press("confirm_go"); sleep(1); cards();
     e->destroy(m); return 0;
   }
+  if (argc > 1 && !strcmp(argv[1], "links")) {   /* a package that needs a symbolic link (tests/fixture.py "Linky"): queue it and APPLY */
+    set("kind", "1"); printf("INSTRUMENTS: install Linky (card 1)\n"); cards();
+    press("r1_act"); press("apply");
+    for (int i = 0; i < 60 && strcmp(get("apply_state"), "3") && strcmp(get("apply_state"), "4"); i++) sleep(1);
+    cards();
+    e->destroy(m); return 0;
+  }
   printf("DISCOVER\n"); cards();
   printf("details: tap card 2, BACK, thumbnail of card 1, page arrows ignored, queue from the details, BACK\n");
   set("card2_1", "1"); details(); press("d_back"); printf("  view=%s\n", get("view"));
