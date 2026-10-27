@@ -670,9 +670,16 @@ static void attr(const char *tag, const char *end, const char *name, char *out, 
     if ((q = strchr(p, '"')) && q < end) snprintf(out, n, "%.*s", (int)(q - p), p);
 }
 
-/* the filesystem a path is on, from /proc/mounts (longest matching mount point); why it can't hold a plugin, or NULL */
+/* the filesystem a path is on, from /proc/mounts (longest matching mount point); why it can't hold a plugin, or NULL.
+ * A plugin needs a mount that is read-write and not noexec, and that keeps its files: so there is no list of
+ * allowed filesystems (Gen2's internal /nvme is exFAT, and a user's SD card may be too), only a few that lose or never
+ * take files. Whether the drive can store symbolic links is a per-package question, asked at install time. */
 static const char *bad_fs(const char *path, char *why, size_t n) {
+#ifdef FS_ANY   /* tests: a fake /proc/mounts, since a container cannot mount a read-only or noexec drive */
+    FILE *f = fopen(!access("/tmp/pm-mounts", R_OK) ? "/tmp/pm-mounts" : "/proc/mounts", "r");
+#else
     FILE *f = fopen("/proc/mounts", "r");
+#endif
     char dev[128], mnt[256], type[32], opts[512];
     size_t best = 0;
     int ok = 0;
@@ -681,14 +688,12 @@ static const char *bad_fs(const char *path, char *why, size_t n) {
         size_t l = strlen(mnt);
         if (strncmp(path, mnt, l) || (path[l] && path[l] != '/' && l > 1) || l < best) continue;
         best = l;
-        int rw = !strncmp(opts, "rw", 2), exec = !strstr(opts, "noexec");
-        /* Gen2 (aarch64: Live III, confirmed; One G2/Key(s) G2 assumed to match): the internal /nvme partition is
-         * exFAT, not ext4 -- it is still the device's own fixed storage, so it belongs on this list, not just a
-         * removable card's filesystem. */
-        int fs = FS_ANY || !strcmp(type, "ext4") || !strcmp(type, "ext3") || !strcmp(type, "f2fs") || !strcmp(type, "btrfs")
-                 || !strcmp(type, "exfat");
-        ok = rw && exec && fs;
-        snprintf(why, n, "%s is %s%s%s", mnt, type, rw ? "" : ", read-only", exec ? "" : ", noexec");
+        char *o = opts;   /* "rw" as an option of its own, not the start of another word */
+        int rw = !strncmp(o, "rw", 2) && (o[2] == ',' || !o[2]), exec = !strstr(opts, "noexec");
+        int volatile_fs = !strcmp(type, "tmpfs") || !strcmp(type, "ramfs") || !strcmp(type, "devtmpfs") || !strcmp(type, "squashfs")
+                          || !strcmp(type, "erofs") || !strcmp(type, "iso9660") || !strcmp(type, "cramfs");
+        ok = rw && exec && !volatile_fs;
+        snprintf(why, n, "%s is %s%s%s%s", mnt, type, rw ? "" : ", read-only", exec ? "" : ", noexec", volatile_fs ? ", not kept across restarts" : "");
     }
     if (f) fclose(f);
     return ok ? NULL : why;
@@ -783,23 +788,9 @@ static void probe_device(device_t *d) {
             if ((pass || internal) && good_target(d->loc[i])) snprintf(d->target, sizeof d->target, "%s", d->loc[i]);
         }
     if (d->target[0]) snprintf(d->via, sizeof d->via, "SynthContentLocations");
-    /* none listed is usable (a trailing "/", only card or factory locations, ...): the folder this plugin was installed
-     * in, then where other plugin folders are, then the internal drive's default */
-    char cand[200];
-    own_synths(cand, sizeof cand);
-    if (!d->target[0] && cand[0] && good_target(cand))
-        snprintf(d->target, sizeof d->target, "%s", cand), snprintf(d->via, sizeof d->via, "the Plugin Manager's folder");
-    for (int i = 0; i < d->nent && !d->target[0]; i++) {
-        snprintf(cand, sizeof cand, "%s", d->ent[i].file);
-        char *sl = strrchr(cand, '/');
-        if (sl) *sl = 0;
-        sl = strrchr(cand, '/');
-        if (sl && strstr(sl, " - VST - ") && (*sl = 0, good_target(cand)))
-            snprintf(d->target, sizeof d->target, "%s", cand), snprintf(d->via, sizeof d->via, "an installed plugin");
-    }
-    static const char *defaults[] = {"/media/az01-internal/Synths", "/sdcard/Synths", "/nvme/Synths"};
-    for (int i = 0; i < 3 && !d->target[0]; i++)
-        if (good_target(defaults[i])) snprintf(d->target, sizeof d->target, "%s", defaults[i]), snprintf(d->via, sizeof d->via, "default");
+    /* No fallback: MPC draws a plugin's skin only from a listed content location (docs/NOTES.md in mpc-vst-plugins, 2026-10-27),
+     * so a folder that is not on the list would install a plugin that loads with no skin. With nothing usable listed the
+     * manager says so (problem "No install location", every location and its reason in device.txt) and installs nothing. */
     for (size_t l = strlen(d->target); l > 1 && d->target[l - 1] == '/'; ) d->target[--l] = 0;
     /* the manager's own record of versions it installed, next to the Settings folder */
     snprintf(d->base, sizeof d->base, "%s", d->settings);

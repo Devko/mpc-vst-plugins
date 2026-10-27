@@ -19,12 +19,18 @@ gcc $SAN -DFS_ANY=1 -std=gnu11 -w src/manager.c tests/drive.c -lpthread -ldl -o 
 for dev in tests/devices/*.sh; do
   echo "== $dev"
   # each device starts from a clean filesystem
-  rm -rf /media /sdcard /tmp/openmpc-pm; mkdir -p /media
+  rm -rf /media /sdcard /nvme /synths /data /tmp/openmpc-pm /tmp/pm-mounts; mkdir -p /media
   sh "$dev" && /tmp/drive && grep -E "location|target|problem" /tmp/openmpc-pm/device.txt
+  # tests/devices/<name>.expect: lines that must be in device.txt (a test fails without them)
+  exp="${dev%.sh}.expect"
+  [ -f "$exp" ] || { echo "MISSING $exp: every fake device says what it must resolve to"; exit 1; }
+  while IFS= read -r line; do
+    grep -qxF -- "$line" /tmp/openmpc-pm/device.txt || { echo "FAIL $dev: device.txt lacks: $line"; exit 1; }
+  done < "$exp"
 done
 echo "== addins (offline fixture)"
 gcc $SAN -DFS_ANY=1 -DCATALOG_URL=\"file:///p/vst/build/tests/catalog.json\" -std=gnu11 -w src/manager.c tests/drive.c -lpthread -ldl -o /tmp/drive_addins
-rm -rf /media /sdcard /data /tmp/openmpc-pm; mkdir -p /media
+rm -rf /media /sdcard /nvme /synths /data /tmp/openmpc-pm /tmp/pm-mounts; mkdir -p /media
 sh tests/devices/mpc-one.sh && sh tests/addins.sh && /tmp/drive_addins addins
 grep -E "^addin" /tmp/openmpc-pm/device.txt
 echo "-- apply.sh:"; grep -E "^(sh|echo)" /tmp/openmpc-pm/apply.sh
