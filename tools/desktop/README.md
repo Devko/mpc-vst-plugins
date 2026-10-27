@@ -32,7 +32,7 @@ Windows): pick a mounted USB stick there and Build writes the stick straight ont
    about the device is saved.
    The device scan lists every writable `Synths` location (the internal drive — `/sdcard/Synths` on Gen1/Force, `/nvme/Synths` on Gen2 such as the Live III where `/sdcard` isn't mounted — and `/media/*/Synths` for cards and drives; read-only mounts such as
    MPC's own content folder are skipped, and the same storage reached by two paths is listed once; the internal drive's `Synths` folder is created at connect when it is missing, 2026-10-11). Step 3 lets you pick where to install, the
-   internal drive by default, and warns when MPC does not list the folder as a content location. A writable drive under `/media` (its own
+   internal drive by default, and warns when MPC does not list the folder as a content location (the plugin still loads, but with no skin; the job log repeats it as a `WARNING`, and a package's `install.sh` prints the same warning on stderr, comparing whole entries and ignoring a trailing slash, 2026-10-27). A writable drive under `/media` (its own
    mount point, not MPC OS's `az01-*`/`acvs-*`) that has no `Synths` folder gets a **Create Synths folder** button in that box
    (`/api/mkroot`; only a drive from the last scan is accepted, never a typed path), after which it is a plugin location (2026-10-14, offline). A drive that cannot store symbolic links
    (FAT, exFAT, NTFS) is refused for a package that needs them, and so is a drive without room. A drive mounted `noexec` (an MPC/Force's SSD is) is refused too: MPC cannot load a plugin from it, so the plugin would be listed but only show "Load Plugin".
