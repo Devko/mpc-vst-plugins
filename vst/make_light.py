@@ -26,7 +26,7 @@ MAP = {
     # amber (fill, text, the warning box); #1a1205 is the dark text on an amber button, it stays
     "f0a830": "e0a100", "f0b44a": "7a5600", "b88426": "b38200", "6b5220": "d9b45a", "2a2210": "fbf1d6",
     # green
-    "7fd6a8": "1e7a52", "3fbf7f": "1f9a62", "2f5e46": "b9e0cb",
+    "7fd6a8": "1e7a52", "3fbf7f": "1f9a62", "2f5e46": "5fae88",
 }
 HEX = re.compile(r"#([0-9a-fA-F]{6})\b")
 TOKEN = re.compile(r"\b(tcolor|theme_[a-z_]+)=([0-9a-fA-F]{6})\b")

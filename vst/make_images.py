@@ -64,12 +64,12 @@ def button(name, w, h, label, fill, tx, ic=None, stroke=None, dash=False, size=1
 def main():
     os.makedirs(OUT, exist_ok=True)
     # the page: header, tab well and footer; everything else is live or switched
-    grid = "".join('<rect x="%d" y="%d" width="11" height="11" rx="1.5" fill="%s" stroke="%s" stroke-width="2"/>' % (
-        x, y, RED if (x, y) == (39, 32) else "none", RED if (x, y) == (39, 32) else INK) for x in (24, 39) for y in (17, 32))
+    # the mark is the catalog site's: a red dot with a soft halo, then the letter-spaced wordmark (site.css .brand / .dot)
+    grid = '<circle cx="35" cy="30" r="9" fill="%s" fill-opacity="0.22"/><circle cx="35" cy="30" r="6" fill="%s"/>' % (RED, RED)
     svg("bg.svg", 1280, 628,
         '<rect width="1280" height="628" fill="%s"/>' % BG
         + '<rect width="1280" height="60" fill="%s"/><rect y="60" width="1280" height="1" fill="%s"/>' % (PANEL, LINE)
-        + grid + text(66, 39, "PLUGIN MANAGER", 24, INK, 700, spacing=3)
+        + grid + text(56, 39, "OPEN MPC - PLUGIN MANAGER G2", 24, INK, 700, spacing=3)
         + '<rect x="1036" y="15" width="1" height="30" fill="#2e3034"/>'
         + text(1056, 26, "INTERNAL", 14, MUTED, 600, spacing=1)
         + '<rect x="1056" y="37" width="200" height="5" rx="2.5" fill="#2a2b2f"/>'

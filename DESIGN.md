@@ -190,8 +190,12 @@ the packaged dark skin) shows the pending change again instead of lying. The con
 folder. `vst/build_themes.sh` builds both and lays them out; tests: fake plugin folder (`PM_OWN`), `theme` mode in `tests/drive.c`, and `run.sh` runs the generated
 `apply.sh` and checks the swap.
 
-Not done / not verified: (1) **the card and detail pages in light** were not looked at (conditional states; thumbnail edges, badges, the progress bar may need
-tuning); (2) **a device run**: whether MPC is happy with the extra `.theme` file and the `Plugin Skins.light/.dark` siblings, and that the swapped skin
+Colours reviewed (offline, 2026-10-28, `studio.py preview` dark vs light): cards, the detail panel, INSTALL / UPDATE / queued / disabled buttons, the
+"Old install" badge, the progress bar and the restart prompt read well; the "tested" badge border was too pale in light and is fixed in the map (`2f5e46` -> `5fae88`;
+rebuild to see it). The live text could not be judged (the preview shows placeholders), only its colours. Logo: the four-square mark is poloq's, so the header and
+the browser tile now use the catalog site's brand instead: a red dot with its soft halo and the letter-spaced wordmark (`OPEN MPC - PLUGIN MANAGER G2`).
+
+Not done / not verified: (1) live text colours on device; (2) **a device run**: whether MPC is happy with the extra `.theme` file and the `Plugin Skins.light/.dark` siblings, and that the swapped skin
 shows after the restart (the swap itself is the 2026-10-27 device result, for one image); (3) **release packaging**: check that `release.py` ships the two extra
 folders; (4) size: each skin is 7.8 MB, so the package grows by about 16 MB.
 

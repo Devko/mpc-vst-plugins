@@ -71,12 +71,9 @@ body.append('<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">'
 body.append('<rect width="%d" height="%d" fill="url(#g)"/>' % (W, H))
 body.append('<rect x="0.5" y="0.5" width="%d" height="%d" fill="none" stroke="#2e3034"/>' % (W - 1, H - 1))
 
-# --- left: the app's own mark (2x2 grid, one square red) + vendor, then the wordmark ---
-gx, gy, gs, gg = 14, 14, 8, 3
-for i, (cx, cy) in enumerate(((0, 0), (1, 0), (0, 1), (1, 1))):
-    lit = (cx, cy) == (1, 1)
-    body.append(rr(gx + cx * (gs + gg), gy + cy * (gs + gg), gs, gs, 1.5, RED if lit else "none", RED if lit else INK, 1.8))
-p, _ = text_path("OpenMPC", 40, 30, 13, MUTED, "SemiBold", spacing=0.6)
+# --- left: the catalog's mark (a red dot with a soft halo) + vendor, then the wordmark ---
+body.append('<circle cx="21" cy="22" r="9" fill="%s" fill-opacity="0.22"/><circle cx="21" cy="22" r="6" fill="%s"/>' % (RED, RED))
+p, _ = text_path("OPEN MPC  G2", 38, 27, 13, MUTED, "SemiBold", spacing=0.6)
 body.append(p)
 p, w1 = text_path("PLUGIN", 13, 62, 29, INK, "Bold", spacing=0.5)
 body.append(p)
