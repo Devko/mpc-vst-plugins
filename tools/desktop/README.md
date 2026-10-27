@@ -13,21 +13,19 @@ The same mode opens with an **easy stick** (`tools/desktop/easystick.go`, added 
 the community "Plugin Manager USB for OPEN MPC" release by Eurikon (MIT; <https://github.com/Eurikon/plugin-manager-usb-for-open-mpc>),
 pinned to one version and checked against a fixed SHA-256 (`easyStickVersion`/`easyStickSHA256`; bump both after testing a new
 release, never "latest": the stick runs as root), and unpacks it onto an empty drive. It needs no firmware: the bundle carries the
-OS 3.9.1 autorun route and the OS 3.10 controller helper, and picks the Gen1 or Gen2 runtime on the device. The firmware-built stick
-below moves under **Advanced** (SSH and addin reapply, which the easy stick does not do).
+OS 3.9.1 autorun route and the OS 3.10 controller helper, and picks the Gen1 or Gen2 runtime on the device.
 
-A second, independent mode (the tab at the top, "Plugin install (no SSH or connection needed)") is for a device you have no SSH
-access to yet: it builds the no-SSH autorun stick (`docs/USB_STICK.md`, `tools/usb_stick/*.py` -- this is a Go port of the same
-algorithm, `tools/desktop/stick.go`, so the app needs no Python) from your device's own stock Akai firmware image. It opens with a
-plain explanation of what this is, how it works, and what it's compatible with (MPC OS up to 3.9.1 only; a Gen2 device like the
-Live III needs the stick reinserted after every reboot to redo what it did). Scanning a Gen2 firmware image for the salt it needs
-can take a few minutes (it decompresses the image's xz-compressed rootfs with a pure-Go decoder); the page shows periodic progress
-so it's clear it's still working. The stick's own prompt then installs the plugin manager (so you can browse and install more from
-the MPC screen itself) and reapplies every already-installed addin's `LD_PRELOAD` entry (needed on a device with no persistent
-`/etc`, docs/ADDINS.md). SSH access is a separate, collapsed "Advanced" section, closed by default -- most people don't need it.
-If you do: paste your own public key, have the app generate one (the private half is shown once and never kept), or -- with
-heavier warnings, since it's less secure and needs a writable root (refused outright on most Gen2 units) -- set a password
-instead. None of this needs the device's own SSH yet -- that's the point. Both the firmware path and the output folder have a
+Below it, a collapsed **Advanced: turn on SSH (for developers)** section (`tools/desktop/stick.go`, a Go port of the salt scan in
+`tools/usb_stick/saltscan.py`, so the app needs no Python) builds a different stick: it reads the device's own stock Akai firmware
+once for the check the stock "USB script" reader needs (MPC OS up to 3.9.1 only; Akai closed that route in 3.10), turns SSH on (paste
+a public key, have the app generate one whose private half is shown once and never kept, or, with heavier warnings, set a password,
+which needs a writable root and is refused on most Gen2 units) and reapplies every already-installed addin's `LD_PRELOAD` entry
+(needed on a device with no persistent `/etc`, docs/ADDINS.md). A checkbox, on by default, also puts the plugin manager on the same
+stick: the manager's files go in unmodified, its `open.sh` is kept as `autorun/manager-open.sh`, and our `open.sh` runs the SSH and
+addin step first (restarting MPC once if the addins' running `LD_PRELOAD` differs, so the manager sees them), then it. The stick's
+`USB-SHA256.json` is rewritten to match. A Gen2 device like the Live III forgets SSH and the addin drop-in at every reboot, so the
+stick is reinserted after each one. The stick no longer installs a preset plugin list itself (`tools/usb_stick/*.py` still does).
+None of this needs the device's own SSH yet. Both the firmware path and the output folder have a
 **Browse…** button (`/api/browse`, a server-side folder/file picker, since a browser's own file input never exposes a real path)
 instead of typing one, and the output folder step also lists this computer's mounted drives (`/api/drives`; Linux, macOS and
 Windows): pick a mounted USB stick there and Build writes the stick straight onto it, with nothing left to copy by hand.

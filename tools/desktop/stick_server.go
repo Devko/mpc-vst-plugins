@@ -126,9 +126,9 @@ func (a *App) stickBuild(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		ScanHandle  string
 		Out         string
-		Install     []string
-		SSHPubKey   string // pasted or generated; empty = no SSH
-		SSHPassword string // advanced, less secure alternative; empty = no password login. At most one of these two.
+		SSHPubKey   string // pasted or generated
+		SSHPassword string // advanced, less secure alternative to a key. Exactly one of the two is required.
+		WithManager bool   // also put the community plugin manager (easystick.go) on the stick
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil {
 		fail(w, 400, "bad request")
@@ -150,11 +150,19 @@ func (a *App) stickBuild(w http.ResponseWriter, r *http.Request) {
 	if in.SSHPubKey != "" {
 		pub = []byte(in.SSHPubKey)
 	}
-	if err := BuildStick(out, scan.Salt, in.Install, pub, in.SSHPassword); err != nil {
+	var manager []byte
+	if in.WithManager {
+		var err error
+		if manager, err = fetchEasyStick(); err != nil {
+			fail(w, 502, err.Error())
+			return
+		}
+	}
+	if err := BuildSSHStick(out, scan.Salt, manager, pub, in.SSHPassword); err != nil {
 		fail(w, 400, err.Error())
 		return
 	}
-	writeJSON(w, 200, map[string]any{"out": out, "firmware": scan.Firmware, "hits": scan.Hits})
+	writeJSON(w, 200, map[string]any{"out": out, "firmware": scan.Firmware, "hits": scan.Hits, "manager": in.WithManager})
 }
 
 // stickEasy writes the community plugin manager's pinned prebuilt stick (easystick.go) to a drive or folder.
