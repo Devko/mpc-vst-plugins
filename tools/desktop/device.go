@@ -158,10 +158,22 @@ var (
 	keepaliveMaxFails = 2
 )
 
+// keepaliveSettings is a snapshot of the three vars above, taken by Dial on its own goroutine and handed to the keepalive
+// goroutine by value: that goroutine never reads the package vars, so a test that changes them cannot race with a keepalive
+// left running by an earlier test.
+type keepaliveSettings struct {
+	interval, timeout time.Duration
+	maxFails          int
+}
+
+func currentKeepalive() keepaliveSettings {
+	return keepaliveSettings{keepaliveInterval, keepaliveTimeout, keepaliveMaxFails}
+}
+
 // keepalive runs until Close(). Each tick it asks the current connection for a reply; if several pings in a row get no
 // reply, the transport is treated as dead and closed so a stuck Run returns (the next Run reconnects on its own).
-func (d *Device) keepalive() {
-	t := time.NewTicker(keepaliveInterval)
+func (d *Device) keepalive(k keepaliveSettings) {
+	t := time.NewTicker(k.interval)
 	defer t.Stop()
 	fails := 0
 	for {
@@ -178,13 +190,13 @@ func (d *Device) keepalive() {
 			var err error
 			select {
 			case err = <-res:
-			case <-time.After(keepaliveTimeout):
+			case <-time.After(k.timeout):
 				err = errors.New("keepalive timed out")
 			case <-d.done:
 				return
 			}
 			if err != nil {
-				if fails++; fails >= keepaliveMaxFails {
+				if fails++; fails >= k.maxFails {
 					c.Close() // unblocks any in-flight Run on this client; its next Run reconnects
 					fails = 0
 				}
@@ -255,7 +267,7 @@ func Dial(host, password string, cfg Config) (*Device, error) {
 		c.Close()
 		return nil, err
 	}
-	go d.keepalive()
+	go d.keepalive(currentKeepalive())
 	return d, nil
 }
 
