@@ -76,7 +76,7 @@ gx, gy, gs, gg = 14, 14, 8, 3
 for i, (cx, cy) in enumerate(((0, 0), (1, 0), (0, 1), (1, 1))):
     lit = (cx, cy) == (1, 1)
     body.append(rr(gx + cx * (gs + gg), gy + cy * (gs + gg), gs, gs, 1.5, RED if lit else "none", RED if lit else INK, 1.8))
-p, _ = text_path("poloq", 40, 30, 13, MUTED, "SemiBold", spacing=0.6)
+p, _ = text_path("OpenMPC", 40, 30, 13, MUTED, "SemiBold", spacing=0.6)
 body.append(p)
 p, w1 = text_path("PLUGIN", 13, 62, 29, INK, "Bold", spacing=0.5)
 body.append(p)
