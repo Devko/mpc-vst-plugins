@@ -1752,3 +1752,9 @@ Maschine 4, Rhythmbank 6; JV-880, Dexed and Profit-8 show all theirs. Existing b
 - `mpc-extras.sh` restarts `acvs` once when `systemctl show acvs -p Environment` LD_PRELOAD differs from the running MPC's `/proc/<pid>/environ`: that is the case on a Live III after a reboot, and it stops the manager's supervisor reading no addins (see the 3.10 entry above).
 - Dropped from the app's stick: the preset catalog list (`install.txt`) and the embedded `mpc-store.sh`; `tools/usb_stick/*.py` keep them. Go tests (docker golang:1.26) cover layout, check, inventory, refusals and a run of the wrapper plus extras with fake addins. Not run on a device yet.
 
+### Live III (Gen2, 3.9.1): the combined advanced stick, first device run (2026-10-27, device)
+
+- Stick built by the desktop code from the Live III's own `/usr/bin/MPC` (3.9.1, sha256 a36af088...) plus the pinned manager release. Stock prompt appeared, Open ran the wrapper: `mpc-extras-result.txt` shows SSH enabled with the key, all five addins reapplied, "Restarting MPC once so the addins load", then the manager opened, downloaded the catalog and closed on Return.
+- **Two problems found.** (1) SSH was gone afterwards (port 22 closed) although the log said sshd was running: sshd was started from the stick's transient unit and killed when it ended. Fixed in `enable_ssh.sh` (own unit `mpc-usb-sshd`); not re-tested on the device. (2) After Return MPC crash-looped (display not lit) because the released `shortcut-hook.so` crashes MPC when commander is loaded (the dlsym/RTLD_NEXT chain, see the 3.10 entry); pulling the stick ended the session and MPC came back. Upstream PR with the hook fix: https://github.com/Eurikon/plugin-manager-usb-for-open-mpc/pull/1.
+- The Live III's remote addin answers on its LAN port even with SSH down: its MCP endpoint (`POST /mcp`) can read the stick's result files when SSH is unavailable.
+
