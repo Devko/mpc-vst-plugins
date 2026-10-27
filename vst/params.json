@@ -156,6 +156,7 @@
   },
   {
    "key": "net",
+   "live": true,
    "name": "Network",
    "options": [
     "online",
@@ -215,6 +216,7 @@
   },
   {
    "key": "empty",
+   "live": true,
    "name": "Empty",
    "options": [
     "no",
@@ -282,6 +284,7 @@
   },
   {
    "key": "status_kind",
+   "live": true,
    "name": "Status kind",
    "options": [
     "ok",

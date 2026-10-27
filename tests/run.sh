@@ -11,7 +11,7 @@ MV="${MPC_VST:-$here/../mpc-vst-plugins}"
 python3 "$MV/tools/gen_vst.py" "$here/vst/vst.json" --params-h >/dev/null
 MPC_VST="$MV" python3 "$here/tests/fixture.py"
 docker run --rm -v "$here":/p -v "$MV":/mv:ro -w /p gcc:12 bash -c '
-set -e
+set -eo pipefail
 SAN="-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1"
 gcc $SAN -std=gnu11 -w -Ivst/build src/manager.c /mv/tools/host_test.c /mv/wrapper/vst2_wrap.c -lpthread -ldl -lm -o /tmp/host_test
 (cd /tmp && ./host_test | tail -n 1)
