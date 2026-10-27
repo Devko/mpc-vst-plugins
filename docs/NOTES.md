@@ -1763,3 +1763,10 @@ Maschine 4, Rhythmbank 6; JV-880, Dexed and Profit-8 show all theirs. Existing b
 - His PR #1 (the two Gen2 3.10 offsets, and resolving the hook's next `snd_rawmidi_read` through libc's versioned `dlsym`) was merged 2026-10-27 and shipped as `v1.2.0-beta.2` (zip sha256 `44a43647...b3a1`). He also changed the supervisor to read the service's current environment and ordered environment files before restarting MPC, which covers the addin-clash note. Compared with beta.1: same file list and an identical `autorun/open.sh`; changed only the helper `.xpa`, the checksum files and the shortcut/hook binaries. The aarch64 hook now contains `dlvsym`.
 - `easyStickVersion`/`easyStickSHA256` in `tools/desktop/easystick.go` now point at it. Still to confirm on the Live III: the hook no longer crashes MPC with commander loaded, the easy and combined sticks end to end, and 3.10.
 
+### 2026-10-28: Live III (Gen2, 3.9.1) retest with the community manager v1.2.0-beta.2 (device)
+
+- The combined advanced stick (our wrapper + beta.2 bundle, built from the Live III's own `/usr/bin/MPC` and the sshd fixes) ran end to end: stock prompt, SSH step, five addins reapplied, one MPC restart, manager opened, catalog install of a plugin (CW-78 1.1.2) worked, Return to MPC.
+- **Confirmed fixed:** no crash after Return with commander loaded (beta.2 hook, `dlvsym`); the manager's session kept the four addins in `LD_PRELOAD` in order with its hook appended last (its supervisor now reads the service's environment); `mpc-usb-sshd` (own unit) keeps SSH up after the stick's script ends.
+- Found and fixed on the way: `enable_ssh.sh` aborted with status 5 under `set -e` when `systemctl stop mpc-usb-sshd` met a unit that did not exist yet (the first sshd fix); the new test in `tools/test_usb_stick.py` runs that exact block against a `systemctl` that exits 5 and fails on the old script.
+- Not retested: MPC OS 3.10 on Gen2 with beta.2's helper (our 3.10 is an overlay on 3.9.1, where the helper's `bootstrap.sh` also needs `MPC=` pointed at the 3.10 binary, a quirk of that setup only).
+
