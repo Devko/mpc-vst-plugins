@@ -76,22 +76,19 @@ its position differs, and it appears twice. The scheme is gone in MPC OS 3.10.0 
   on Gen1 and Gen2. The result: reinserting the stick restores SSH, every addin, and installs/updates catalog plugins, all in
   one step, on a device like the Live III where none of it survives a reboot on its own.
 - `tools/test_usb_stick.py`, CI in `.github/workflows/usb-stick.yml`: made-up salt; the real one is never stored.
-- `tools/desktop/stick.go` (2026-10-23): a Go port of `saltscan.py` and `make_stick.py` into the downloadable installer app, so a
-  user who would rather not use Python/the CLI can build a stick from a web page -- a new top-level mode there ("Plugin install
-  (no SSH or connection needed)"), independent of the SSH-based install steps, with an explanation of what it does and what it's
-  compatible with up front. Same algorithm (`tools/desktop/stick_test.go` mirrors `tools/test_usb_stick.py`'s cases), same
-  output. The firmware path and output folder each have a **Browse…** button (`tools/desktop/browse.go`, a server-side picker,
-  since a browser's file input can't hand back a real path) and the output folder also lists mounted drives
-  (`tools/desktop/drives_*.go`) so picking a USB stick there writes the build straight onto it -- `BuildStick`/`make_stick.py`'s
-  `build()` accept an output folder that already exists, as long as it's empty, since a mounted drive's own root directory
-  always "already exists" (it's the mount point); a non-empty folder is still refused (2026-10-23 fix: picking a drive from the
-  list used to always fail with "already exists", since the first version only accepted a brand-new folder). "Empty" ignores a
-  drive's own housekeeping (`System Volume Information`, `$RECYCLE.BIN`, dotfiles like `.Trashes`/`.DS_Store`/`.Spotlight-V100`)
-  since a freshly formatted Windows drive always has `System Volume Information` on it on its own (2026-10-23 fix: a user's real
-  freshly formatted stick was refused as "not empty" for exactly this). The salt scan (slow on a Gen2
-  image, which needs the pure-Go xz decompressor) reports periodic progress so it doesn't look stuck. SSH access is its own
-  collapsed, closed-by-default "Advanced" section: a key (paste one, or the app generates an ed25519 keypair and shows the
-  private half once) or, with heavier warnings, a password -- most people leave this on "None". See `tools/desktop/README.md`.
+- `tools/desktop/stick.go` (2026-10-23, reworked 2026-10-27): a Go port of `saltscan.py` into the downloadable installer app, so a user who
+  would rather not use Python/the CLI can build a stick from a web page. It sits in the app's "Plugin install (no SSH or connection
+  needed)" mode, under the easy stick and a collapsed "Advanced: turn on SSH (for developers)" section: a stick that turns SSH on (a
+  key, pasted or generated with the private half shown once, or with heavier warnings a password; one of the two is required), puts
+  addins back, and by default also opens the community plugin manager (`BuildSSHStick`; the preset catalog list the CLI stick has is
+  not in the app). Same salt algorithm (`tools/desktop/stick_test.go` mirrors `tools/test_usb_stick.py`'s salt cases). The firmware path
+  and output folder each have a **Browse…** button (`tools/desktop/browse.go`, a server-side picker, since a browser's file input
+  can't hand back a real path) and the output folder also lists mounted drives (`tools/desktop/drives_*.go`) so picking a USB stick
+  there writes the build straight onto it. The output folder may already exist if it is empty, since a mounted drive's own root
+  directory always "already exists" (2026-10-23 fix); a non-empty one is refused. "Empty" ignores a drive's own housekeeping (`System
+  Volume Information`, `$RECYCLE.BIN`, dotfiles like `.Trashes`/`.DS_Store`/`.Spotlight-V100`), since a freshly formatted Windows
+  drive always has `System Volume Information` (2026-10-23 fix). The salt scan (slow on a Gen2 image, which needs the pure-Go xz
+  decompressor) reports periodic progress so it doesn't look stuck. See `tools/desktop/README.md`.
 
 ## Rules
 
