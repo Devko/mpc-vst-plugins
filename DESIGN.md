@@ -168,6 +168,25 @@ What can work (all inference until tested):
 the restart the knob drew with the new colours (the user's eye), then the original went back by hash. So swapping an image during a restart
 works (mpc-vst-plugins docs/NOTES.md, same date). Not yet tested: the largest strip MPC accepts on Gen2, a swap with the plugin open, Gen1.
 
+## 6d. Look and theme (your request, 2026-10-28)
+
+Look: follow the catalog site (`mpc-vst-plugins` `tools/catalog_site/site.css`): warm light grey page `#e9e7e2`, panels `#f7f6f3`, text `#1b1c1f`,
+red `#d63a30`, amber `#e0a100`. The dark theme stays as poloq drew it (`#0c0c0d` page), which is also the default.
+
+Switch: **a theme setting that takes effect at the next restart.** An MPC skin is static pictures plus a layout, and a live switch would
+double every picture and conditional widget. Instead the plugin folder ships both skins as `Plugin Skins.dark` and `Plugin Skins.light`,
+and the manager copies the chosen one over `Plugin Skins` during the restart an apply already does (staged as `.new`, then `mv`). Device-verified
+precedent: a replaced skin image shows after a restart (mpc-vst-plugins docs/NOTES.md, 2026-10-27).
+
+Built so far (offline, 2026-10-28): `vst/make_light.py` makes the light skin from the dark one by a colour map by role (the dark skin is unchanged);
+built in a scratch copy, rendered with `tools/studio.py preview`, and the restart prompt and header compare well side by side.
+Screenshots stay as they are, as does the text over their baked dark corner chip (`*_kindtxt`).
+
+Still to do: (1) build both skins into the package (`Plugin Skins` plus the two copies); (2) a THEME setting on the screen and where it is
+saved (next to the state file, `.openmpcpm-theme`); (3) the swap in `apply.sh` (also when only the theme changed: then the apply is just a restart);
+(4) a test with the fake device; (5) look at the card and detail pages in the light theme (conditional states) and fix any colour that reads badly;
+(6) size: each skin is about 8 MB built, so the package grows by about that much.
+
 ## 7. Apply and rollback
 
 1. Queue on screen; **APPLY** asks, then writes `apply.sh` (poloq behaviour, kept).
