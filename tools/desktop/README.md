@@ -10,7 +10,7 @@ path. What it adds: a friendly page, one copy of each zip over SSH (as a tar str
 one MPC stop and start around the whole batch when the installers allow it.
 
 The same mode opens with an **easy stick** (`tools/desktop/easystick.go`, added 2026-10-27, offline-tested only): it downloads
-the community "Plugin Manager USB for OPEN MPC" release by Eurikon (MIT; <https://github.com/Eurikon/plugin-manager-usb-for-open-mpc>),
+the community "Plugin Manager USB for OPEN MPC" release by Twisted Cable (MIT; <https://github.com/Eurikon/plugin-manager-usb-for-open-mpc>),
 pinned to one version and checked against a fixed SHA-256 (`easyStickVersion`/`easyStickSHA256`; bump both after testing a new
 release, never "latest": the stick runs as root), and unpacks it onto an empty drive. It needs no firmware: the bundle carries the
 OS 3.9.1 autorun route and the OS 3.10 controller helper, and picks the Gen1 or Gen2 runtime on the device.
