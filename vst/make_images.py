@@ -156,7 +156,7 @@ def main():
     # the restart confirmation (the second APPLY; agreed mockup 7_restart_confirm): a dim backdrop over the whole
     # plugin area, which also takes every tap meant for what is under it, and the dialog; the queued changes are live text
     svg("backdrop.svg", 1280, 628, '<rect width="1280" height="628" fill="#000" fill-opacity="0.62"/>')
-    svg("confirm.svg", 640, 360, '<rect x="1" y="1" width="638" height="358" rx="12" fill="%s" stroke="#3a3c41" stroke-width="2"/>' % PANEL
+    svg("confirm.svg", 640, 426, '<rect x="1" y="1" width="638" height="424" rx="12" fill="%s" stroke="#3a3c41" stroke-width="2"/>' % PANEL
         + icon("warn", 33, 40, 30, AMBER, 2.2) + text(75, 64, "Restart MPC?", 26, INK, 700)
         + text(33, 114, "MPC closes and opens again to apply:", 17, "#c9ccd1", 400)
         + '<rect x="33.5" y="192.5" width="573" height="55" rx="6" fill="#2a2210" stroke="#6b5220"/>'
