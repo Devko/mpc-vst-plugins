@@ -55,7 +55,7 @@ file against fake devices (`tests/devices/*.sh`) in a `gcc:12` container.
 - **No filtering by filesystem type was found in MPC** (offline, strings only: no `noexec`, `/proc/mounts` or `exfat` strings in
   the four `MPC` binaries). `noexec` still blocks loading a `.so` (kernel behaviour).
 - **exFAT has no symlinks or exec bits** (inference): `install.sh` restores exec bits and symlinks from a `MODES` file. A package
-  with symlinks may fail on exFAT. Needs a device test before we promise exFAT for everything.
+  with symlinks may fail on exFAT; the desktop app already refuses such a target for a package that needs links (section 4b). Needs a device test before we promise exFAT for everything.
 
 ## 4. Review of Eurikon's installer
 
@@ -78,6 +78,28 @@ Its own tests are on a Live II (Gen1) only; our Live III run of 2026-10-27 found
 | Manager self-update from the screen | **Adopt later (M4)** | poloq's manager updates through the catalog like any plugin; keep that, check the hash. |
 | 5 min idle exit, restart on crash | **Skip** | Plugin lifetime is MPC's. |
 | Install target fixed to `/sdcard/Expansions` | **Not adopted** | Expansions is Akai's content tree; we use `Synths` folders (section 5). Our skin evidence is for `Synths`. |
+
+## 4b. Review of our desktop installer (`mpc-vst-plugins` `tools/desktop`)
+
+Read: its README (all of it), `backups.go`, `remove.go` heads, and a count of what poloq's `manager.c` has (grep, 2026-10-27).
+The desktop app runs on a computer over SSH; the manager runs on the device. Same `install.sh` contract, so the safety work
+below transfers. What the desktop app does that poloq's manager does **not** (grep found no trace in `manager.c`):
+
+| Desktop feature | In poloq's manager? | Verdict for G2 |
+|---|---|---|
+| **Zip inspected before it is accepted**: one top folder, the manifest present, no path that leaves the folder, links that stay inside, at most 2 GB unpacked | No: `unzip -q -o` straight into the work folder, after the sha256 check | **Adopt (M3).** The hash proves the file is the catalog's, not that the catalog's zip is well-formed. Do it on the device before `unzip` runs as root |
+| **Refuses a target that cannot store symlinks** when the package needs them (FAT, exFAT, NTFS), and a target without room | Space only (64 MB). No link check | **Adopt (M2).** Matters on Gen2: `/nvme` is exFAT (device). Probe with a real `ln -s` in the target and read the package's `MODES` file; say "this plugin needs a drive that stores links" on screen. Plain plugins are unaffected |
+| **glibc and OS compatibility** from the catalog (`os_compat`, `max_glibc`): "will not load" / "may show an empty page"; warns, never blocks | No | **Adopt (M3).** Read the device's glibc once; reuse the catalog fields |
+| **`<Synths>/.mpc-store`** records what was installed, shared with `mpc-store.sh update` | No: own `.pluginmgr-installed` | **Adopt (M3).** Keep both files in step so a plugin installed by the desktop app or `mpc-store.sh` shows as INSTALLED in the manager and the other way round |
+| **Register every plugin folder** (`sync.sh`): folders copied by hand, or dropped from the list by MPC because a card was out at startup, get registered again; the list is backed up first | No | **Adopt (M4)** as an on-screen "N folders are not in MPC's list: register". Same script, same backup |
+| **Removal keeps the user's own files** (manifest `user_data`: ROMs, kits, dumps) and refuses what it cannot identify | Runs the package's `uninstall.sh`; no `user_data` handling | **Adopt (M3).** Delete the folder except `user_data`; unknown folders are listed, not removable |
+| **Backup pruning** (`MPC.settings.bak-*`: keep the newest N, never the newest, only files named like that) | No: backups pile up | **Adopt (M4)**, on screen, never while MPC is being stopped |
+| **Knows whether a release's installer understands `-n`** (`defer` in the catalog) and says how many restarts it will cost | No | **Adopt (M3).** One restart per batch is a user-visible promise |
+| **Embedded copies of `plugin_list.awk` / `sync.sh` with a test that they equal the release copies** | n/a | **Adopt** the test: the manager must not drift from the installers |
+| Device patches (`patches.json`), firmware-built stick, SSH setup, reconnect/keepalive, drive picker | n/a | Not for a plugin on the device |
+
+Result: the desktop app is better on **package safety, link-capable targets, compatibility warnings, and tidiness**. Poloq's
+manager is better on **being on the device** (no computer). G2 takes both.
 
 ## 5. Install-target policy (the core fix; closes #9, #10, #13)
 
@@ -105,6 +127,26 @@ Candidates are the **`SynthContentLocations` entries** read from `MPC.settings`,
 - After a successful apply write `mpc-plugin.json` into the plugin folder from the catalog entry (installed version, catalog
   format), so a zip without one still shows as INSTALLED (#5; the version string must match a catalog release).
 - Keep `plugin-history.json` as a second source for "was installed".
+
+## 6b. The catalog browser screen (your idea, 2026-10-27)
+
+Wanted: **thinner rows so more fit on a page, a small thumbnail on each row, and a tap on the thumbnail opens a bigger preview.**
+Today: 3 cards per page (`#define ROWS 3`, `src/manager.c`; read, not run).
+
+Constraints found in poloq's tree and in PR #8's `vst/make_thumbs.py` (read, not run):
+- **A skin cannot load a picture from the network.** The thumbnails are baked into the plugin at build time as a filmstrip (frames stacked
+  down one PNG). PR #8 uses 140x69 frames (about 2:1, the plugin screen's shape), the initials as a fallback, **frame 0 as the
+  generic picture for catalog entries newer than the build**, and at most 127 plugins (the meter filmstrip holds 128 frames).
+- The big preview in PR #8 is 560x275, and a strip may be at most 12288 px tall (`shadow_skin.MAX_STRIP`), so about 44 big frames per strip: 111+ entries need three strips.
+- So: a plugin added to the catalog after the build shows the generic thumbnail until the manager is rebuilt. Make that explicit on
+  screen ("preview comes with the next update"), and rebuild the manager from the catalog in CI (M5).
+
+Design:
+1. **Row**: thumbnail (about 70x35, scaled from the 140x69 frame or its own smaller frame), name, one line of author · tags, badges,
+   one action button. Target 5 rows per page; set the row height from the list area once the offline skin preview shows the text fits.
+2. **Preview**: tap the thumbnail, or the info icon, for an overlay: the big picture, description, version/size/CPU, INSTALL/UPDATE/REMOVE, BACK. PR #8 already has such an overlay; reimplement unless FullPace agrees to a copy (NOTICE.md).
+3. **Budget**: thumbnails as a filmstrip cost the same per row, but each page now drives more widgets (5 rows x image, text, button). Check MPC's screen-thread cost on the Live III before M5 is called done (docs/BENCH.md in `mpc-vst-plugins` has the method).
+4. Do this **after** M2 and M3: it changes no behaviour, and the target policy matters more than the picture.
 
 ## 7. Apply and rollback
 
@@ -141,9 +183,9 @@ adapt `docs/UPSTREAM_TESTING.md`, plus: unlisted target shows the banner; a list
 | M0 | Baseline: run `tests/run.sh` on poloq's code as is | **done 2026-10-27 (offline): exit 0**, 4 fake devices + addin flow, host test under ASan; needs network, Docker `gcc:12` and the `mpc-vst-plugins` checkout next to this folder |
 | M1 | Merge PR #12; rename (id, uid, work folder); build aarch64 | gen2 fake device passes; uid differs from poloq's `PlMg` |
 | M2 | Section 5 target policy + fake devices | all section 8 rows for locations pass |
-| M3 | Section 6 (catalog size, manifest) and section 7 (rollback) | `catalog-111`, `no-manifest-zip`, `apply-fails` pass |
-| M4 | History file, local zips, self-update | offline pass |
-| M5 | Screen rework (ask FullPace first) | device run |
+| M3 | Section 6 (catalog size, manifest), section 7 (rollback), and the 4b items marked M3 (zip inspection, glibc notes, `.mpc-store`, `user_data`, `-n` count) | `catalog-111`, `no-manifest-zip`, `apply-fails` pass |
+| M4 | History file, local zips, self-update, register orphan folders, backup pruning (4b) | offline pass |
+| M5 | Screen rework: thin rows, thumbnails, preview (section 6b; ask FullPace before copying PR #8) | device run |
 | Device | Live III 3.9.1, then 3.10; Gen1 (Force) regression | table in docs/ with dates |
 
 ## 10. Open questions and risks
