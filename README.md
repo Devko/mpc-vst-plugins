@@ -134,6 +134,11 @@ design.
 - **MPC OS 2.x needs a compatible skin.** A plugin marked *MPC OS 3.x only* loads on 2.x and plays from the Q-Links, but its
   touchscreen page stays empty until its developer releases a version with a compatible skin. See
   [MPC OS 2.x vs 3.x](#mpc-os-2x-vs-3x).
+- **A plugin shows no skin (just "Load Plugin") when its folder isn't a content location.** MPC finds a plugin's skin only through
+  a `Synths` folder listed under `SynthContentLocations` in `MPC.settings`. The plugin still loads from its `file=` path, so
+  it works but looks bare. Install into a listed folder (the installers warn when the target isn't one: `install.sh -t <folder>`),
+  or add the folder to the list with MPC stopped and `MPC.settings` backed up, then start MPC. A trailing `/` is fine. Checked
+  on a Live III (MPC 3.10.0), 2026-10-27; details in docs/NOTES.md.
 - **VST2 only.** MPC OS has no VST3 or LV2 support.
 - **Setup needs root SSH to the device**, to copy the plugin and add it to `MPC.settings`, so it is for modded units.
   Adding a new plugin needs one MPC restart; the installers stop and start MPC for you (the service is `acvs`, or

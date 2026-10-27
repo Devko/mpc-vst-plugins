@@ -1727,6 +1727,48 @@ Maschine 4, Rhythmbank 6; JV-880, Dexed and Profit-8 show all theirs. Existing b
   own binary. Built with `tools/mpc310_on_391/` (2 copies of the salt found in the image, as in the binary).
 - Caveats: 3.10 may rewrite `MPC.settings` (the stick backs it up first); projects saved in 3.10 may not open in 3.9.1.
 
+
+## 2026-10-26: Xenia (Waldorf Microwave XT emulation) port started (offline only, no ROM, no device)
+Own repo `mpc-vst-xenia` (Gen2 only, GPL-3.0), built like the Osirus port. "Xenia" is gearmulator's name for its Microwave XT plugin (`waldi/xt/xtLib`, on `wLib`, the
+68k `mc68k` emulator and the DSP56300 JIT); unlike Osirus there was no Schwung glue to adapt, so `src/dsp/xenia_engine.cpp` drives `xt::Device` through
+`synthLib::Plugin` itself. Facts so far, all from source and offline runs, none from a ROM or a device:
+- ROM: `xt::RomLoader::findROM()` takes a 256 kB `.bin` starting `C0 DE`, or two 128 kB halves (starting `C0 00` / `DE 00`), or an OS update `.mid` (166-171 kB) over a full ROM; the highest version wins.
+- Parameters: single parameter change sysex `F0 3E 0E <dev> 20 <part> <idxH> <idxL> <raw> F7`; `xt::State` caches the edit buffer and ROM singles (bank A/B, `getSingle` offsets 0 and 100)
+  and forwards to the device; a ROM single is fetched by a `SingleRequest` (`00 <bank> <prog>`) the device answers with a 265-byte dump (name at byte 247, 16 chars).
+- The device runs at 40 kHz with 4 output channels (main 0/1); `Plugin` resamples to the host's rate. Boot is synchronous inside the `xt::Device` constructor (runs the firmware until `isBootCompleted`).
+- Offline: the wrapper host test passes with the engine linked (x86, ASan/UBSan, no ROM: the engine reports "No Microwave XT ROM in xenia/roms/"); an aarch64 `xenia.so` links with `--no-undefined`.
+  A Debian bookworm toolchain (the Docker image) keeps glibc <= 2.36; an Ubuntu 24.04 cross toolchain links `__isoc23_strtol` (GLIBC_2.38), which the catalog would reject.
+- A Chromium without Docker can render the skin: `pip install --target` Playwright, a `sitecustomize.py` that gives `launch()` the installed browser's `executable_path`, and `tools/gen_vst.py` / `studio.py preview` run unchanged.
+- Popup lists of 97 options (wavetable names) open as a 9-column x 11-row panel with `cw=118`; a list of 128 numbered options (LFO delay, arp tempo) cannot fit and is a knob instead.
+Open: the first boot of a ROM, level, CPU on a Live III, everything on a device. Status and next steps: `mpc-vst-xenia/docs/DEVELOPMENT.md`.
+
+
+## 2026-10-27: Xenia first ROM boot (x86) and first run on a Live III (device: Live III, MPC OS 3.9.1.2)
+`mpc-vst-xenia`, tested with a real Microwave XT ROM (two 128 kB halves). x86 facts come from `test/engine_test.cpp`, device facts from the user's Live III.
+- **The XT boots in Multi mode, and a single dump to the Single-mode edit buffer (`0x20`) is accepted and ignored.** On the device the bank/preset steppers changed the name and the
+  value cache but the sound stayed the same; the x86 test reproduced it (four different presets: the same rms and brightness). Sending the ROM single to the Multi-mode edit buffer
+  (`0x30`, location 0 = part 1, checksum redone) makes the presets sound different. Single parameter change sysex works either way (the part byte addresses it). The test compares a
+  note's rms and brightness across presets: names alone prove nothing.
+- Boot of the emulator takes 0.5-0.7 s on x86. The engine must not report Ready until the first sound has arrived, or the first notes play the power-on state (silence).
+- ROM single requests are sometimes dropped by the emulated XT (one request per four blocks): the name harvest needed 3 passes on x86 to get all 200 names, so it re-scans for what is
+  still missing (bounded); a once-through harvest left tiles blank until selected on the device.
+- Level: with the sound in the right buffer a note (MIDI 60, velocity 100) peaks at 0.165 (-16 dBFS) at 1.0 gain, so the GAIN default is 250% (peak about 0.31 on x86). **Not compared with a
+  factory instrument:** the Live III has no audio capture tool and the factory synths are firmware built-ins.
+- **CPU on the Live III:** the emulator's thread (`DSP A`) takes 35-36% of one of the eight cores (three 10 s windows, DROPOUTS 0); x86 21%. The cost is the emulated DSP running at the real
+  instrument's speed, so it is the same whatever is playing. Method: `utime + stime` (fields 14 and 15) of `/proc/<MPC pid>/task/<tid>/stat` (the process-level `stat` is the main thread
+  only); BusyBox has no `getconf`, CLK_TCK is 100. `bench.sh` is meaningless here (silent PASS).
+- Skin: a list row's text defaults to `theme_accent`; with `theme_lcd` == `theme_accent` the text is invisible on an idle tile and only shows on the lit one (and the same for readouts and
+  popups), so keep the two apart (Xenia: olive `theme_lcd` 9fae62, near-black accent 1f2414) or set `tcolor=` on the list. A selected tile's border takes `theme_seg_active` (from `shadow_skin.py`, not checked by eye on the device). Panel frames come
+  from `skin.css` (`.frame-border`, `.frame-title`, `.frame-rule`); the chassis brightness is set in `tools/make_skin.py` (a wordmark baked against the old colour needs its RGB brightened with
+  the same factor, or a darker box shows behind it).
+- Q-Link sub-pages: several `qlinks "Title" = key,...` lines under one tab make one MPC sub-page each (up to 16 keys, four per outlined column, `-` leaves a slot empty). A tab with more knobs than
+  one set holds needs them or the rest have no Q-Link. A column that mixes keys from several rows outlines one big rectangle: group each column by what is drawn together.
+- Install: `install.sh` into `/nvme/Synths` prints `cp: can't preserve ownership` for every file (harmless). Once in nine installs `acvs` was left inactive after the installer's stop (no
+  "canceled" message): `systemctl start acvs` brought MPC back. A restart cleared the filmstrip cache (524 MB afterwards; 3.9 GB before the first install).
+- Verified on the Live III: loads, sound, bank and preset steppers, BANKS tiles and the data wheel on banks and patches, Q-Link sub-pages, the option popups (wavetable list), DROPOUTS 0.
+  **Not verified:** saving and reloading a project, INIT PATCH, long sessions (a stuck note seen once at the start of the early builds did not recur; PANIC clears it), the level against a
+  factory instrument.
+
 ## 2026-10-27: desktop installer "easy stick" (offline; device test pending)
 
 - Eurikon's `v1.2.0-beta.1` zip (sha256 `8e8aa956...ab22`, 1.8 MB) read offline: a universal stick (`autorun/` for 3.9.1, `Plugin Manager helper.xpa` for 3.10, runtimes `armv7` and `aarch64`); `open.sh` chooses by `uname -m`; Gen2 uses `/data/Settings/MPC/MPC.settings` and prefers `/nvme/Synths`. He has Gen1 hardware only. Nothing from it was run on a device yet.
@@ -1775,3 +1817,32 @@ Maschine 4, Rhythmbank 6; JV-880, Dexed and Profit-8 show all theirs. Existing b
 - Imported the beta.2 `Plugin Manager helper.xpa` into `/nvme/MPC Documents`, restarted: the helper logged no "binding unavailable" (his corrected Gen2 offsets work). With the overlay-only `MPC=` patch in the helper's `bootstrap.sh`, a fresh stick insertion opened the manager; it downloaded the catalog and closed on Return. MPC restarted into 3.10 with the four addins in `LD_PRELOAD` in order and the manager's hook last, `NRestarts=0`, no core dumps: the commander `dlsym` crash is gone on 3.10 as well.
 - Non-fatal log line: `Plugin manager helper: loading popup unavailable; continuing launch` (the optional native loading dialog). Still not a stock 3.10 install: the overlay needs the `bootstrap.sh` patch above to pass its firmware check; a real 3.10 would not.
 
+
+## 2026-10-27: skin search path, read-only look at a Live III (3.10) and a Force (3.9.1) (device, read-only; hypothesis not yet tested)
+
+Question: do plugins installed to some folders load on MPC OS 3.10 but show no skin because the folder is not a `SynthContentLocations` entry? Nothing was written to either device.
+- **Live III (Gen2), device:** rootfs 3.9.1, running `MPC` 3.10.0.49 (bind-mounted from a kit on `/data` over `/usr/bin/MPC` and `/usr/share/Akai`, see 2026-10-24). The journal still prints `MPC 3.9.1`, so it is not a version check there. Key `pluginList-arm-64bit`. `SynthContentLocations`: `/nvme/Synths`, `/synths/Expansions`, `/synths/Synths`, `/usr/share/Akai/Content/Synths`. All 29 registered third-party plugins are under `/nvme/Synths` (listed) and have `Plugin Skins/TUI.json`.
+- **Force (Gen1), device:** 3.9.1, key `pluginList-arm`. Locations: `/media/662522/Synths`, `/sdcard/Expansions`, `/sdcard/Synths`, `/synths/Synths`, `/usr/share/Akai/Content/Synths`. All 72 registered plugins are under a listed location (66 `/sdcard/Synths`, 6 `/media/662522/Synths`); 70 have a skin folder, 2 Airwindows channel plugins have none.
+- Both units' `MPC.settings` kept every registration across many saves, and the Live III's across the move to 3.10 (13 entries in `bak-before-310`, 29 now). No unlisted-folder case exists on either unit, so this shows nothing yet about skins for unlisted folders.
+- `<PLUGIN>` tags span several lines in `MPC.settings`; a per-line grep undercounts them. Join the lines first.
+
+## 2026-10-27: a plugin's skin is found only through a `SynthContentLocations` entry; tested on MPC 3.10.0.49 (device: Live III, Gen2)
+
+Write test on a Live III running the 3.10.0.49 app from a kit over a 3.9.1 rootfs. A copy of an installed plugin was registered in `pluginList-arm-64bit` with a new name and uid, in a `Synths` folder (`/nvme/Synths-test/Synths`, exfat, rw) that is not in `SynthContentLocations`. The plugin always loaded from its `file=` path (the log shows `Attempting to load VST: <that path>`); only the skin varied.
+- **A copy whose binary still reports the original name is a trap.** With the copy's own `Plugin Skins` hidden, a skin still drew: MPC found the original plugin's skin in a listed folder, apparently by the name the loaded binary reports (the log shows `Creating VST instance: lucky_dip`), not the registered name. The test only means something once the copy's binary reports its own name (same-length patch of the name string and the uid in the `.so` copy).
+- **Unlisted folder, own skin present, binary renamed: loads, no skin.**
+- **Same folder added to `SynthContentLocations` with MPC stopped, then start: the skin draws.**
+- **Trailing slash** (`<Location>/nvme/Synths-test/Synths/</Location>`): the skin still draws, and MPC's own later save keeps the slash verbatim.
+- **MPC 3.10 kept our edits:** after each start and a later save, the locations list (order and content) and the plugin entry were unchanged; the only diff against what was written was the unrelated `MidiDevices.Table` line. Not tested: a clean-quit rewrite, a location with a space in its own path, a leaf not named `Synths`.
+- `MPC.settings` has CRLF line endings: a pattern ending in `/>` needs `[ \t\r]*$`, and inserted lines need `\r` or the file ends up mixed.
+- Offline from this: a plugin installed under a folder that is not a content location loads but shows no skin, so an installer or manager that falls back to such a folder needs to say so or add the location. Read-only look at the two devices is in the 2026-10-27 entry above.
+
+## 2026-10-27: MPC 3.9.1 vs 3.10.0 binaries, skin and content-location strings (offline, stock update images; hashes checked against device)
+
+Extracted the rootfs (largest xz stream) of `MPC-3.9.1-Gen2`, `MPC-3.10.0-Gen2`, `MPC-3.10.0-Gen1` and `Force-3.9.1` update images with `debugfs -c`, diffed `strings` of the four `MPC` executables, and read one stock Gen2 `data` dump. Gen1 3.9.1 is the Force image (board `inmusic,ada2`; the 3.10.0 Gen1 image is `inmusic,acv5`), so the Gen1 comparison is Force 3.9.1 against MPC 3.10.0, not like for like. Everything below from strings is **inference**; no disassembly (no aarch64 disassembler here).
+- **Device check of the binaries:** a Live III's rootfs `MPC` and its 3.10 kit `MPC` are byte-identical to the Gen2 3.9.1 and 3.10.0 image binaries. The Force's `/usr/bin/MPC` has the image's size but a different hash (patched, as expected for that unit), so use the image as the stock reference.
+- **3.9.1 → 3.10.0, both generations the same:** the path literals are unchanged (`/sdcard`, `/nvme`, `/synths`, `/storage`, `/content`, `/media/az01-internal`, `/media/az01-internal-sd`, `/media/acvs-content`, `/media/acvs-synths`, `/usr/share/Akai/Content/Synths`, `/data/Settings`), and `Plugin Skins` and `SynthContentLocations` sit in the same string-table neighbourhood. Nothing skin- or location-related is new. New in 3.10.0: `*.scriptpkg`, `/usr/bin/az01-signed-fs`, `autorun.json` and the "Script detected on ... Do you want to run it?" prompt (autorun only; no plugin or skin folder is named near it), `/usr/bin/umount`, `nvme.mount`/`synths.mount` (next to USB-mux and xhci strings, so apparently unit names for USB mode, not scanning). Gone: the `.check` literal. `autorun` and `.json` are still present in 3.10 (the 2026-10-23 entry said they were gone).
+- **Gen1 vs Gen2 (same version):** same path literals (the `/nvme` string is in the Gen1 binary too). The plugin key suffix `64bit` is a literal only in the Gen2 binaries; `pluginList` and `-arm` are separate literals, so the key is built at run time.
+- **What MPC does not contain:** `plugin-meta.xml` is not referenced by `MPC` or any other `/usr/bin` or `/usr/sbin` binary (only `MPC` mentions `Plugin Skins`), and there are no `noexec`, `/proc/mounts`, `getmntent`, `exfat` strings, so nothing says a location is filtered by mount type before it is scanned. `removable`, `statfs` and `edisks` are present once to three times; what they gate is unknown.
+- **Fresh-install default list, device/dump evidence only:** a stock Gen2 `data` dump (2026-10-09, before any plugin) lists `/synths/Expansions`, `/synths/Synths`, `/usr/share/Akai/Content/Synths` and removable drives, **without `/nvme/Synths`**; `/synths` is read-only there. A Live III used with our tools lists `/nvme/Synths` (in every backup since 2026-10-23); MPC did not add `/nvme/Synths-test/Synths` on three restarts, and nothing in this repo writes `SynthContentLocations`, so who added `/nvme/Synths` is unknown. The Gen1 evidence is one Force (oldest backup 2026-10-21): `/sdcard/Synths` and `/sdcard/Expansions` are listed. No stock MPC One/Live/X settings file was available, so whether a fresh Gen1 unit lists `/sdcard/Synths` is **not verified**.
+- Strings are not code: where MPC builds the default list, and what it does on a first run, would need a disassembly of the function that references `SynthContentLocations`.
