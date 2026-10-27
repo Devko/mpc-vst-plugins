@@ -49,4 +49,12 @@ rm -rf /tmp/openmpc-pm; /tmp/drive_addins links > /tmp/links-yes.out
 ! grep -q "symbolic links" /tmp/links-yes.out
 grep -q "apply_state 3" /tmp/links-yes.out
 grep -q "/linky.*install.sh\|Linky-1.0.0/install.sh" /tmp/openmpc-pm/apply.sh
-echo "links OK"'
+echo "links OK"
+echo "== pick (offline fixture): two usable locations, CHANGE on the restart prompt"
+rm -rf /media /sdcard /nvme /synths /data /tmp/openmpc-pm /tmp/pm-mounts; mkdir -p /media
+sh tests/devices/two-targets.sh
+/tmp/drive_addins pick > /tmp/pick.out
+grep -qF "prompt: confirm=1 pick=1 |Install to: /sdcard/Synths  (1 of 2)|" /tmp/pick.out
+grep -qF "after CHANGE: confirm=1 pick=1 |Install to: /media/CARD/Synths  (2 of 2)|" /tmp/pick.out
+grep -qF -- "-t '"'"'/media/CARD/Synths'"'"'" /tmp/openmpc-pm/apply.sh
+echo "pick OK"'
