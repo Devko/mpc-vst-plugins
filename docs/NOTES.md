@@ -1741,3 +1741,30 @@ Own repo `mpc-vst-xenia` (Gen2 only, GPL-3.0), built like the Osirus port. "Xeni
 - A Chromium without Docker can render the skin: `pip install --target` Playwright, a `sitecustomize.py` that gives `launch()` the installed browser's `executable_path`, and `tools/gen_vst.py` / `studio.py preview` run unchanged.
 - Popup lists of 97 options (wavetable names) open as a 9-column x 11-row panel with `cw=118`; a list of 128 numbered options (LFO delay, arp tempo) cannot fit and is a knob instead.
 Open: the first boot of a ROM, level, CPU on a Live III, everything on a device. Status and next steps: `mpc-vst-xenia/docs/DEVELOPMENT.md`.
+
+
+## 2026-10-27: Xenia first ROM boot (x86) and first run on a Live III (device: Live III, MPC OS 3.9.1.2)
+`mpc-vst-xenia`, tested with a real Microwave XT ROM (two 128 kB halves). x86 facts come from `test/engine_test.cpp`, device facts from the user's Live III.
+- **The XT boots in Multi mode, and a single dump to the Single-mode edit buffer (`0x20`) is accepted and ignored.** On the device the bank/preset steppers changed the name and the
+  value cache but the sound stayed the same; the x86 test reproduced it (four different presets: the same rms and brightness). Sending the ROM single to the Multi-mode edit buffer
+  (`0x30`, location 0 = part 1, checksum redone) makes the presets sound different. Single parameter change sysex works either way (the part byte addresses it). The test compares a
+  note's rms and brightness across presets: names alone prove nothing.
+- Boot of the emulator takes 0.5-0.7 s on x86. The engine must not report Ready until the first sound has arrived, or the first notes play the power-on state (silence).
+- ROM single requests are sometimes dropped by the emulated XT (one request per four blocks): the name harvest needed 3 passes on x86 to get all 200 names, so it re-scans for what is
+  still missing (bounded); a once-through harvest left tiles blank until selected on the device.
+- Level: with the sound in the right buffer a note (MIDI 60, velocity 100) peaks at 0.165 (-16 dBFS) at 1.0 gain, so the GAIN default is 250% (peak about 0.31 on x86). **Not compared with a
+  factory instrument:** the Live III has no audio capture tool and the factory synths are firmware built-ins.
+- **CPU on the Live III:** the emulator's thread (`DSP A`) takes 35-36% of one of the eight cores (three 10 s windows, DROPOUTS 0); x86 21%. The cost is the emulated DSP running at the real
+  instrument's speed, so it is the same whatever is playing. Method: `utime + stime` (fields 14 and 15) of `/proc/<MPC pid>/task/<tid>/stat` (the process-level `stat` is the main thread
+  only); BusyBox has no `getconf`, CLK_TCK is 100. `bench.sh` is meaningless here (silent PASS).
+- Skin: a list row's text defaults to `theme_accent`; with `theme_lcd` == `theme_accent` the text is invisible on an idle tile and only shows on the lit one (and the same for readouts and
+  popups), so keep the two apart (Xenia: olive `theme_lcd` 9fae62, near-black accent 1f2414) or set `tcolor=` on the list. A selected tile's border takes `theme_seg_active` (from `shadow_skin.py`, not checked by eye on the device). Panel frames come
+  from `skin.css` (`.frame-border`, `.frame-title`, `.frame-rule`); the chassis brightness is set in `tools/make_skin.py` (a wordmark baked against the old colour needs its RGB brightened with
+  the same factor, or a darker box shows behind it).
+- Q-Link sub-pages: several `qlinks "Title" = key,...` lines under one tab make one MPC sub-page each (up to 16 keys, four per outlined column, `-` leaves a slot empty). A tab with more knobs than
+  one set holds needs them or the rest have no Q-Link. A column that mixes keys from several rows outlines one big rectangle: group each column by what is drawn together.
+- Install: `install.sh` into `/nvme/Synths` prints `cp: can't preserve ownership` for every file (harmless). Once in nine installs `acvs` was left inactive after the installer's stop (no
+  "canceled" message): `systemctl start acvs` brought MPC back. A restart cleared the filmstrip cache (524 MB afterwards; 3.9 GB before the first install).
+- Verified on the Live III: loads, sound, bank and preset steppers, BANKS tiles and the data wheel on banks and patches, Q-Link sub-pages, the option popups (wavetable list), DROPOUTS 0.
+  **Not verified:** saving and reloading a project, INIT PATCH, long sessions (a stuck note seen once at the start of the early builds did not recur; PANIC clears it), the level against a
+  factory instrument.
