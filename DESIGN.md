@@ -197,7 +197,7 @@ adapt `docs/UPSTREAM_TESTING.md`, plus: unlisted target shows the banner; a list
 
 | Step | Content | Exit test |
 |---|---|---|
-| M0 | Baseline: run `tests/run.sh` on poloq's code as is | **done 2026-10-27 (offline): exit 0**, 4 fake devices + addin flow, host test under ASan; needs network, Docker `gcc:12` and the `mpc-vst-plugins` checkout next to this folder |
+| M0 | Baseline: run `tests/run.sh` on poloq's code as is | **2026-10-27 (offline): fake devices and the addin flow pass; the wrapper host test does not.** `run.sh` exits 0 only because a pipe hides the host test's status; run alone it prints `FAILED` with two failures ("tick 1 steps one option"; "MPC's STOP toggle of parameter 0 ... changes nothing", from the live text params `net`, `empty`, `status_kind`). Poloq's unmodified `f01948b` fails the same two against today's wrapper, so it is drift (likely poloq's #11), not ours. Needs network, Docker `gcc:12` and the `mpc-vst-plugins` checkout next to this folder |
 | M1 | Merge PR #12; rename (id, uid, work folder); build aarch64 | gen2 fake device passes; uid differs from poloq's `PlMg` |
 | M2 | Section 5 target policy + fake devices | all section 8 rows for locations pass |
 | M3 | Section 6 (catalog size, manifest), section 7 (rollback), and the 4b items marked M3 (zip inspection, glibc notes, `.mpc-store`, `user_data`, `-n` count) | `catalog-111`, `no-manifest-zip`, `apply-fails` pass |

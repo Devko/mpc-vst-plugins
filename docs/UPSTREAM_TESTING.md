@@ -32,7 +32,7 @@ Open an issue or PR with:
 - the table above with pass/fail per row (a photo of the screen helps if text is cut or misplaced);
 - these files from the device:
   ```
-  cat /tmp/pluginmgr/device.txt /tmp/pluginmgr/manager.log /tmp/pluginmgr/apply.log
+  cat /tmp/openmpc-pm/device.txt /tmp/openmpc-pm/manager.log /tmp/openmpc-pm/apply.log
   ```
   `device.txt` lists your install locations, tools, and registered plugins (names and paths only).
 

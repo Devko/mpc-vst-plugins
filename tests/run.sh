@@ -19,16 +19,16 @@ gcc $SAN -DFS_ANY=1 -std=gnu11 -w src/manager.c tests/drive.c -lpthread -ldl -o 
 for dev in tests/devices/*.sh; do
   echo "== $dev"
   # each device starts from a clean filesystem
-  rm -rf /media /sdcard /tmp/pluginmgr; mkdir -p /media
-  sh "$dev" && /tmp/drive && grep -E "location|target|problem" /tmp/pluginmgr/device.txt
+  rm -rf /media /sdcard /tmp/openmpc-pm; mkdir -p /media
+  sh "$dev" && /tmp/drive && grep -E "location|target|problem" /tmp/openmpc-pm/device.txt
 done
 echo "== addins (offline fixture)"
 gcc $SAN -DFS_ANY=1 -DCATALOG_URL=\"file:///p/vst/build/tests/catalog.json\" -std=gnu11 -w src/manager.c tests/drive.c -lpthread -ldl -o /tmp/drive_addins
-rm -rf /media /sdcard /data /tmp/pluginmgr; mkdir -p /media
+rm -rf /media /sdcard /data /tmp/openmpc-pm; mkdir -p /media
 sh tests/devices/mpc-one.sh && sh tests/addins.sh && /tmp/drive_addins addins
-grep -E "^addin" /tmp/pluginmgr/device.txt
-echo "-- apply.sh:"; grep -E "^(sh|echo)" /tmp/pluginmgr/apply.sh
-grep -q "/install.sh'"'"' -y -n -t '"'"'/data/mpc-addins/beta-addin'"'"'" /tmp/pluginmgr/apply.sh
-grep -q "/data/mpc-addins/alpha-addin/uninstall.sh'"'"' -y -n -t '"'"'/data/mpc-addins/alpha-addin'"'"'" /tmp/pluginmgr/apply.sh
-! grep -q gamma /tmp/pluginmgr/apply.sh
+grep -E "^addin" /tmp/openmpc-pm/device.txt
+echo "-- apply.sh:"; grep -E "^(sh|echo)" /tmp/openmpc-pm/apply.sh
+grep -q "/install.sh'"'"' -y -n -t '"'"'/data/mpc-addins/beta-addin'"'"'" /tmp/openmpc-pm/apply.sh
+grep -q "/data/mpc-addins/alpha-addin/uninstall.sh'"'"' -y -n -t '"'"'/data/mpc-addins/alpha-addin'"'"'" /tmp/openmpc-pm/apply.sh
+! grep -q gamma /tmp/openmpc-pm/apply.sh
 echo "addins OK"'

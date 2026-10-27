@@ -49,7 +49,7 @@ typedef struct {
 #ifndef CATALOG_URL
 #define CATALOG_URL "https://sd88me.github.io/mpc-vst-plugins/catalog.json"   /* tests: a file:// fixture */
 #endif
-#define WORK "/tmp/pluginmgr"
+#define WORK "/tmp/openmpc-pm"
 #define MAXPKG 256
 #define ROWS 3      /* plugin cards per page */
 #ifndef ADDINS_DIR
@@ -805,7 +805,7 @@ static void probe_device(device_t *d) {
     snprintf(d->base, sizeof d->base, "%s", d->settings);
     char *cut = strstr(d->base, "/Settings/");
     if (cut) *cut = 0; else snprintf(d->base, sizeof d->base, "/media/az01-internal");
-    snprintf(d->state, sizeof d->state, "%s/.pluginmgr-installed", d->base);
+    snprintf(d->state, sizeof d->state, "%s/.openmpcpm-installed", d->base);
     d->systemd_run = on_path("systemd-run");
     d->cgroup2 = is_file("/sys/fs/cgroup/cgroup.procs");
     /* addins: one folder per id under ADDINS_DIR, each with the addin.manifest the installer wrote (ADDIN_ID,
@@ -1023,7 +1023,7 @@ static void prepare(mgr_t *m, pkg_t *q) {
     FILE *f = err ? NULL : fopen(WORK "/apply.sh", "w");
     if (!err && !f) err = "apply.sh could not be written";
     if (f) {
-        fprintf(f, "#!/bin/sh\n# written by the Plugin Manager; runs as a transient systemd unit, outside MPC\n"
+        fprintf(f, "#!/bin/sh\n# written by the OpenMPC Plugin Manager G2; runs as a transient systemd unit, outside MPC\n"
                    "exec >>" WORK "/apply.log 2>&1\necho \"== apply $(date)\"\nSTATE='%s'\n"
                    "systemctl stop acvs\ni=0; while pidof MPC >/dev/null && [ $i -lt 30 ]; do sleep 1; i=$((i + 1)); done\n"
                    "setstate() { grep -v \"^$1 \" \"$STATE\" 2>/dev/null > \"$STATE.new\"; [ -n \"$2\" ] && echo \"$1 $2\" >> \"$STATE.new\"; mv \"$STATE.new\" \"$STATE\"; }\n"
@@ -1081,7 +1081,7 @@ static void do_launch(mgr_t *m) {
 #if defined(__arm__) || defined(__aarch64__)
     if (m->dev->systemd_run) {
         char unit[64];
-        snprintf(unit, sizeof unit, "--unit=pluginmgr-apply-%ld", (long)time(NULL));
+        snprintf(unit, sizeof unit, "--unit=openmpcpm-apply-%ld", (long)time(NULL));
         char *argv[] = {"systemd-run", unit, "--collect", "/bin/sh", WORK "/apply.sh", NULL};
         if (run(argv)) say(m, ERR, "MPC could not be restarted (systemd-run failed). Nothing was changed.");
     } else {
