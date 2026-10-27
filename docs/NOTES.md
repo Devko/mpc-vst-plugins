@@ -1758,3 +1758,8 @@ Maschine 4, Rhythmbank 6; JV-880, Dexed and Profit-8 show all theirs. Existing b
 - **Two problems found.** (1) SSH was gone afterwards (port 22 closed) although the log said sshd was running: sshd was started from the stick's transient unit and killed when it ended. Fixed in `enable_ssh.sh` (own unit `mpc-usb-sshd`); not re-tested on the device. (2) After Return MPC crash-looped (display not lit) because the released `shortcut-hook.so` crashes MPC when commander is loaded (the dlsym/RTLD_NEXT chain, see the 3.10 entry); pulling the stick ended the session and MPC came back. Upstream PR with the hook fix: https://github.com/Eurikon/plugin-manager-usb-for-open-mpc/pull/1.
 - The Live III's remote addin answers on its LAN port even with SSH down: its MCP endpoint (`POST /mcp`) can read the stick's result files when SSH is unavailable.
 
+### 2026-10-28: Eurikon merged our PR; installer pin moved to v1.2.0-beta.2 (offline check; device retest pending)
+
+- His PR #1 (the two Gen2 3.10 offsets, and resolving the hook's next `snd_rawmidi_read` through libc's versioned `dlsym`) was merged 2026-10-27 and shipped as `v1.2.0-beta.2` (zip sha256 `44a43647...b3a1`). He also changed the supervisor to read the service's current environment and ordered environment files before restarting MPC, which covers the addin-clash note. Compared with beta.1: same file list and an identical `autorun/open.sh`; changed only the helper `.xpa`, the checksum files and the shortcut/hook binaries. The aarch64 hook now contains `dlvsym`.
+- `easyStickVersion`/`easyStickSHA256` in `tools/desktop/easystick.go` now point at it. Still to confirm on the Live III: the hook no longer crashes MPC with commander loaded, the easy and combined sticks end to end, and 3.10.
+

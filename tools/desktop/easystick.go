@@ -26,12 +26,12 @@ import (
 )
 
 const (
-	easyStickVersion = "v1.2.0-beta.1" // the first release with a Gen2 runtime; Gen2 hardware test pending (2026-10-27)
+	easyStickVersion = "v1.2.0-beta.2" // beta.1 added the Gen2 runtime; beta.2 has our Gen2 3.10 offsets and hook fixes (his PR #1); retest on a Live III pending (2026-10-28)
 	easyStickMaxSize = 16 << 20        // the zip is ~1.8 MB; refuse anything wildly larger
 )
 
 // easyStickSHA256 is a var, like the URL, so tests can pin a fixture instead.
-var easyStickSHA256 = "8e8aa956783bb2f6f217e04182953ad432a194b96b4524402c6145837608ab22"
+var easyStickSHA256 = "44a436477e9520b069e39aa17203609b4d1fbfcfd806d7db9dee3078b53fb3a1"
 
 // easyStickURL is a var so tests can point it at a local server.
 var easyStickURL = "https://github.com/Eurikon/plugin-manager-usb-for-open-mpc/releases/download/" +
