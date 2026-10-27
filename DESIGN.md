@@ -148,6 +148,23 @@ Design:
 3. **Budget**: thumbnails as a filmstrip cost the same per row, but each page now drives more widgets (5 rows x image, text, button). Check MPC's screen-thread cost on the Live III before M5 is called done (docs/BENCH.md in `mpc-vst-plugins` has the method).
 4. Do this **after** M2 and M3: it changes no behaviour, and the target policy matters more than the picture.
 
+## 6c. Thumbnails that are newer than the build (loading images "from the network")
+
+A skin cannot fetch an image, and **MPC keeps skins in memory: re-inserting a plugin does not reload a changed skin, only an MPC
+restart does** (device, verified 2026-10-04, `mpc-vst-plugins` SKILL.md step 5). So a downloaded picture cannot appear while the
+manager is open. There is no way to push pixels either (README Limitations: only pre-drawn images and filmstrips).
+
+What can work (all inference until tested):
+1. **Baked strip + generic frame** (section 6b): no network; entries newer than the build show frame 0. First release.
+2. **Thumbnail pack published with the catalog.** CI builds the filmstrip and an ids list (frame order) next to `catalog.json`; the
+   manager downloads both, checks their sha256, and swaps the strip into its own skin folder **inside the apply, while MPC is stopped**,
+   so the new thumbnails show after the restart the apply already does. No plugin rebuild per catalog entry.
+3. **Safety**: swap with `x.new` then `mv`; keep the old strip for rollback (section 7); refuse a strip taller than 12288 px (stock sliders misbehave over it) or any image over 16384 px (`PORTING.md`); the ids list must match the frame count, else keep the baked strip.
+
+Device test (not run; needs the user's OK for each MPC restart): with MPC stopped, replace a skin's filmstrip PNG with a copy
+whose frame order differs, start MPC, and check the new frames draw on the Live III (Gen2), then roll back. Also record the
+largest strip MPC accepts there.
+
 ## 7. Apply and rollback
 
 1. Queue on screen; **APPLY** asks, then writes `apply.sh` (poloq behaviour, kept).
