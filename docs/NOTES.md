@@ -1770,3 +1770,8 @@ Maschine 4, Rhythmbank 6; JV-880, Dexed and Profit-8 show all theirs. Existing b
 - Found and fixed on the way: `enable_ssh.sh` aborted with status 5 under `set -e` when `systemctl stop mpc-usb-sshd` met a unit that did not exist yet (the first sshd fix); the new test in `tools/test_usb_stick.py` runs that exact block against a `systemctl` that exits 5 and fails on the old script.
 - Not retested: MPC OS 3.10 on Gen2 with beta.2's helper (our 3.10 is an overlay on 3.9.1, where the helper's `bootstrap.sh` also needs `MPC=` pointed at the 3.10 binary, a quirk of that setup only).
 
+### 2026-10-28: Live III (Gen2), MPC 3.10.0.49 overlay on 3.9.1, community manager v1.2.0-beta.2 helper (device)
+
+- Imported the beta.2 `Plugin Manager helper.xpa` into `/nvme/MPC Documents`, restarted: the helper logged no "binding unavailable" (his corrected Gen2 offsets work). With the overlay-only `MPC=` patch in the helper's `bootstrap.sh`, a fresh stick insertion opened the manager; it downloaded the catalog and closed on Return. MPC restarted into 3.10 with the four addins in `LD_PRELOAD` in order and the manager's hook last, `NRestarts=0`, no core dumps: the commander `dlsym` crash is gone on 3.10 as well.
+- Non-fatal log line: `Plugin manager helper: loading popup unavailable; continuing launch` (the optional native loading dialog). Still not a stock 3.10 install: the overlay needs the `bootstrap.sh` patch above to pass its firmware check; a real 3.10 would not.
+
