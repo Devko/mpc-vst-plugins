@@ -94,6 +94,7 @@ typedef struct {
     unsigned vis_rev;             /* visible()'s cache: the rev it was worked out at (+1, so 0 = none), its list */
     int vis_n, vis_idx[MAXPKG];
     int confirm;                  /* the restart prompt is open (the second APPLY); only shown while ready */
+    int tsel, reprompt;           /* which usable location new installs go to; CHANGE re-prepares and reopens the prompt */
     int sort;                     /* 0 last updated, 1 newest (first release), 2 most downloaded, 3 name */
     int menu_open;                /* the header's dropdown that is open: 0 none, 1 filter, 2 sort */
     int kb;                       /* the search keyboard is open */
@@ -633,6 +634,8 @@ typedef struct { char id[48], version[24], folder[256]; int removable; } addin_t
 struct device {
     char settings[200], base[200], state[220], arch[32], target[200], problem[24], keys[160], via[48];
     char loc[8][200];
+    char usable[8][200];   /* the usable locations (bad_target() says nothing against them), internal drive first; the first is the default */
+    int nusable;
     char addins[64];   /* ADDINS_DIR when its parent is a writable folder, else "" (no addin can be installed) */
     int nloc, nent, naddin, systemd_run, cgroup2;
     entry_t ent[128];
@@ -724,6 +727,11 @@ static int good_target(const char *loc) {
     return !bad_target(loc, why, sizeof why);
 }
 
+/* where a new install goes: the location picked on the restart prompt, else the first usable one */
+static const char *dest(const mgr_t *m) {
+    return m->dev->nusable ? m->dev->usable[m->tsel % m->dev->nusable] : m->dev->target;
+}
+
 /* Can this folder hold a symbolic link? FAT, exFAT and NTFS cannot (Gen2's internal /nvme is exFAT). Asked of a package that needs
  * links, not of a drive in general: most plugins ship none. */
 static int can_link(const char *dir) {
@@ -807,11 +815,18 @@ static void probe_device(device_t *d) {
     /* internal storage first (One: /media/az01-internal, Force: /sdcard = /media/az01-internal-sd, Gen2: /nvme): a
      * plugin on a USB stick or card disappears with it; any other good location only as a last resort */
     for (int pass = 0; pass < 2; pass++)
-        for (int i = 0; i < d->nloc && !d->target[0]; i++) {
+        for (int i = 0; i < d->nloc; i++) {
             int internal = !strncmp(d->loc[i], "/media/az01-internal", 20) || !strncmp(d->loc[i], "/sdcard/", 8)
                             || !strncmp(d->loc[i], "/nvme/", 6);
-            if ((pass || internal) && good_target(d->loc[i])) snprintf(d->target, sizeof d->target, "%s", d->loc[i]);
+            if (!(pass || internal) || !good_target(d->loc[i])) continue;
+            char u[200];
+            snprintf(u, sizeof u, "%s", d->loc[i]);
+            for (size_t l = strlen(u); l > 1 && u[l - 1] == '/'; ) u[--l] = 0;   /* a trailing "/" is the same folder */
+            int dup = 0;
+            for (int k = 0; k < d->nusable; k++) if (!strcmp(d->usable[k], u)) dup = 1;
+            if (!dup && d->nusable < 8) snprintf(d->usable[d->nusable++], sizeof d->usable[0], "%s", u);
         }
+    if (d->nusable) snprintf(d->target, sizeof d->target, "%s", d->usable[0]);
     if (d->target[0]) snprintf(d->via, sizeof d->via, "SynthContentLocations");
     /* No fallback: MPC draws a plugin's skin only from a listed content location (docs/NOTES.md in mpc-vst-plugins, 2026-10-27),
      * so a folder that is not on the list would install a plugin that loads with no skin. With nothing usable listed the
@@ -976,7 +991,7 @@ static void do_refresh(mgr_t *m) {
     write_report(m->dev);
     scan_installed(m->dev, tmp, l.n);
     struct statvfs sv;   /* the header's storage readout: the drive plugins go to */
-    const char *disk = m->dev->target[0] ? m->dev->target : "/media/az01-internal";
+    const char *disk = dest(m)[0] ? dest(m) : "/media/az01-internal";
     float used = 0;
     char freebuf[32] = "";
     if (statvfs(disk, &sv) == 0 && sv.f_blocks) {
@@ -1037,7 +1052,7 @@ static void prepare(mgr_t *m, pkg_t *q) {
         if (d) closedir(d);
         if (!p->dir[0]) err = "is not a valid package";
         else if (!is_addin(p) && p->queued == Q_INSTALL && needs_links(p->dir)) {
-            const char *t = p->synths[0] && good_target(p->synths) ? p->synths : m->dev->target;
+            const char *t = p->synths[0] && good_target(p->synths) ? p->synths : dest(m);
             if (t[0] && !can_link(t)) {
                 snprintf(why, sizeof why, "needs a drive that stores symbolic links, and %s does not", t);
                 err = why;
@@ -1064,7 +1079,7 @@ static void prepare(mgr_t *m, pkg_t *q) {
             if (is_addin(p) && p->queued == Q_REMOVE) snprintf(target, sizeof target, "%s", p->synths);
             else if (is_addin(p)) snprintf(target, sizeof target, "%s/%s", m->dev->addins, p->id);
             else snprintf(target, sizeof target, "%s", p->queued == Q_REMOVE ? p->synths
-                          : p->synths[0] && good_target(p->synths) ? p->synths : m->dev->target);
+                          : p->synths[0] && good_target(p->synths) ? p->synths : dest(m));
             const char *synths = target;
             if (!synths[0] || !safe(synths) || (is_addin(p) && !m->dev->addins[0])) { err = "has no install location"; break; }
             if (is_addin(p) && p->queued == Q_INSTALL)
@@ -1084,6 +1099,7 @@ static void prepare(mgr_t *m, pkg_t *q) {
     }
     pthread_mutex_lock(&m->mu);
     m->downloading = 0;
+    m->reprompt = 0;
     if (err) {
         m->failed = 1;
         say_locked(m, ERR, "%s: %s. Nothing on the MPC was changed.", i < nq ? q[i].name : "APPLY", err);
@@ -1434,9 +1450,14 @@ static void mgr_set_param(void *inst, const char *key, const char *val) {
     pthread_mutex_lock(&m->mu);
     int idx[MAXPKG], nv = visible(m, idx), pages = nv ? (nv + ROWS - 1) / ROWS : 1;
     int busy = m->busy == J_PREPARE || m->busy == J_LAUNCH;
-    if (m->confirm && (!m->ready || busy)) m->confirm = 0;   /* nothing left to restart for */
+    if (m->confirm && !m->reprompt && (!m->ready || busy)) m->confirm = 0;   /* nothing left to restart for */
     if (m->confirm) {   /* the restart prompt takes every tap until it is answered */
-        if (v >= 0.5 && !strcmp(key, "confirm_cancel")) m->confirm = 0;   /* the prepared queue stays ready */
+        if (v >= 0.5 && !strcmp(key, "target_next") && m->dev->nusable > 1 && m->ready && !busy) {
+            m->tsel = (m->tsel + 1) % m->dev->nusable;   /* the apply script names the target: prepare again (the downloads are cached) */
+            m->ready = 0;
+            m->reprompt = 1;
+            post(m, J_PREPARE);
+        } else if (v >= 0.5 && !strcmp(key, "confirm_cancel")) m->confirm = 0;   /* the prepared queue stays ready */
         else if (v >= 0.5 && !strcmp(key, "confirm_go")) {
             m->confirm = 0;
             if (m->ready && !busy) { m->ready = 0; post(m, J_LAUNCH); }
@@ -1596,6 +1617,11 @@ static int mgr_get_param(void *inst, const char *key, char *b, int n) {
         card_field(m, k < nv && d < 0 ? idx[k] : -1, key + 3, b, n);
     } else if (!strcmp(key, "view")) snprintf(b, n, "%d", d >= 0);
     else if (!strcmp(key, "confirm")) snprintf(b, n, "%d", m->confirm && m->ready && !busy);
+    else if (!strcmp(key, "confirm_pick")) snprintf(b, n, "%d", m->confirm && m->ready && !busy && m->dev->nusable > 1);
+    else if (!strcmp(key, "confirm_dest")) {
+        if (m->dev->nusable > 1) snprintf(b, n, "Install to: %s  (%d of %d)", dest(m), m->tsel % m->dev->nusable + 1, m->dev->nusable);
+        else snprintf(b, n, "Install to: %s", dest(m));
+    }
     else if (!strcmp(key, "confirm_txt1") || !strcmp(key, "confirm_txt2")) {
         char c[1024];
         changes_text(m, c, sizeof c);
@@ -1680,7 +1706,7 @@ static int mgr_get_param(void *inst, const char *key, char *b, int n) {
     else if (!strcmp(key, "refresh") || !strcmp(key, "page_prev") || !strcmp(key, "page_next") ||
                !strcmp(key, "update_all") || !strcmp(key, "apply") || !strcmp(key, "noop") || !strcmp(key, "d_back") ||
                !strcmp(key, "d_act") || !strcmp(key, "d_more") || !strcmp(key, "d_reinstall") || !strcmp(key, "d_remove") ||
-               !strcmp(key, "tag_clear") || !strcmp(key, "confirm_cancel") || !strcmp(key, "confirm_go") ||
+               !strcmp(key, "tag_clear") || !strcmp(key, "confirm_cancel") || !strcmp(key, "confirm_go") || !strcmp(key, "target_next") ||
                !strcmp(key, "menu_close") || !strcmp(key, "kind_btn") || !strcmp(key, "sort_btn") ||
                !strcmp(key, "search_btn") || !strcmp(key, "q_clear") || !strncmp(key, "k_", 2) ||
                ((!strncmp(key, "kind_pick", 9) || !strncmp(key, "sort_pick", 9)) && key[9])) snprintf(b, n, "0");

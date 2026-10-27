@@ -1980,6 +1980,26 @@
     "warps",
     "wurl"
    ]
+  },
+  {
+   "key": "confirm_pick",
+   "name": "Restart prompt: more than one place",
+   "options": [
+    "off",
+    "on"
+   ]
+  },
+  {
+   "key": "confirm_dest",
+   "name": "Restart prompt: install to",
+   "type": "readout",
+   "display": "string"
+  },
+  {
+   "key": "target_next",
+   "name": "Install to: next place",
+   "type": "trigger",
+   "momentary": true
   }
  ]
 }
