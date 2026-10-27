@@ -182,10 +182,18 @@ Built so far (offline, 2026-10-28): `vst/make_light.py` makes the light skin fro
 built in a scratch copy, rendered with `tools/studio.py preview`, and the restart prompt and header compare well side by side.
 Screenshots stay as they are, as does the text over their baked dark corner chip (`*_kindtxt`).
 
-Still to do: (1) build both skins into the package (`Plugin Skins` plus the two copies); (2) a THEME setting on the screen and where it is
-saved (next to the state file, `.openmpcpm-theme`); (3) the swap in `apply.sh` (also when only the theme changed: then the apply is just a restart);
-(4) a test with the fake device; (5) look at the card and detail pages in the light theme (conditional states) and fix any colour that reads badly;
-(6) size: each skin is about 8 MB built, so the package grows by about that much.
+Built (offline, 2026-10-28): the switch and everything behind it. A THEME pill in the header (`theme_btn`, live text `DARK` / `LIGHT  after restart`)
+toggles the wanted theme, saved in `<settings base>/.openmpcpm-theme`; a pending theme counts as one queued change, so APPLY, the restart prompt (`Theme: light`)
+and the restart flow carry it, and a theme-only apply is just the swap plus a restart. `apply.sh` stops MPC, then stages `Plugin Skins.<theme>` as `.skin.new`
+and swaps it over `Plugin Skins` (the old one goes last). The theme in place is read from the file `.theme` inside the skin folder, so a self-update (which brings
+the packaged dark skin) shows the pending change again instead of lying. The control is hidden unless both `Plugin Skins.dark` and `.light` are in the plugin
+folder. `vst/build_themes.sh` builds both and lays them out; tests: fake plugin folder (`PM_OWN`), `theme` mode in `tests/drive.c`, and `run.sh` runs the generated
+`apply.sh` and checks the swap.
+
+Not done / not verified: (1) **the card and detail pages in light** were not looked at (conditional states; thumbnail edges, badges, the progress bar may need
+tuning); (2) **a device run**: whether MPC is happy with the extra `.theme` file and the `Plugin Skins.light/.dark` siblings, and that the swapped skin
+shows after the restart (the swap itself is the 2026-10-27 device result, for one image); (3) **release packaging**: check that `release.py` ships the two extra
+folders; (4) size: each skin is 7.8 MB, so the package grows by about 16 MB.
 
 ## 7. Apply and rollback
 

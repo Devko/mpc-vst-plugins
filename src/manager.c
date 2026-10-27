@@ -94,6 +94,8 @@ typedef struct {
     unsigned vis_rev;             /* visible()'s cache: the rev it was worked out at (+1, so 0 = none), its list */
     int vis_n, vis_idx[MAXPKG];
     int confirm;                  /* the restart prompt is open (the second APPLY); only shown while ready */
+    int theme, theme_applied, theme_can;   /* 0 dark, 1 light: the one wanted, the one in `Plugin Skins` at MPC's start, and whether the folder holds both skins */
+    char own[300];                /* this plugin's own folder (its skins live there) */
     int tsel, reprompt;           /* which usable location new installs go to; CHANGE re-prepares and reopens the prompt */
     int sort;                     /* 0 last updated, 1 newest (first release), 2 most downloaded, 3 name */
     int menu_open;                /* the header's dropdown that is open: 0 none, 1 filter, 2 sort */
@@ -727,6 +729,56 @@ static int good_target(const char *loc) {
     return !bad_target(loc, why, sizeof why);
 }
 
+/* The theme: the skin the device runs is the folder "Plugin Skins" in this plugin's own folder. Both skins ship there as "Plugin Skins.dark"
+ * and "Plugin Skins.light"; an apply copies the wanted one over it while MPC is stopped (MPC keeps skins in memory, so a swap shows after a
+ * restart). The wanted theme is kept in <base>/.openmpcpm-theme; the one in place is named by the file ".theme" inside each skin folder. */
+static void own_folder(char *out, size_t n) {
+    out[0] = 0;
+#ifdef FS_ANY
+    if (getenv("PM_OWN")) { snprintf(out, n, "%s", getenv("PM_OWN")); return; }   /* tests: the binary is not in a plugin folder */
+#endif
+    Dl_info di;
+    if (!dladdr((void *)own_folder, &di) || !di.dli_fname || di.dli_fname[0] != '/') return;
+    snprintf(out, n, "%s", di.dli_fname);
+    char *sl = strrchr(out, '/');
+    if (sl && sl != out) *sl = 0;
+}
+
+static int theme_read(const char *base, const char *name) {   /* 1 for "light", else 0 */
+    char f[300], b[16] = "";
+    snprintf(f, sizeof f, "%s/%s", base, name);
+    FILE *fp = fopen(f, "r");
+    if (fp) { if (!fgets(b, sizeof b, fp)) b[0] = 0; fclose(fp); }
+    return !strncmp(b, "light", 5);
+}
+
+static void theme_init(mgr_t *m) {   /* after the device probe: where the settings are is where the theme files go */
+    char a[340], b[340];
+    own_folder(m->own, sizeof m->own);
+    m->theme_can = 0;
+    if (m->own[0] && m->dev->base[0]) {
+        snprintf(a, sizeof a, "%s/Plugin Skins.light", m->own);
+        snprintf(b, sizeof b, "%s/Plugin Skins.dark", m->own);
+        m->theme_can = is_dir(a) && is_dir(b);
+        m->theme = theme_read(m->dev->base, ".openmpcpm-theme");
+        snprintf(a, sizeof a, "%s/Plugin Skins", m->own);
+        m->theme_applied = theme_read(a, ".theme");   /* inside the skin itself: a reinstall of this plugin brings the packaged (dark) skin and this file together */
+    }
+}
+
+static int theme_dirty(const mgr_t *m) { return m->theme_can && m->theme != m->theme_applied; }
+
+static void theme_save(const mgr_t *m) {   /* tmp, then rename */
+    char f[320], t[330];
+    snprintf(f, sizeof f, "%s/.openmpcpm-theme", m->dev->base);
+    snprintf(t, sizeof t, "%s.new", f);
+    FILE *fp = fopen(t, "w");
+    if (!fp) return;
+    fprintf(fp, "%s\n", m->theme ? "light" : "dark");
+    fclose(fp);
+    rename(t, f);
+}
+
 /* where a new install goes: the location picked on the restart prompt, else the first usable one */
 static const char *dest(const mgr_t *m) {
     return m->dev->nusable ? m->dev->usable[m->tsel % m->dev->nusable] : m->dev->target;
@@ -988,6 +1040,7 @@ static void do_refresh(mgr_t *m) {
     }
     free(s.buf);
     probe_device(m->dev);
+    theme_init(m);
     write_report(m->dev);
     scan_installed(m->dev, tmp, l.n);
     struct statvfs sv;   /* the header's storage readout: the drive plugins go to */
@@ -1093,6 +1146,12 @@ static void prepare(mgr_t *m, pkg_t *q) {
             else
                 fprintf(f, "echo '-- remove %s'\nsh '%s/uninstall.sh' -y $(batch '%s/uninstall.sh') -t '%s' && setstate '%s' '' && rm -rf '" WORK "/%s' '" WORK "/%s.zip'\n",
                         p->id, p->dir, p->dir, synths, p->id, p->id, p->id);
+        }
+        if (theme_dirty(m)) {   /* MPC is stopped: copy the wanted skin over "Plugin Skins" (staged, then swapped; the old one goes last) */
+            const char *w = m->theme ? "light" : "dark";
+            fprintf(f, "echo '-- theme %s'\nT='%s'\nrm -rf \"$T/.skin.new\" \"$T/.skin.old\" && cp -a \"$T/Plugin Skins.%s\" \"$T/.skin.new\" && "
+                       "mv \"$T/Plugin Skins\" \"$T/.skin.old\" && mv \"$T/.skin.new\" \"$T/Plugin Skins\" && rm -rf \"$T/.skin.old\" && "
+                       "true\n", w, m->own, w);
         }
         fprintf(f, "pidof MPC >/dev/null || systemctl start acvs\nrm -f \"$0\"\necho \"== done $(date)\"\n");
         fclose(f);
@@ -1257,7 +1316,7 @@ static int count_updates(const mgr_t *m) {
 }
 
 static int count_queued(const mgr_t *m) {
-    int n = 0;
+    int n = theme_dirty(m);   /* a theme change is applied like an install: stop MPC, swap the skin, start MPC */
     for (int i = 0; i < m->npkg; i++) n += m->pkg[i].queued != 0;
     return n;
 }
@@ -1273,6 +1332,7 @@ static void changes_text(const mgr_t *m, char *b, int n) {   /* the restart prom
             k += snprintf(b + k, n - k, "%s%s %s > %s", sep, p->name, p->installed, p->latest);
         else if (p->queued) k += snprintf(b + k, n - k, "%s+ %s %s", sep, p->name, p->latest);
     }
+    if (theme_dirty(m) && k < n) snprintf(b + k, n - k, "%sTheme: %s", k ? "\xc2\xa0\xc2\xb7  " : "", m->theme ? "light" : "dark");
 }
 
 static void queue_text(const mgr_t *m, char *b, int n) {
@@ -1282,6 +1342,7 @@ static void queue_text(const mgr_t *m, char *b, int n) {
     for (int i = 0; i < m->npkg && k < n; i++)
         if (m->pkg[i].queued)
             k += snprintf(b + k, n - k, "  %s%s", m->pkg[i].queued == Q_REMOVE ? "\xe2\x88\x92" : "+", m->pkg[i].name);
+    if (theme_dirty(m) && k < n) snprintf(b + k, n - k, "  Theme: %s", m->theme ? "light" : "dark");
 }
 
 static void initials(const char *name, char *b) {   /* first letters of the first two words that start with a letter */
@@ -1451,6 +1512,13 @@ static void mgr_set_param(void *inst, const char *key, const char *val) {
     int idx[MAXPKG], nv = visible(m, idx), pages = nv ? (nv + ROWS - 1) / ROWS : 1;
     int busy = m->busy == J_PREPARE || m->busy == J_LAUNCH;
     if (m->confirm && !m->reprompt && (!m->ready || busy)) m->confirm = 0;   /* nothing left to restart for */
+    if (v >= 0.5 && !strcmp(key, "theme_btn") && m->theme_can && !m->confirm && !busy) {   /* the next apply carries it */
+        m->theme = !m->theme;
+        theme_save(m);
+        m->ready = 0;   /* a prepared apply.sh does not have the swap (or still has it): prepare again */
+        pthread_mutex_unlock(&m->mu);
+        return;
+    }
     if (m->confirm) {   /* the restart prompt takes every tap until it is answered */
         if (v >= 0.5 && !strcmp(key, "target_next") && m->dev->nusable > 1 && m->ready && !busy) {
             m->tsel = (m->tsel + 1) % m->dev->nusable;   /* the apply script names the target: prepare again (the downloads are cached) */
@@ -1617,6 +1685,9 @@ static int mgr_get_param(void *inst, const char *key, char *b, int n) {
         card_field(m, k < nv && d < 0 ? idx[k] : -1, key + 3, b, n);
     } else if (!strcmp(key, "view")) snprintf(b, n, "%d", d >= 0);
     else if (!strcmp(key, "confirm")) snprintf(b, n, "%d", m->confirm && m->ready && !busy);
+    else if (!strcmp(key, "theme_can")) snprintf(b, n, "%d", m->theme_can);
+    else if (!strcmp(key, "theme")) snprintf(b, n, "%d", m->theme);
+    else if (!strcmp(key, "theme_txt")) snprintf(b, n, "%s%s", m->theme ? "LIGHT" : "DARK", theme_dirty(m) ? "  after restart" : "");
     else if (!strcmp(key, "confirm_pick")) snprintf(b, n, "%d", m->confirm && m->ready && !busy && m->dev->nusable > 1);
     else if (!strcmp(key, "confirm_dest")) {
         if (m->dev->nusable > 1) snprintf(b, n, "Install to: %s  (%d of %d)", dest(m), m->tsel % m->dev->nusable + 1, m->dev->nusable);
@@ -1706,7 +1777,7 @@ static int mgr_get_param(void *inst, const char *key, char *b, int n) {
     else if (!strcmp(key, "refresh") || !strcmp(key, "page_prev") || !strcmp(key, "page_next") ||
                !strcmp(key, "update_all") || !strcmp(key, "apply") || !strcmp(key, "noop") || !strcmp(key, "d_back") ||
                !strcmp(key, "d_act") || !strcmp(key, "d_more") || !strcmp(key, "d_reinstall") || !strcmp(key, "d_remove") ||
-               !strcmp(key, "tag_clear") || !strcmp(key, "confirm_cancel") || !strcmp(key, "confirm_go") || !strcmp(key, "target_next") ||
+               !strcmp(key, "tag_clear") || !strcmp(key, "confirm_cancel") || !strcmp(key, "confirm_go") || !strcmp(key, "target_next") || !strcmp(key, "theme_btn") ||
                !strcmp(key, "menu_close") || !strcmp(key, "kind_btn") || !strcmp(key, "sort_btn") ||
                !strcmp(key, "search_btn") || !strcmp(key, "q_clear") || !strncmp(key, "k_", 2) ||
                ((!strncmp(key, "kind_pick", 9) || !strncmp(key, "sort_pick", 9)) && key[9])) snprintf(b, n, "0");

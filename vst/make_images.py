@@ -164,6 +164,9 @@ def main():
     button("btn_cancel.svg", 280, 56, "CANCEL", "none", INK, None, stroke="#3a3c41", size=18)
     button("btn_restart.svg", 280, 56, "RESTART & APPLY", AMBER, "#1a1205", None, size=18)
     button("btn_change.svg", 130, 44, "CHANGE", "none", INK, None, stroke="#3a3c41", size=16)   # the restart prompt: next install location
+    # the header's theme switch (dark / light, applied at the next restart): a pill with its label; the live text (DARK / LIGHT) goes over its right part
+    svg("btn_theme.svg", 210, 30, '<rect x="0.5" y="0.5" width="209" height="29" rx="15" fill="none" stroke="#3a3c41"/>'
+        + text(16, 20, "THEME", 13, DIM, 600))
     # search (agreed mockups 4, 5): the header's button and search chip, and the keyboard panel over the list and footer
     # with two compact match rows; every key is its own image with its letter drawn in
     svg("search_btn.svg", 56, 44, '<rect x="0.5" y="0.5" width="55" height="43" rx="22" fill="none" stroke="#3a3c41"/>' + icon("search", 17, 11, 22, INK, 2.2))

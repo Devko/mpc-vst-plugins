@@ -65,6 +65,16 @@ int main(int argc, char **argv) {
     press("apply"); prompt(); press("confirm_go"); sleep(1); cards();
     e->destroy(m); return 0;
   }
+  if (argc > 1 && !strncmp(argv[1], "theme", 5)) {   /* both skins in the plugin folder (tests/run.sh sets PM_OWN): the switch, the prompt, then APPLY */
+    printf("start: can=%s theme=%s |%s| apply_state=%s\n", get("theme_can"), get("theme"), get("theme_txt"), get("apply_state"));
+    if (!strcmp(argv[1], "themeshow")) { e->destroy(m); return 0; }
+    press("theme_btn");
+    printf("pressed: theme=%s |%s| apply_state=%s status: %s\n", get("theme"), get("theme_txt"), get("apply_state"), get("status"));
+    press("apply");
+    for (int i = 0; i < 60 && strcmp(get("apply_state"), "3"); i++) sleep(1);
+    press("apply"); printf("prompt: confirm=%s |%s|\n", get("confirm"), get("confirm_txt1"));
+    e->destroy(m); return 0;
+  }
   if (argc > 1 && !strcmp(argv[1], "pick")) {   /* two usable locations: the restart prompt names one, CHANGE picks the other */
     set("kind", "1"); press("r1_act"); press("apply");
     for (int i = 0; i < 60 && strcmp(get("apply_state"), "3"); i++) sleep(1);

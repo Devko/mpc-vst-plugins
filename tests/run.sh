@@ -57,4 +57,22 @@ sh tests/devices/two-targets.sh
 grep -qF "prompt: confirm=1 pick=1 |Install to: /sdcard/Synths  (1 of 2)|" /tmp/pick.out
 grep -qF "after CHANGE: confirm=1 pick=1 |Install to: /media/CARD/Synths  (2 of 2)|" /tmp/pick.out
 grep -qF -- "-t '"'"'/media/CARD/Synths'"'"'" /tmp/openmpc-pm/apply.sh
-echo "pick OK"'
+echo "pick OK"
+echo "== theme (offline fixture): the switch, the prompt, and the skin swap in apply.sh"
+rm -rf /media /sdcard /nvme /synths /data /tmp/openmpc-pm /tmp/pm-mounts /tmp/own; mkdir -p /media
+sh tests/devices/mpc-one.sh
+for t in "Plugin Skins" "Plugin Skins.dark" "Plugin Skins.light"; do mkdir -p "/tmp/own/$t"; done
+echo dark > "/tmp/own/Plugin Skins/.theme"; echo dark > "/tmp/own/Plugin Skins.dark/.theme"; echo light > "/tmp/own/Plugin Skins.light/.theme"
+export PM_OWN=/tmp/own
+/tmp/drive_addins theme > /tmp/theme.out
+grep -qF "start: can=1 theme=0 |DARK| apply_state=0" /tmp/theme.out
+grep -qF "pressed: theme=1 |LIGHT  after restart| apply_state=1" /tmp/theme.out
+grep -qF "prompt: confirm=1 |Theme: light|" /tmp/theme.out
+grep -qx light /media/az01-internal/.openmpcpm-theme
+sh /tmp/openmpc-pm/apply.sh
+[ "$(cat "/tmp/own/Plugin Skins/.theme")" = light ] || { echo "FAIL: the light skin was not swapped in"; exit 1; }
+[ -d "/tmp/own/Plugin Skins.light" ] && [ -d "/tmp/own/Plugin Skins.dark" ] || { echo "FAIL: a skin variant was lost"; exit 1; }
+/tmp/drive_addins themeshow > /tmp/theme2.out
+grep -qF "start: can=1 theme=1 |LIGHT| apply_state=0" /tmp/theme2.out
+unset PM_OWN
+echo "theme OK"'

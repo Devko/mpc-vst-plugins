@@ -2000,6 +2000,34 @@
    "name": "Install to: next place",
    "type": "trigger",
    "momentary": true
+  },
+  {
+   "key": "theme",
+   "name": "Theme",
+   "options": [
+    "dark",
+    "light"
+   ]
+  },
+  {
+   "key": "theme_can",
+   "name": "Theme: both skins here",
+   "options": [
+    "off",
+    "on"
+   ]
+  },
+  {
+   "key": "theme_btn",
+   "name": "Theme: switch",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "theme_txt",
+   "name": "Theme text",
+   "type": "readout",
+   "display": "string"
   }
  ]
 }
