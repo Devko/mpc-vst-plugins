@@ -24,7 +24,10 @@ aarch64 runtime by `uname -m`; on 3.9.1 the stock prompt launches it, on 3.10 th
 (a controller profile) once. v1.2.0-beta.1 adds the Gen2 runtime; its author has only Gen1 hardware, so Gen2 is a beta until
 tested on a Live III. Not done: SSH and addin reapply on his stick. His `open.sh`, `setup.sh` and `launch.sh` are covered by
 `autorun.check`, so we cannot add a hook without the salt; the ask to him is an optional unchecked `extras/run.sh` that his
-`open.sh` runs when present. The firmware-built stick below stays as the Advanced option for that.
+`open.sh` runs when present. In the meantime the desktop app's Advanced option builds a combined stick (2026-10-27, offline-tested only): our wrapper `open.sh`
+(SSH, addin reapply, one MPC restart if the addins' `LD_PRELOAD` differs) plus his bundle unmodified, with his `open.sh` kept as
+`autorun/manager-open.sh` and the check computed over all of it from the user's firmware. Untested on a device: whether his manager's
+"Install to SD" and update still accept the rewritten `USB-SHA256.json`.
 
 ## How the route works
 
