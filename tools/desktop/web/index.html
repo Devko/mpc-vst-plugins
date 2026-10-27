@@ -29,6 +29,12 @@ button:disabled { opacity:.45; cursor:not-allowed; }
 :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .msg { margin:10px 0 0; font-size:14px; }
 .msg.err { color:var(--accent); } .msg.ok { color:var(--ok); }
+.sub b, .small b, .guide b { font-weight:700; color:var(--fg); }
+.guide ul, .guide ol { margin:4px 0 12px; padding-left:22px; }
+.guide li { margin:4px 0; }
+.guide li > ul { margin:2px 0 4px; }
+.guide .lead { margin:10px 0 2px; }
+.callout { border-left:3px solid var(--accent); background:var(--panel-2); padding:8px 12px; margin:8px 0 12px; font-size:14px; border-radius:0 6px 6px 0; }
 .small { font-size:13px; color:var(--muted); }
 ul.list { list-style:none; margin:0; padding:0; border-top:1px solid var(--line); }
 ul.list li { display:flex; gap:12px; align-items:flex-start; padding:10px 2px; border-bottom:1px solid var(--line); }
@@ -96,12 +102,31 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
   <p class="lede">Install plugins from the catalog, or zips you already have, on your MPC or Force. This page runs on your computer only. Nothing about your device is saved.</p>
 </header>
 
+<section id="which" class="guide">
+  <h2>Which one do I need?</h2>
+  <ul>
+    <li><b>Plugin install stick (no SSH needed)</b>: <i>the easy one. Pick this if you are not sure.</i>
+      <ul>
+        <li>Nothing to set up on your MPC and no computer connection.</li>
+        <li>You write a USB stick here, plug it in, confirm <b>one prompt</b>, then browse and install plugins on the MPC's own screen.</li>
+        <li>Needs the MPC online (Wi-Fi or Ethernet).</li>
+        <li><i>Suits:</i> most people.</li>
+      </ul></li>
+    <li><b>Install over SSH</b>: <i>for modded units that already have root SSH.</i>
+      <ul>
+        <li>Installs plugins, addins, your own zips and patches from this computer, with remove, update and backup tools.</li>
+        <li><i>Suits:</i> people who already use SSH, or run a modded MPC or Force.</li>
+      </ul></li>
+    <li><b>Want SSH on a stock unit?</b> Use the stick tab's <b>Advanced</b> section: it turns SSH on from a stick (MPC OS up to 3.9.1). Then the SSH tab works.</li>
+  </ul>
+</section>
+
 <div class="ktabs" id="modetabs" role="tablist" aria-label="Mode">
-  <button type="button" id="mode-install" role="tab" aria-selected="true">Install over SSH</button>
-  <button type="button" id="mode-stick" role="tab" aria-selected="false">Plugin install (no SSH or connection needed)</button>
+  <button type="button" id="mode-stick" role="tab" aria-selected="true">Plugin install (no SSH or connection needed)</button>
+  <button type="button" id="mode-install" role="tab" aria-selected="false">Install over SSH</button>
 </div>
 
-<div id="install-mode">
+<div id="install-mode" hidden>
 <section id="s1">
   <h2><span class="n">1</span>Connect to your device</h2>
   <p class="sub">Your device needs SSH access as <b>root</b> (a modded unit). Use the IP address shown on the device or in your router.</p>
@@ -189,15 +214,20 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
 <div id="selbar" hidden role="region" aria-label="Selected plugins"><span><b id="selcount"></b> <button class="linkbtn" type="button" id="selclear">Clear</button></span><button class="primary" id="go2" type="button">Install…</button></div>
 </div>
 
-<div id="stick-mode" hidden>
-<section id="es">
+<div id="stick-mode">
+<section id="es" class="guide">
   <h2>Plugin install stick (no SSH or connection needed)</h2>
-  <p class="sub"><b>What this is for:</b> browsing and installing community plugins on the MPC's own screen, with no computer
-  connection, password or setup. This writes a ready-made USB stick; you plug it into the device and confirm one prompt.</p>
-  <p class="sub"><b>Works on:</b> Gen1 MPC (Live/One/X/Key), Force and Gen2 (Live III, One G2, Key(s) G2), on MPC OS 3.9.1 and, for Gen1, 3.10.
-  One stick fits every device and picks the right version itself. <b>Gen2 is a beta:</b> it works on a Live III with MPC OS 3.9.1, including with addins installed (tested 2026-10-28). MPC OS 3.10 on a Gen2 has a fix in this release but is not yet confirmed on a stock 3.10 device.</p>
-  <p class="sub"><b>Credit:</b> the on-device manager is <a href="https://github.com/Eurikon/plugin-manager-usb-for-open-mpc" target="_blank" rel="noopener">Plugin Manager USB for OPEN MPC</a>
-  by Eurikon (MIT). This installer downloads his release (<span id="es-ver"></span>, checked against a fixed checksum) and copies it to your stick.</p>
+  <ul>
+    <li><b>What it is:</b> browse and install community plugins on the MPC's own screen, with no computer connection, password or setup. This writes a ready-made USB stick; you plug it into the MPC and confirm one prompt.</li>
+    <li><b>Works on:</b>
+      <ul>
+        <li><b>MPC OS 3.9.1:</b> Gen1 MPC (Live, One, X, Key), Force and Gen2 (Live III, One G2, Key(s) G2).</li>
+        <li><b>MPC OS 3.10:</b> Gen1 MPC (needs a one-time setup, see the steps below).</li>
+      </ul></li>
+    <li><b>One stick fits every device</b> and picks the right version itself.</li>
+    <li><b>Credit:</b> the on-device manager is <a href="https://github.com/Eurikon/plugin-manager-usb-for-open-mpc" target="_blank" rel="noopener">Plugin Manager USB for OPEN MPC</a> by <b>Twisted Cable</b> (MIT). This installer downloads that project's release (<span id="es-ver"></span>, checked against a fixed checksum) and copies it to your stick.</li>
+  </ul>
+  <div class="callout"><b>Gen2 is a beta.</b> <i>Tested 2026-10-28 on a Live III with MPC OS 3.9.1, including with addins installed. MPC OS 3.10 on a Gen2 has a fix in this release but is not yet confirmed on a stock 3.10 device.</i></div>
   <div id="es-drives"></div>
   <div class="row">
     <label class="f">Empty USB stick or folder<input id="es-out" type="text" placeholder="pick a mounted stick below, or Browse" spellcheck="false"></label>
@@ -205,25 +235,40 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
     <button class="primary" id="es-build" type="button">Download and write…</button>
   </div>
   <p class="msg" id="es-msg" role="status" aria-live="polite"></p>
-  <p class="small"><b>On the device:</b> MPC OS 3.9.1: insert the stick and choose Open. MPC OS 3.10: first import
-  <code>Plugin Manager helper.xpa</code> from the stick once (Browser, Load, extract to the internal MPC Documents, restart), then
-  insert the stick and choose Open, or hold Shift + Menu for two seconds. Save your project first: opening the manager stops MPC.</p>
+  <div class="guide" id="es-steps">
+    <p class="lead"><b>Then, on your MPC.</b> <i>Save your project first: opening the manager stops MPC.</i></p>
+    <p class="lead"><b>MPC OS 3.9.1 (and earlier)</b></p>
+    <ol>
+      <li><b>Insert</b> the stick.</li>
+      <li>Choose <b>Open</b> on the prompt that appears.</li>
+    </ol>
+    <p class="lead"><b>MPC OS 3.10: one-time setup first.</b> <i>3.10 has no USB prompt, so the stick carries a small helper you load once.</i></p>
+    <ol>
+      <li><b>Insert</b> the stick.</li>
+      <li>In MPC's <b>File Browser</b>, navigate to your USB stick and select <code>Plugin Manager helper.xpa</code>.</li>
+      <li>Choose <b>Load</b> and pick the internal <b>MPC Documents</b> folder as the destination, <b>not the stick</b>.</li>
+      <li><b>Restart.</b></li>
+      <li>Hold <b>Shift + Menu</b> for two seconds.</li>
+    </ol>
+    <p class="lead"><b>Either way:</b> when you are done, tap <b>Return to MPC</b> and wait up to a minute. <i>Do not power off.</i></p>
+  </div>
 </section>
 <details id="dadv" class="collapse">
 <summary><h2>Advanced: turn on SSH (for developers)</h2><span class="hint">Show</span></summary>
-<section id="st-intro">
-  <p class="sub"><b>What this is for:</b> developers who want an ordinary SSH login on their device (to install plugins and addins
-  with this installer's first tab, or by hand). It builds a stick that turns SSH on, puts any addins you already installed back,
-  and, if you tick the box below, also opens the plugin manager, exactly like the easy stick above.</p>
-  <p class="sub"><b>How it works:</b> MPC OS has its own stock "USB script" reader, built in by Akai (not a security hole): a
-  stick with the right files on it makes MPC ask one on-screen question, then run a script as root. Nothing happens until you
-  confirm that prompt on the device's own screen. The check the reader needs depends on your device's firmware, so this reads
-  your own stock update image once (nothing from it is kept or sent anywhere).</p>
-  <p class="sub"><b>Works on:</b> Gen1 MPC (Live/One/X/Key), Force and Gen2 (Live III, One G2, Key(s) G2), but only on
-  <b>MPC OS up to 3.9.1</b>. Akai closed this route in <b>MPC OS 3.10</b>; a stick built here will not work on a device
-  already updated past that, and the easy stick above is the only no-SSH option there.</p>
-  <p class="sub"><b>Gen2 devices specifically:</b> their storage can't be made to remember changes the way Gen1/Force can, so SSH
-  and the addins' settings are undone by every reboot. Reinsert the stick and confirm the prompt again after each restart.</p>
+<section id="st-intro" class="guide">
+  <ul>
+    <li><b>What this is for:</b> developers who want an ordinary <b>SSH login</b> on their device, to install plugins and addins with this installer's SSH tab or by hand.</li>
+    <li><b>What the stick does:</b>
+      <ul>
+        <li>Turns <b>SSH</b> on (a key you give, or a password).</li>
+        <li>Puts back any <b>addins</b> you already installed.</li>
+        <li>Optionally opens the <b>plugin manager</b>, exactly like the easy stick above (tick the box below).</li>
+      </ul></li>
+    <li><b>How it works:</b> MPC OS has its own stock "USB script" reader, built in by Akai (not a security hole). A stick with the right files on it makes MPC ask one on-screen question, then run a script as root. <i>Nothing happens until you confirm that prompt on the device's own screen.</i> The check the reader needs depends on your device's firmware, so this reads your own stock update image once (nothing from it is kept or sent anywhere).</li>
+    <li><b>Works on:</b> Gen1 MPC (Live, One, X, Key), Force and Gen2 (Live III, One G2, Key(s) G2), <b>but only on MPC OS up to 3.9.1</b>.
+      <div class="callout"><i>Akai closed this route in MPC OS 3.10. A stick built here will not work on a device already updated past that; the easy stick above is the only no-SSH option there.</i></div></li>
+    <li><b>Gen2 devices specifically:</b> their storage can't be made to remember changes the way Gen1 and Force can, so SSH and the addins' settings are undone by every reboot. <i>Reinsert the stick and confirm the prompt again after each restart.</i></li>
+  </ul>
 </section>
 <section id="st1">
   <h2><span class="n">1</span>Firmware</h2>
@@ -268,7 +313,7 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
 <section id="st3" class="off">
   <h2><span class="n">3</span>Plugin manager</h2>
   <label style="display:flex;gap:10px;align-items:flex-start;font:400 15px var(--text)"><input type="checkbox" id="st-withmgr" checked style="margin-top:4px">
-    <span>Also open the plugin manager from this stick (recommended). It is Eurikon's Plugin Manager USB for OPEN MPC, downloaded and
+    <span>Also open the plugin manager from this stick (recommended). It is Twisted Cable's Plugin Manager USB for OPEN MPC, downloaded and
     checked as for the easy stick above; this stick runs it right after turning SSH on.</span></label>
 </section>
 
