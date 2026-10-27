@@ -94,6 +94,7 @@ typedef struct {
     unsigned vis_rev;             /* visible()'s cache: the rev it was worked out at (+1, so 0 = none), its list */
     int vis_n, vis_idx[MAXPKG];
     int confirm;                  /* the restart prompt is open (the second APPLY); only shown while ready */
+    long long theme_t;            /* ms of the last accepted theme press (monotonic) */
     int theme, theme_applied, theme_can;   /* 0 dark, 1 light: the one wanted, the one in `Plugin Skins` at MPC's start, and whether the folder holds both skins */
     char own[300];                /* this plugin's own folder (its skins live there) */
     int tsel, reprompt;           /* which usable location new installs go to; CHANGE re-prepares and reopens the prompt */
@@ -744,11 +745,13 @@ static void own_folder(char *out, size_t n) {
     if (sl && sl != out) *sl = 0;
 }
 
-static int theme_read(const char *base, const char *name) {   /* 1 for "light", else 0 */
+static int theme_read(const char *base, const char *name, int def) {   /* 1 for "light", 0 for "dark"; def when there is no such file */
     char f[300], b[16] = "";
     snprintf(f, sizeof f, "%s/%s", base, name);
     FILE *fp = fopen(f, "r");
-    if (fp) { if (!fgets(b, sizeof b, fp)) b[0] = 0; fclose(fp); }
+    if (!fp) return def;
+    if (!fgets(b, sizeof b, fp)) b[0] = 0;
+    fclose(fp);
     return !strncmp(b, "light", 5);
 }
 
@@ -760,9 +763,9 @@ static void theme_init(mgr_t *m) {   /* after the device probe: where the settin
         snprintf(a, sizeof a, "%s/Plugin Skins.light", m->own);
         snprintf(b, sizeof b, "%s/Plugin Skins.dark", m->own);
         m->theme_can = is_dir(a) && is_dir(b);
-        m->theme = theme_read(m->dev->base, ".openmpcpm-theme");
+        m->theme = theme_read(m->dev->base, ".openmpcpm-theme", 1);   /* light is the default */
         snprintf(a, sizeof a, "%s/Plugin Skins", m->own);
-        m->theme_applied = theme_read(a, ".theme");   /* inside the skin itself: a reinstall of this plugin brings the packaged (dark) skin and this file together */
+        m->theme_applied = theme_read(a, ".theme", 1);   /* inside the skin itself: a reinstall of this plugin brings the packaged (dark) skin and this file together */
     }
 }
 
@@ -1513,6 +1516,11 @@ static void mgr_set_param(void *inst, const char *key, const char *val) {
     int busy = m->busy == J_PREPARE || m->busy == J_LAUNCH;
     if (m->confirm && !m->reprompt && (!m->ready || busy)) m->confirm = 0;   /* nothing left to restart for */
     if (v >= 0.5 && !strcmp(key, "theme_btn") && m->theme_can && !m->confirm && !busy) {   /* the next apply carries it */
+        struct timespec ts;   /* MPC sent one tap twice on a Live III (2026-10-28 trace): a second press within 700 ms is the same tap */
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        long long now = ts.tv_sec * 1000LL + ts.tv_nsec / 1000000;
+        if (now - m->theme_t < 700) { pthread_mutex_unlock(&m->mu); return; }
+        m->theme_t = now;
         m->theme = !m->theme;
         theme_save(m);
         m->ready = 0;   /* a prepared apply.sh does not have the swap (or still has it): prepare again */

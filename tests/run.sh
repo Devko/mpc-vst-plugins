@@ -64,6 +64,12 @@ sh tests/devices/mpc-one.sh
 for t in "Plugin Skins" "Plugin Skins.dark" "Plugin Skins.light"; do mkdir -p "/tmp/own/$t"; done
 echo dark > "/tmp/own/Plugin Skins/.theme"; echo dark > "/tmp/own/Plugin Skins.dark/.theme"; echo light > "/tmp/own/Plugin Skins.light/.theme"
 export PM_OWN=/tmp/own
+# the default: no preference saved and the light skin in place: LIGHT, nothing pending
+echo light > "/tmp/own/Plugin Skins/.theme"
+/tmp/drive_addins themeshow > /tmp/theme0.out
+grep -qF "start: can=1 theme=1 |LIGHT| apply_state=0" /tmp/theme0.out
+# the user chose dark earlier and dark is in place: one tap (which MPC sends twice) switches to light
+echo dark > "/tmp/own/Plugin Skins/.theme"; echo dark > /media/az01-internal/.openmpcpm-theme
 /tmp/drive_addins theme > /tmp/theme.out
 grep -qF "start: can=1 theme=0 |DARK| apply_state=0" /tmp/theme.out
 grep -qF "pressed: theme=1 |LIGHT  after restart| apply_state=1" /tmp/theme.out
