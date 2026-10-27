@@ -1775,6 +1775,48 @@ Open: the first boot of a ROM, level, CPU on a Live III, everything on a device.
 - `tools/desktop/easystick.go`: downloads the pinned release, checks the hash, unpacks onto an empty drive (path-traversal refused, nothing written if any name is unsafe). Go tests green (docker golang:1.26).
 - Our firmware-built stick is kept under Advanced (SSH, addin reapply). Our previous Force/Live III stick was backed up to `~/stick-backup-ours-2026-10-27` (outside the repo; contains `autorun.check`, not the salt).
 
+### Device test, Live III (Gen2), MPC OS 3.9.1 then 3.10 (2026-10-27, device)
+
+- **3.9.1: works.** Eurikon's `v1.2.0-beta.1` stick: stock prompt appeared on a fresh insertion, Open launched the manager, it installed Daemon 1.0.1 (aarch64) into `/nvme/Synths` and updated `MPC.settings` (backup made); MPC returned; the plugin loaded on a track. Shift + Menu (2 s) reopened the manager. Teardown logged `ERROR: Could not restore CRTC` (harmless here).
+- Autorun runs **one** script at boot: with a second autorun stick already inserted at boot (our 3.10-on-3.9.1 stick), that one wins and the other stick gets no prompt; reinsert it after boot. With the 3.10 overlay active, no autorun prompt appears at all (the 3.10 binary has no autorun reader).
+- **Addin clash (found, not fixed):** his temporary `99-mpc-usb-shortcut.conf` uses an `EnvironmentFile` that replaces our `Environment=LD_PRELOAD` (drop-in on `/run`). His supervisor reads `LD_PRELOAD` from the running MPC's `/proc` environment; on Gen2 the addins were applied after MPC started, so it saw none and MPC ran with only his hook until the session ended. Reading `systemctl show acvs -p Environment` would include the `/run` drop-ins.
+- **3.10 on Gen2: helper loads but the manager does not open.** `Plugin Manager helper.xpa` imported to `/nvme/MPC Documents/Devices/Plugin Manager helper`; after restart the journal shows `Found, link: Plugin Manager` then `Plugin manager helper: native UI binding unavailable`; Shift + Menu does nothing. Its Lua reads `debug.getupvalue(mpc.ui.popups.ShowInfoPopup, 2)` and needs a userdata, which this MPC (3.10.0.49 run as an overlay on 3.9.1) does not give. Not conclusive for a stock 3.10 Gen2 (ours is an overlay); reported to the author.
+
+### Live III (Gen2), 3.10 overlay: the community manager's helper opens, then MPC crash-loops on return (2026-10-27, device + offline)
+
+- **Native UI binding on Gen2 3.10.0.49:** the helper's `pmu_ui_init` failed at its first data check: the std::function manager/invoker are at `base + 0x1926ce0` / `0x1926740`, not the `0x18f7720` / `0x190e6a0` in `v1.2.0-beta.1`. Every other fingerprint and pointer-chain value matched (firmware hash, 10 instruction words, closure, member, queue words), checked with an instrumented build on the device. With the two constants changed Shift + Menu opened the manager on a Gen2 3.10.
+- Our 3.10-on-3.9.1 overlay is only inside MPC's mount namespace, so the helper's `bootstrap.sh` (a systemd unit, host namespace) sees the 3.9.1 `/usr/bin/MPC` and exits "unsupported firmware" (status 10). Test-only quirk; on a real 3.10 it passes.
+- **After Return to MPC, MPC segfaulted about 1.4 s after every start (18+ restarts, Sentry uploads).** Two crashpad minidumps (`/data/sentry/.sentry-db`) show the same deterministic crash: `pc` = `mpc_remote_addin.so + 0x13ae4` (entry of its `snd_rawmidi_read`, stack at its limit), `lr` = `forcespoof.so + 0x63e4` (its `snd_rawmidi_read` calling its next function). That is runaway recursion between the two shims' `snd_rawmidi_read` wrappers, which appeared when the manager's temporary `99-mpc-usb-shortcut.conf` appended its `shortcut-hook.so` (a fifth `snd_rawmidi_read` wrapper) after commander, forcespoof, remote and skipback. Recovery: `systemctl stop mpc-usb-manager` (removes the drop-in) then restart `acvs`. Likely cause, not proven here: commander's `dlsym` breaks `dlsym(RTLD_NEXT)` chaining (see 2026-10-13); the shims on this device may predate the dlvsym fix.
+
+### 2026-10-27: desktop installer: Advanced is now "turn on SSH", optionally combined with the plugin manager (offline only)
+
+- `BuildSSHStick` (tools/desktop/stick.go) replaces the Go `BuildStick`: SSH (key or password, one required) + addin reapply, plus the community manager's bundle when ticked (default). The manager's files stay byte-identical; its `open.sh` moves to `autorun/manager-open.sh`; our wrapper `open.sh` detaches into `mpc-usb-advanced`, runs `mpc-extras.sh`, then `exec`s the manager. `autorun.check` covers all listed files (so it still needs the firmware salt, 3.9.1 only); `USB-SHA256.json` is regenerated.
+- `mpc-extras.sh` restarts `acvs` once when `systemctl show acvs -p Environment` LD_PRELOAD differs from the running MPC's `/proc/<pid>/environ`: that is the case on a Live III after a reboot, and it stops the manager's supervisor reading no addins (see the 3.10 entry above).
+- Dropped from the app's stick: the preset catalog list (`install.txt`) and the embedded `mpc-store.sh`; `tools/usb_stick/*.py` keep them. Go tests (docker golang:1.26) cover layout, check, inventory, refusals and a run of the wrapper plus extras with fake addins. Not run on a device yet.
+
+### Live III (Gen2, 3.9.1): the combined advanced stick, first device run (2026-10-27, device)
+
+- Stick built by the desktop code from the Live III's own `/usr/bin/MPC` (3.9.1, sha256 a36af088...) plus the pinned manager release. Stock prompt appeared, Open ran the wrapper: `mpc-extras-result.txt` shows SSH enabled with the key, all five addins reapplied, "Restarting MPC once so the addins load", then the manager opened, downloaded the catalog and closed on Return.
+- **Two problems found.** (1) SSH was gone afterwards (port 22 closed) although the log said sshd was running: sshd was started from the stick's transient unit and killed when it ended. Fixed in `enable_ssh.sh` (own unit `mpc-usb-sshd`); not re-tested on the device. (2) After Return MPC crash-looped (display not lit) because the released `shortcut-hook.so` crashes MPC when commander is loaded (the dlsym/RTLD_NEXT chain, see the 3.10 entry); pulling the stick ended the session and MPC came back. Upstream PR with the hook fix: https://github.com/Eurikon/plugin-manager-usb-for-open-mpc/pull/1.
+- The Live III's remote addin answers on its LAN port even with SSH down: its MCP endpoint (`POST /mcp`) can read the stick's result files when SSH is unavailable.
+
+### 2026-10-28: Eurikon merged our PR; installer pin moved to v1.2.0-beta.2 (offline check; device retest pending)
+
+- His PR #1 (the two Gen2 3.10 offsets, and resolving the hook's next `snd_rawmidi_read` through libc's versioned `dlsym`) was merged 2026-10-27 and shipped as `v1.2.0-beta.2` (zip sha256 `44a43647...b3a1`). He also changed the supervisor to read the service's current environment and ordered environment files before restarting MPC, which covers the addin-clash note. Compared with beta.1: same file list and an identical `autorun/open.sh`; changed only the helper `.xpa`, the checksum files and the shortcut/hook binaries. The aarch64 hook now contains `dlvsym`.
+- `easyStickVersion`/`easyStickSHA256` in `tools/desktop/easystick.go` now point at it. Still to confirm on the Live III: the hook no longer crashes MPC with commander loaded, the easy and combined sticks end to end, and 3.10.
+
+### 2026-10-28: Live III (Gen2, 3.9.1) retest with the community manager v1.2.0-beta.2 (device)
+
+- The combined advanced stick (our wrapper + beta.2 bundle, built from the Live III's own `/usr/bin/MPC` and the sshd fixes) ran end to end: stock prompt, SSH step, five addins reapplied, one MPC restart, manager opened, catalog install of a plugin (CW-78 1.1.2) worked, Return to MPC.
+- **Confirmed fixed:** no crash after Return with commander loaded (beta.2 hook, `dlvsym`); the manager's session kept the four addins in `LD_PRELOAD` in order with its hook appended last (its supervisor now reads the service's environment); `mpc-usb-sshd` (own unit) keeps SSH up after the stick's script ends.
+- Found and fixed on the way: `enable_ssh.sh` aborted with status 5 under `set -e` when `systemctl stop mpc-usb-sshd` met a unit that did not exist yet (the first sshd fix); the new test in `tools/test_usb_stick.py` runs that exact block against a `systemctl` that exits 5 and fails on the old script.
+- Not retested: MPC OS 3.10 on Gen2 with beta.2's helper (our 3.10 is an overlay on 3.9.1, where the helper's `bootstrap.sh` also needs `MPC=` pointed at the 3.10 binary, a quirk of that setup only).
+
+### 2026-10-28: Live III (Gen2), MPC 3.10.0.49 overlay on 3.9.1, community manager v1.2.0-beta.2 helper (device)
+
+- Imported the beta.2 `Plugin Manager helper.xpa` into `/nvme/MPC Documents`, restarted: the helper logged no "binding unavailable" (his corrected Gen2 offsets work). With the overlay-only `MPC=` patch in the helper's `bootstrap.sh`, a fresh stick insertion opened the manager; it downloaded the catalog and closed on Return. MPC restarted into 3.10 with the four addins in `LD_PRELOAD` in order and the manager's hook last, `NRestarts=0`, no core dumps: the commander `dlsym` crash is gone on 3.10 as well.
+- Non-fatal log line: `Plugin manager helper: loading popup unavailable; continuing launch` (the optional native loading dialog). Still not a stock 3.10 install: the overlay needs the `bootstrap.sh` patch above to pass its firmware check; a real 3.10 would not.
+
 
 ## 2026-10-27: skin search path, read-only look at a Live III (3.10) and a Force (3.9.1) (device, read-only; hypothesis not yet tested)
 
