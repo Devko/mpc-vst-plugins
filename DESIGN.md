@@ -161,9 +161,9 @@ What can work (all inference until tested):
    so the new thumbnails show after the restart the apply already does. No plugin rebuild per catalog entry.
 3. **Safety**: swap with `x.new` then `mv`; keep the old strip for rollback (section 7); refuse a strip taller than 12288 px (stock sliders misbehave over it) or any image over 16384 px (`PORTING.md`); the ids list must match the frame count, else keep the baked strip.
 
-Device test (not run; needs the user's OK for each MPC restart): with MPC stopped, replace a skin's filmstrip PNG with a copy
-whose frame order differs, start MPC, and check the new frames draw on the Live III (Gen2), then roll back. Also record the
-largest strip MPC accepts there.
+**Device result 2026-10-27 (Live III, MPC 3.10.0.49):** with MPC stopped, a skin's 78 x 9984 filmstrip was replaced by a colour-swapped copy; after
+the restart the knob drew with the new colours (the user's eye), then the original went back by hash. So swapping an image during a restart
+works (mpc-vst-plugins docs/NOTES.md, same date). Not yet tested: the largest strip MPC accepts on Gen2, a swap with the plugin open, Gen1.
 
 ## 7. Apply and rollback
 
