@@ -29,6 +29,7 @@
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <sys/utsname.h>
+#include <gnu/libc-version.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -974,6 +975,18 @@ static void probe_device(device_t *d) {
     snprintf(d->problem, sizeof d->problem, "%s", pb);
 }
 
+/* The device's glibc ("2.39"), asked of the running system; tests: PM_GLIBC. MPC OS 2.x ships 2.32, 3.x 2.39 (docs/NOTES.md), so
+ * a glibc below 2.39 reads as OS 2.x: an inference, said as such in the message. */
+static const char *dev_glibc(void) {
+    const char *g = getenv("PM_GLIBC");
+    return g ? g : gnu_get_libc_version();
+}
+static int glibc_less(const char *a, const char *b) {   /* a < b, as "major.minor" */
+    int a1 = 0, a2 = 0, b1 = 0, b2 = 0;
+    sscanf(a, "%d.%d", &a1, &a2);
+    sscanf(b, "%d.%d", &b1, &b2);
+    return a1 != b1 ? a1 < b1 : a2 < b2;
+}
 static void write_report(const device_t *d) {
     FILE *f = fopen(WORK "/device.txt", "w");
     if (!f) return;
@@ -981,6 +994,7 @@ static void write_report(const device_t *d) {
     if (uname(&u) == 0) fprintf(f, "uname: %s %s %s\n", u.machine, u.release, u.version);
     char *os = slurp("/etc/os-release", 4096);
     if (os) { char *v = strstr(os, "VERSION="); if (v) fprintf(f, "os: %.*s\n", (int)strcspn(v, "\n"), v); free(os); }
+    fprintf(f, "glibc: %s (reads as MPC OS %s)\n", dev_glibc(), glibc_less(dev_glibc(), "2.39") ? "2.x" : "3.x");
     fprintf(f, "settings: %s\nplugin lists: %s\nstate: %s\n", d->settings[0] ? d->settings : "(not found)", d->keys, d->state);
     char why[320], own[200];
     for (int i = 0; i < d->nloc; i++) {
@@ -1153,6 +1167,24 @@ static void manifest_str(const char *dir, const char *key, char *out, size_t n) 
     free(s);
 }
 
+/* does the manifest's array member `key` list `needle` ("3.x")? 0 also when there is no such member */
+static int manifest_lists(const char *dir, const char *key, const char *needle, int *present) {
+    char path[640], pat[48];
+    snprintf(path, sizeof path, "%s/mpc-plugin.json", dir);
+    snprintf(pat, sizeof pat, "\"%s\"", key);
+    *present = 0;
+    char *s = slurp(path, 64 << 10);
+    if (!s) return 0;
+    int hit = 0;
+    char *k = strstr(s, pat);
+    if (k && (k = strchr(k + strlen(pat), '[')))   {
+        char *e = strchr(k, ']');
+        if (e) { *e = 0; *present = 1; hit = strstr(k, needle) != NULL; }
+    }
+    free(s);
+    return hit;
+}
+
 /* The zip before anything is unpacked: no absolute or ".." names, no backslashes, and a sane unpacked size (WORK is RAM). */
 static const char *inspect_zip(const char *zip) {
     char cmd[700];
@@ -1203,7 +1235,25 @@ static void prepare(mgr_t *m, pkg_t *q) {
             err = why;
             break;
         }
-        else if (!is_addin(p) && p->queued == Q_INSTALL && needs_links(p->dir)) {
+        else if (p->queued != Q_REMOVE && (manifest_str(p->dir, "max_glibc", why, sizeof why), why[0] && glibc_less(dev_glibc(), why))) {
+            char need[24];
+            snprintf(need, sizeof need, "%s", why);
+            snprintf(why, sizeof why, "needs glibc %s or newer, this MPC has %s (MPC OS %s: inferred from it)", need, dev_glibc(),
+                     glibc_less(dev_glibc(), "2.39") ? "2.x" : "3.x");
+            err = why;
+            break;
+        }
+        else if (p->queued != Q_REMOVE) {
+            int has, ok = manifest_lists(p->dir, "os_compat", glibc_less(dev_glibc(), "2.39") ? "2.x" : "3.x", &has);
+            if (has && !ok) {
+                snprintf(why, sizeof why, "is for a different MPC OS, and this one reads as %s (from its glibc %s)",
+                         glibc_less(dev_glibc(), "2.39") ? "2.x" : "3.x", dev_glibc());
+                err = why;
+                break;
+            }
+        }
+        if (err) break;
+        if (!is_addin(p) && p->queued == Q_INSTALL && needs_links(p->dir)) {
             const char *t = p->synths[0] && good_target(p->synths) ? p->synths : dest(m);
             if (t[0] && !can_link(t)) {
                 snprintf(why, sizeof why, "needs a drive that stores symbolic links, and %s does not", t);

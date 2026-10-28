@@ -76,6 +76,8 @@ pkg("Faily", [("Faily-1.0.0/install.sh", FAIL_SH), ("Faily-1.0.0/uninstall.sh", 
               ("Faily-1.0.0/mpc-plugin.json", '{"folder": "portable/Faily dir", "arch": "armv7"}\n')], "2025-03-01")
 pkg("Wrongarch", [("Wrongarch-1.0.0/install.sh", "#!/bin/sh\nexit 0\n"), ("Wrongarch-1.0.0/uninstall.sh", "#!/bin/sh\nexit 0\n"),
                   ("Wrongarch-1.0.0/mpc-plugin.json", '{"arch": "aarch64"}\n')], "2025-02-01")
+pkg("Newlib", [("Newlib-1.0.0/install.sh", "#!/bin/sh\nexit 0\n"), ("Newlib-1.0.0/mpc-plugin.json", '{"arch": "armv7", "max_glibc": "9.99"}\n')], "2024-12-01")
+pkg("Oldos", [("Oldos-1.0.0/install.sh", "#!/bin/sh\nexit 0\n"), ("Oldos-1.0.0/mpc-plugin.json", '{"arch": "armv7", "os_compat": ["2.x"]}\n')], "2024-11-01")
 pkg("Evil", [("Evil-1.0.0/install.sh", "#!/bin/sh\nexit 0\n"), ("Evil-1.0.0/../escape.txt", "x")], "2025-01-01")
 json.dump({"schema": 1, "plugins": plugins}, open(os.path.join(out, "catalog.json"), "w"), indent=1)
 print("fixture: %d packages in %s" % (len(plugins), out))

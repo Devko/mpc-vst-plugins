@@ -102,6 +102,10 @@ grep -q "^faily|fail|disk full" /tmp/openmpc-pm/result
 [ -f "$T/Faily dir/old" ] && [ ! -e "$T/Faily dir/partial" ] || { echo "FAIL: the folder was not put back"; exit 1; }
 /tmp/drive_addins status > /tmp/safe-status.out
 grep -qF "Last apply: 0 done, 1 failed and put back as they were. Faily: disk full" /tmp/safe-status.out
+/tmp/drive_addins one Newlib > /tmp/safe-glibc.out
+grep -qF "Newlib: needs glibc 9.99 or newer, this MPC has" /tmp/safe-glibc.out
+rm -rf /tmp/openmpc-pm; PM_GLIBC=2.39 /tmp/drive_addins one Oldos > /tmp/safe-os.out
+grep -qF "Oldos: is for a different MPC OS, and this one reads as 3.x (from its glibc 2.39). Nothing on the MPC was changed." /tmp/safe-os.out
 echo "safety OK"
 # last: after it the next "rm -rf /media" fails in the container (cause not found), so nothing may follow it
 echo "== arch (offline fixture): the aarch64 zip on Gen2, the armv7 one otherwise, and no card when there is none"
