@@ -28,6 +28,7 @@
 #include <strings.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <ctype.h>
 #include <sys/utsname.h>
 #include <gnu/libc-version.h>
 #include <sys/wait.h>
@@ -1026,6 +1027,61 @@ static const char *manifest_member(const char *k, const char *v, void *ud) {
     return NULL;
 }
 
+/* Zips the user put on a drive: <a content location's parent>/local-plugins/<name>.zip become cards ("local zip"), installed by the same steps as a
+ * catalog package (zip inspection, arch/glibc check, rollback). Nothing vouches for them: the card shows the zip's own sha256, and the
+ * catalog's checksum rule does not apply. Returns the new package count. */
+static int add_local(const device_t *d, pkg_t *pkg, int n) {
+    for (int u = 0; u < d->nusable; u++) {
+        char dir[300], *sl;
+        snprintf(dir, sizeof dir, "%s", d->usable[u]);
+        if (!(sl = strrchr(dir, '/'))) continue;
+        snprintf(sl, sizeof dir - (sl - dir), "/local-plugins");
+        DIR *dp = opendir(dir);
+        struct dirent *e;
+        while (dp && (e = readdir(dp)) && n < MAXPKG) {
+            size_t l = strlen(e->d_name);
+            char path[600], cmd[900];
+            if (l < 5 || strcasecmp(e->d_name + l - 4, ".zip") || e->d_name[0] == '.') continue;
+            snprintf(path, sizeof path, "%s/%s", dir, e->d_name);
+            if (!safe(path) || !is_file(path)) continue;
+            snprintf(cmd, sizeof cmd, "unzip -p '%s' '*/mpc-plugin.json' > '" WORK "/local.json' 2>/dev/null; "
+                                      "sha256sum '%s' | cut -c1-64 > '" WORK "/local.sha'", path, path);
+            if (sh(cmd)) continue;
+            manifest_t mf = {{0}, {0}};
+            char *js = slurp(WORK "/local.json", 64 << 10), *sha = slurp(WORK "/local.sha", 80);
+            if (js) { jobject(js, manifest_member, &mf); free(js); }
+            if (!sha || strlen(sha) < 64) { free(sha); continue; }
+            sha[64] = 0;
+            pkg_t *p = &pkg[n];
+            memset(p, 0, sizeof *p);
+            char stem[48];
+            snprintf(stem, sizeof stem, "%.*s", (int)(l - 4 > 40 ? 40 : l - 4), e->d_name);
+            for (char *q = stem; *q; q++) if (!isalnum((unsigned char)*q) && *q != '-' && *q != '.') *q = '-';
+            snprintf(p->id, sizeof p->id, "local-%s", mf.id[0] ? mf.id : stem);
+            int dup = 0;
+            for (int i = 0; i < n; i++) dup |= !strcmp(pkg[i].id, p->id);
+            if (dup || !safe(p->id)) { free(sha); continue; }
+            snprintf(p->name, sizeof p->name, "%.*s", (int)(l - 4 > 44 ? 44 : l - 4), e->d_name);
+            snprintf(p->author, sizeof p->author, "local zip");
+            snprintf(p->kind, sizeof p->kind, "instrument");
+            snprintf(p->dist, sizeof p->dist, "release");
+            snprintf(p->latest, sizeof p->latest, "%s", mf.version[0] ? mf.version : "local");
+            snprintf(p->url, sizeof p->url, "file://%s", path);
+            snprintf(p->sha, sizeof p->sha, "%s", sha);
+            snprintf(p->channel, sizeof p->channel, "stable");
+            snprintf(p->tags, sizeof p->tags, "local");
+            snprintf(p->summary, sizeof p->summary, "A zip you put in %s. Nothing checked it against the catalog: its own sha256 is %.16s...", dir, sha);
+            struct stat st;
+            if (!stat(path, &st)) p->size = st.st_size;
+            snprintf(p->updated, sizeof p->updated, "9999-99-99");   /* newest first in the default sort */
+            free(sha);
+            n++;
+        }
+        if (dp) closedir(dp);
+    }
+    return n;
+}
+
 /* Match each catalog plugin to a plugin-list entry: by the mpc-plugin.json id in its folder, else a component uid,
  * else the name. The Synths folder is the entry's file= minus "<vendor> - VST - <name>/<so>"; an entry whose .so is
  * not in such a folder is an old-layout install (synths left empty, shown as "old"). An addin is matched by id to
@@ -1225,6 +1281,7 @@ static void do_refresh(mgr_t *m) {
     }
     free(s.buf);
     probe_device(m->dev);
+    l.n = add_local(m->dev, tmp, l.n);
     theme_init(m);
     write_report(m->dev);
     scan_installed(m->dev, tmp, l.n);

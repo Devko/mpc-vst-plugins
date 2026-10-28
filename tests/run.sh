@@ -140,6 +140,14 @@ grep -qF "Last apply: 0 done, 1 failed and put back as they were. Faily: disk fu
 grep -qF "Newlib: needs glibc 9.99 or newer, this MPC has" /tmp/safe-glibc.out
 rm -rf /tmp/openmpc-pm; PM_GLIBC=2.39 /tmp/drive_addins one Oldos > /tmp/safe-os.out
 grep -qF "Oldos: is for a different MPC OS, and this one reads as 3.x (from its glibc 2.39). Nothing on the MPC was changed." /tmp/safe-os.out
+# a zip put on the drive (local-plugins/) is a card and installs by the same steps
+LD=$(dirname "$(find /media -type d -name Synths 2>/dev/null | head -n 1)")/local-plugins
+mkdir -p "$LD"; cp /p/vst/build/tests/Linky-1.0.0-mpc-armv7.zip "$LD/Mine-1.0.0.zip"
+rm -rf /tmp/openmpc-pm; /tmp/drive_addins one Mine-1.0.0 1 > /tmp/safe-local.out
+grep -q "apply_state 3" /tmp/safe-local.out || { cat /tmp/safe-local.out; ls -la "$LD"; exit 1; }
+sh /tmp/openmpc-pm/apply.sh
+grep -q "^local-Mine-1.0.0|ok|install local" /tmp/openmpc-pm/result
+rm -rf "$LD"
 # backups pile up: after a success only the newest 10 MPC.settings.bak-* stay, and nothing else is touched
 SD=$(dirname "$(find /media /data -name MPC.settings 2>/dev/null | head -n 1)")
 for k in 01 02 03 04 05 06 07 08 09 10 11 12 13 14; do echo b > "$SD/MPC.settings.bak-t$k"; touch -d "2026-01-$k 10:00" "$SD/MPC.settings.bak-t$k"; done
