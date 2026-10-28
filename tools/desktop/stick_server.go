@@ -186,7 +186,8 @@ func (a *App) stickEasy(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	data, err := fetchEasyStick()
+	pin := currentEasyPin()
+	data, err := fetchEasyStickPin(pin)
 	if err != nil {
 		fail(w, 502, err.Error())
 		return
@@ -195,10 +196,10 @@ func (a *App) stickEasy(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err.Error())
 		return
 	}
-	writeJSON(w, 200, map[string]any{"out": out, "version": easyStickVersion})
+	writeJSON(w, 200, map[string]any{"out": out, "version": pin.Version})
 }
 
 // stickEasyInfo tells the page which release the easy stick will download, so the page never hardcodes it.
 func (a *App) stickEasyInfo(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, map[string]string{"version": easyStickVersion})
+	writeJSON(w, 200, map[string]string{"version": currentEasyPin().Version})
 }

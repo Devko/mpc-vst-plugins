@@ -1818,6 +1818,13 @@ Open: the first boot of a ROM, level, CPU on a Live III, everything on a device.
 - Non-fatal log line: `Plugin manager helper: loading popup unavailable; continuing launch` (the optional native loading dialog). Still not a stock 3.10 install: the overlay needs the `bootstrap.sh` patch above to pass its firmware check; a real 3.10 would not.
 
 
+### 2026-10-28: installer pin moved to the community manager's stable v1.2.1 (offline check; device retest pending)
+
+- Twisted Cable (Eurikon) promoted beta.2 to the stable `v1.2.0`, then shipped `v1.2.1` (2026-10-28; zip sha256 `c05199ae...2b9f`, matches his published `.sha256`). 1.2.1 fixes Gen2 plugin installs when the selected SSD has no `Synths` folder: storage follows MPC's Content Download Drive setting, SETUP > Plugin location allows manual drive/folder choice, and an unsuitable drive stops the install instead of silently picking another (his offline validation only; hardware confirmation pending). Compared with beta.2 (1.2.0; 1.2.1 likewise): `autorun/open.sh` and `autorun.json` are identical, so our wrapper's assumptions hold; only the two `manager` binaries, the helper `.xpa` and the checksum files changed. `easyStickVersion`/`easyStickSHA256` in `tools/desktop/easystick.go` now point at it.
+- His note: people on 1.1.x or the 1.2 betas must re-download (1.2 is a migration, not an update); from 1.2 on, auto-update works. The helper's "loading popup unavailable" log line is expected on our 3.10-over-3.9.1 overlay (the popup only hides a background flicker); a stock 3.10 device is still unconfirmed.
+- **Pin file (offline-tested):** the installer now reads the reviewed release from `tools/desktop/easystick-pin.json` on `main` at run time (5 s timeout), so adopting a tested release is a one-file PR with no installer release. A pin is accepted only if its URL is under the manager project's releases and the sha256 is 64 hex digits; anything else, or no network, falls back to the compiled-in pin. The zip hash is checked either way. Anyone who can push to `main` can therefore change what the stick runs as root, the same trust as our releases.
+- Still to do on the Live III: one run of the v1.2.1 stick (3.9.1 path), to confirm nothing regressed from beta.2.
+
 ## 2026-10-27: skin search path, read-only look at a Live III (3.10) and a Force (3.9.1) (device, read-only; hypothesis not yet tested)
 
 Question: do plugins installed to some folders load on MPC OS 3.10 but show no skin because the folder is not a `SynthContentLocations` entry? Nothing was written to either device.
