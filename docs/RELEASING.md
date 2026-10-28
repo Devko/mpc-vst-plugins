@@ -43,8 +43,9 @@ If the port's build also leaves `build/aarch64/<so>` (vst.json `targets`), the w
 the CPU result is Gen1's, so that zip has none. Offline only until run on a Gen2 device (docs/GEN2.md).
 
 `.github/workflows/plugin-manager-g2.yml` calls it for `tools/plugin_manager_g2` (a manager that lives in this repo): "Run workflow" with a version (start with `dry_run`)
-builds the Gen2 zip into a draft release tagged `plugin-manager-g2-v<version>`. The catalog's plain `vX.Y.Z` tag rule does not match that
-tag yet: listing the manager (for self-update) needs a `tag_prefix` field in `tools/catalog_build.py` and `catalog_check.py`.
+builds the Gen2 zip into a draft release tagged `plugin-manager-g2-v<version>`. Listing the manager in the catalog (for its self-update) needs no tool change: a registry entry with `repo: sd88me/mpc-vst-plugins` and
+`asset_pattern: Plugin-Manager-G2-*-mpc-aarch64.zip` (the Gen2-only form, docs/GEN2.md) picks its zip, and the catalog already skips this repo's other
+products' releases (`desktop-v...`). Add that entry in a PR once the first release exists.
 
 A port calls it from its own repo with a `workflow_dispatch` workflow that takes the version. Pin this repo to one
 commit in both places:
