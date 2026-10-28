@@ -1905,3 +1905,9 @@ new one (trigger max 70 %); at 2.8 ms (over `TRIGGER_WARN_PCT`) it WARNs. `bench
 - **Offline only (x86 container, fake devices):** the rollback of a failed install (folder and `MPC.settings` restored), zip inspection before unpacking, and the glibc/OS
   and architecture refusals. See `tools/plugin_manager_g2/DESIGN.md`.
 
+
+### 2026-10-28: MPC One (Gen2) layout; the installer's Gen2 internal drive is no longer only `/nvme/Synths` (offline + a user report)
+
+- A user's MPC One (aarch64, OS 3.9.1) sent `mount | grep ...` and `df -h`: no `/nvme`; `/synths` = eMMC ext4 (91% used), `/storage` = a 31 GB loopback with 17 GB free, `/data` 100% (it holds the loopback image), SD at `/media/MPC`. This is the layout behind their earlier "unknown internal drive path" report and behind Eurikon's v1.2.0 "Plugin content folder or settings missing" (it guessed `/nvme/Synths`).
+- Firmware (stock Gen2 3.9.1 image, read offline): `nvme.mount` is conditioned on the device tree flag `inmusic,nvme-fitted`, `storage.mount` on `inmusic,acvs-loopback-content`, `content.mount` on `inmusic,emmc-content`, `sdcard.mount` on `inmusic,internal-sd-fitted`; hostname files map `acva3` to the One, `acvc` to the XL, `acvg` to the Live III, `acvr2` to the Key 37. MPC also reads `inmusic,panel-rotation` for its screen orientation (see the XL entry).
+- Change: `SynthsAlt` in `tools/desktop/device.go` is now an ordered list (`/nvme/Synths /storage/Synths`; the first found becomes the internal drive when `/sdcard/Synths` is absent), `/storage/Synths` is a root and `/storage` a drive that can be given a Synths folder; two new tests (`gen2_test.go`) cover a One with no NVMe and the first-wins order. `go test ./...` passes. `tools/mpc-store.sh` has the same fallback. Not run against a real One.
