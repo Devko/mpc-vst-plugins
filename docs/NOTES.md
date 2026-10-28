@@ -1904,4 +1904,8 @@ new one (trigger max 70 %); at 2.8 ms (over `TRIGGER_WARN_PCT`) it WARNs. `bench
   ("this build is for Gen1 ...", read from the apply log).
 - **Offline only (x86 container, fake devices):** the rollback of a failed install (folder and `MPC.settings` restored), zip inspection before unpacking, and the glibc/OS
   and architecture refusals. See `tools/plugin_manager_g2/DESIGN.md`.
+- **Offline only, added the same day (x86 container, fake devices):** `plugin-history.json` beside the state file, backup pruning (keep the newest 10
+  `MPC.settings.bak-*` after a successful apply), local zips (`<drive>/local-plugins/<name>.zip` become cards), and REGISTER for a folder that has a
+  `plugin-meta.xml` but no list entry (the installer's `plugin_list.awk`, `MPC.settings` snapshotted first). A test orphan was made on the Live III
+  (2026-10-28) to try registration; not yet run there. A big plugin's rollback copy goes beside it on its own drive, not in RAM.
 
