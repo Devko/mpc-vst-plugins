@@ -83,6 +83,26 @@ sh /tmp/openmpc-pm/apply.sh
 grep -qF "start: can=1 theme=1 |LIGHT| apply_state=0" /tmp/theme2.out
 unset PM_OWN
 echo "theme OK"
+echo "== safety (offline fixture): refused before MPC stops; a failed install is rolled back and reported"
+rm -rf /media /sdcard /nvme /synths /data /tmp/openmpc-pm /tmp/pm-mounts; mkdir -p /media
+sh tests/devices/mpc-one.sh
+/tmp/drive_addins one Wrongarch > /tmp/safe-arch.out
+grep -qF "is built for aarch64, this MPC is armv7. Nothing on the MPC was changed." /tmp/safe-arch.out
+rm -rf /tmp/openmpc-pm
+/tmp/drive_addins one Evil > /tmp/safe-evil.out
+grep -qF "has unsafe file names in its zip. Nothing on the MPC was changed." /tmp/safe-evil.out
+[ ! -e /tmp/openmpc-pm/Evil ] || { echo "FAIL: an unsafe zip was unpacked"; exit 1; }
+rm -rf /tmp/openmpc-pm
+/tmp/drive_addins one Faily > /tmp/safe-fail.out
+grep -q "apply_state 3" /tmp/safe-fail.out
+T=$(grep -o "/media/[A-Za-z0-9_-]*/Synths\|/sdcard/Synths" /tmp/openmpc-pm/apply.sh | head -n 1)
+mkdir -p "$T/Faily dir" && echo old > "$T/Faily dir/old"
+sh /tmp/openmpc-pm/apply.sh
+grep -q "^faily|fail|disk full" /tmp/openmpc-pm/result
+[ -f "$T/Faily dir/old" ] && [ ! -e "$T/Faily dir/partial" ] || { echo "FAIL: the folder was not put back"; exit 1; }
+/tmp/drive_addins status > /tmp/safe-status.out
+grep -qF "Last apply: 0 done, 1 failed and put back as they were. Faily: disk full" /tmp/safe-status.out
+echo "safety OK"
 # last: after it the next "rm -rf /media" fails in the container (cause not found), so nothing may follow it
 echo "== arch (offline fixture): the aarch64 zip on Gen2, the armv7 one otherwise, and no card when there is none"
 rm -rf /tmp/openmpc-pm; PM_ARCH=aarch64 /tmp/drive_addins arch > /tmp/arch-64.out

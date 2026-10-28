@@ -26,7 +26,7 @@ static void page(const char *k, int twice) { usleep(300000); if (twice) set(k, "
 
 static void cards(void) {
   printf("  [%s] %s | status(%s): %s | apply_state %s\n", get("page_txt"), get("summary"), get("status_kind"), get("status"), get("apply_state"));
-  for (int r = 1; r <= 3; r++) {
+  for (int r = 1; r <= 5; r++) {
     char k[32];
     #define F(f) (snprintf(k, sizeof k, "r%d_" f, r), get(k))
     snprintf(k, sizeof k, "card%d_1", r);
@@ -90,6 +90,19 @@ int main(int argc, char **argv) {
     press("target_next");
     for (int i = 0; i < 60 && strcmp(get("apply_state"), "3"); i++) sleep(1);
     printf("after CHANGE: confirm=%s pick=%s |%s|\n", get("confirm"), get("confirm_pick"), get("confirm_dest"));
+    e->destroy(m); return 0;
+  }
+  if (argc > 1 && !strcmp(argv[1], "status")) { cards(); e->destroy(m); return 0; }   /* what the manager says on its own (the last apply) */
+  if (argc > 2 && !strcmp(argv[1], "one")) {   /* queue the effect called argv[2] and APPLY: the prepare step's verdict */
+    set("kind", "2");
+    for (int r = 1; r <= 5; r++) {
+      char k[32];
+      snprintf(k, sizeof k, "card%d_1", r);
+      if (!strcmp(get(k), argv[2])) { snprintf(k, sizeof k, "r%d_act", r); press(k); }
+    }
+    press("apply");
+    for (int i = 0; i < 60 && strcmp(get("apply_state"), "3") && strcmp(get("apply_state"), "4"); i++) sleep(1);
+    cards();
     e->destroy(m); return 0;
   }
   if (argc > 1 && !strcmp(argv[1], "arch")) {   /* the zip for the device (tests/fixture.py "Dual", "Armonly"): EFFECTS, install card 1 */

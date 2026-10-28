@@ -1061,6 +1061,32 @@ static void scan_installed(const device_t *d, pkg_t *pkg, int n) {
 
 /* ---- jobs ---- */
 
+/* The result of the last apply (apply.sh's per-item lines "id|ok|" or "id|fail|reason"), shown once after MPC is back. */
+static void show_result(mgr_t *m, const pkg_t *pkg, int n) {
+    char *s = slurp(WORK "/result", 8192);
+    if (!s) return;
+    int ok = 0, bad = 0;
+    char first[300] = "";
+    for (char *l = strtok(s, "\n"); l; l = strtok(NULL, "\n")) {
+        char *a = strchr(l, '|'), *b = a ? strchr(a + 1, '|') : NULL;
+        if (!b) continue;
+        *a = *b = 0;
+        if (!strcmp(a + 1, "ok")) ok++;
+        else {
+            if (!bad++) {
+                const char *name = l;
+                for (int i = 0; i < n; i++) if (!strcmp(pkg[i].id, l)) name = pkg[i].name;
+                snprintf(first, sizeof first, "%s: %s", name, b[1] ? b + 1 : "failed");
+            }
+        }
+    }
+    free(s);
+    rename(WORK "/result", WORK "/result.seen");
+    if (!ok && !bad) return;
+    if (bad) say_locked(m, ERR, "Last apply: %d done, %d failed and put back as they were. %s", ok, bad, first);
+    else say_locked(m, OK, "Last apply: %d done.", ok);
+}
+
 static void do_refresh(mgr_t *m) {
     say(m, OK, "Loading the plugin catalog\xe2\x80\xa6");
     sink_t s = {0};
@@ -1106,8 +1132,35 @@ static void do_refresh(mgr_t *m) {
     snprintf(m->disk_free, sizeof m->disk_free, "%s", freebuf);
     if (m->dev->problem[0]) say_locked(m, ERR, "Installing is turned off on this MPC (%s)", m->dev->problem);
     else { m->sticky = 0; m->rev++; }
+    show_result(m, m->pkg, m->npkg);
     pthread_mutex_unlock(&m->mu);
     free(tmp);
+}
+
+/* a string member of the package's mpc-plugin.json ("arch", "folder"): the first quoted value after the key; "" if absent */
+static void manifest_str(const char *dir, const char *key, char *out, size_t n) {
+    char path[640], pat[48];
+    out[0] = 0;
+    snprintf(path, sizeof path, "%s/mpc-plugin.json", dir);
+    snprintf(pat, sizeof pat, "\"%s\"", key);
+    char *s = slurp(path, 64 << 10);
+    if (!s) return;
+    char *k = strstr(s, pat);
+    if (k && (k = strchr(k + strlen(pat), ':')) && (k = strchr(k, '"'))) {
+        char *e = strchr(++k, '"');
+        if (e && (size_t)(e - k) < n) { memcpy(out, k, e - k); out[e - k] = 0; }
+    }
+    free(s);
+}
+
+/* The zip before anything is unpacked: no absolute or ".." names, no backslashes, and a sane unpacked size (WORK is RAM). */
+static const char *inspect_zip(const char *zip) {
+    char cmd[700];
+    snprintf(cmd, sizeof cmd, "! unzip -Z1 '%s' | grep -Eq '(^/|(^|/)\\.\\.(/|$)|\\\\)'", zip);
+    if (sh(cmd)) return "has unsafe file names in its zip";
+    snprintf(cmd, sizeof cmd, "unzip -Zt '%s' | awk '{ exit ($3 + 0 > 600000000) }'", zip);
+    if (sh(cmd)) return "is more than 600 MB unpacked";
+    return NULL;
 }
 
 /* Download, check and unpack every queued package, then write apply.sh. Nothing on the device changes yet. */
@@ -1129,6 +1182,7 @@ static void prepare(mgr_t *m, pkg_t *q) {
         if (!p->url[0] || strlen(p->sha) != 64 || !safe(p->id) || !safe(p->name)) { err = "has no download in the catalog"; break; }
         snprintf(path, sizeof path, WORK "/%s.zip", p->id);
         if (download(m, p, path)) { err = "download failed after 3 retries"; break; }
+        if ((err = inspect_zip(path))) break;
         snprintf(cmd, sizeof cmd, "rm -rf '" WORK "/%s' && unzip -q -o '%s' -d '" WORK "/%s'", p->id, path, p->id);
         if (sh(cmd)) { err = "could not be unpacked"; break; }
         p->dir[0] = 0;   /* the zip holds one top folder with install.sh / uninstall.sh */
@@ -1142,6 +1196,13 @@ static void prepare(mgr_t *m, pkg_t *q) {
         }
         if (d) closedir(d);
         if (!p->dir[0]) err = "is not a valid package";
+        else if (manifest_str(p->dir, "arch", why, sizeof why), (!strcmp(why, "armv7") || !strcmp(why, "aarch64")) && strcmp(why, want_asset() ? "aarch64" : "armv7")) {   /* other values ("unknown", "") say nothing */
+            char have[24];
+            snprintf(have, sizeof have, "%s", why);
+            snprintf(why, sizeof why, "is built for %s, this MPC is %s", have, want_asset() ? "aarch64" : "armv7");
+            err = why;
+            break;
+        }
         else if (!is_addin(p) && p->queued == Q_INSTALL && needs_links(p->dir)) {
             const char *t = p->synths[0] && good_target(p->synths) ? p->synths : dest(m);
             if (t[0] && !can_link(t)) {
@@ -1158,8 +1219,18 @@ static void prepare(mgr_t *m, pkg_t *q) {
                    "exec >>" WORK "/apply.log 2>&1\necho \"== apply $(date)\"\nSTATE='%s'\n"
                    "systemctl stop acvs\ni=0; while pidof MPC >/dev/null && [ $i -lt 30 ]; do sleep 1; i=$((i + 1)); done\n"
                    "setstate() { grep -v \"^$1 \" \"$STATE\" 2>/dev/null > \"$STATE.new\"; [ -n \"$2\" ] && echo \"$1 $2\" >> \"$STATE.new\"; mv \"$STATE.new\" \"$STATE\"; }\n"
-                   "batch() { grep -q -- '-n)' \"$1\" && printf '%%s' -n; }   # older installers lack -n and restart MPC themselves\n",
-                m->dev->state);
+                   "batch() { grep -q -- '-n)' \"$1\" && printf '%%s' -n; }   # older installers lack -n and restart MPC themselves\n"
+                   "SETTINGS='%s'; SNAP='" WORK "/snap'; RES='" WORK "/result'\nrm -rf \"$SNAP\"; mkdir -p \"$SNAP\"; : > \"$RES\"\n"
+                   /* item ID FOLDER cmd...: snapshot the plugin folder and MPC.settings, run cmd; on failure put both back and say why (DESIGN 7) */
+                   "item() {\n  id=$1; dir=$2; shift 2\n"
+                   "  [ -n \"$dir\" ] && [ -d \"$dir\" ] && cp -a \"$dir\" \"$SNAP/$id.dir\"\n"
+                   "  cp -p \"$SETTINGS\" \"$SNAP/$id.settings\" 2>/dev/null\n"
+                   "  if out=$(\"$@\" 2>&1); then echo \"$out\"; echo \"$id|ok|\" >> \"$RES\"; rm -rf \"$SNAP/$id.dir\" \"$SNAP/$id.settings\"; return 0; fi\n"
+                   "  echo \"$out\"\n"
+                   "  if [ -n \"$dir\" ]; then rm -rf \"$dir\"; [ -d \"$SNAP/$id.dir\" ] && cp -a \"$SNAP/$id.dir\" \"$dir\"; fi\n"
+                   "  [ -f \"$SNAP/$id.settings\" ] && cp -p \"$SNAP/$id.settings\" \"$SETTINGS\"\n"
+                   "  echo \"$id|fail|$(echo \"$out\" | tail -n 1 | tr '|' ' ')\" >> \"$RES\"; echo \"-- $id failed: rolled back\"; return 1\n}\n",
+                m->dev->state, m->dev->settings);
         for (i = 0; i < nq && !err; i++) {
             pkg_t *p = &q[i];
             /* a remove goes where it is; an update stays where it is if that folder can hold a plugin, else it (and a new
@@ -1172,18 +1243,22 @@ static void prepare(mgr_t *m, pkg_t *q) {
             else snprintf(target, sizeof target, "%s", p->queued == Q_REMOVE ? p->synths
                           : p->synths[0] && good_target(p->synths) ? p->synths : dest(m));
             const char *synths = target;
+            char fo[200] = "", dirp[560] = "";   /* the folder the installer writes (the package's "folder"), snapshotted for a rollback */
+            if (is_addin(p)) snprintf(dirp, sizeof dirp, "%s", target);
+            else if (manifest_str(p->dir, "folder", fo, sizeof fo), fo[0] && safe(fo))
+                snprintf(dirp, sizeof dirp, "%s/%s", target, strrchr(fo, '/') ? strrchr(fo, '/') + 1 : fo);
             if (!synths[0] || !safe(synths) || (is_addin(p) && !m->dev->addins[0])) { err = "has no install location"; break; }
             if (is_addin(p) && p->queued == Q_INSTALL)
-                fprintf(f, "echo '-- install %s %s'\nsh '%s/install.sh' -y -n -t '%s' && rm -rf '" WORK "/%s' '" WORK "/%s.zip'\n",
-                        p->id, p->latest, p->dir, synths, p->id, p->id);
+                fprintf(f, "echo '-- install %s %s'\nitem '%s' '%s' sh '%s/install.sh' -y -n -t '%s' && rm -rf '" WORK "/%s' '" WORK "/%s.zip'\n",
+                        p->id, p->latest, p->id, dirp, p->dir, synths, p->id, p->id);
             else if (is_addin(p))
-                fprintf(f, "echo '-- remove %s'\nsh '%s/uninstall.sh' -y -n -t '%s'\n", p->id, synths, synths);
+                fprintf(f, "echo '-- remove %s'\nitem '%s' '%s' sh '%s/uninstall.sh' -y -n -t '%s'\n", p->id, p->id, dirp, synths, synths);
             else if (p->queued == Q_INSTALL)
-                fprintf(f, "echo '-- install %s %s'\nsh '%s/install.sh' -y $(batch '%s/install.sh') -t '%s' && setstate '%s' '%s' && rm -rf '" WORK "/%s' '" WORK "/%s.zip'\n",
-                        p->id, p->latest, p->dir, p->dir, synths, p->id, p->latest, p->id, p->id);
+                fprintf(f, "echo '-- install %s %s'\nitem '%s' '%s' sh '%s/install.sh' -y $(batch '%s/install.sh') -t '%s' && setstate '%s' '%s' && rm -rf '" WORK "/%s' '" WORK "/%s.zip'\n",
+                        p->id, p->latest, p->id, dirp, p->dir, p->dir, synths, p->id, p->latest, p->id, p->id);
             else
-                fprintf(f, "echo '-- remove %s'\nsh '%s/uninstall.sh' -y $(batch '%s/uninstall.sh') -t '%s' && setstate '%s' '' && rm -rf '" WORK "/%s' '" WORK "/%s.zip'\n",
-                        p->id, p->dir, p->dir, synths, p->id, p->id, p->id);
+                fprintf(f, "echo '-- remove %s'\nitem '%s' '%s' sh '%s/uninstall.sh' -y $(batch '%s/uninstall.sh') -t '%s' && setstate '%s' '' && rm -rf '" WORK "/%s' '" WORK "/%s.zip'\n",
+                        p->id, p->id, dirp, p->dir, p->dir, synths, p->id, p->id, p->id);
         }
         if (theme_dirty(m)) {   /* MPC is stopped: copy the wanted skin over "Plugin Skins" (staged, then swapped; the old one goes last) */
             const char *w = m->theme ? "light" : "dark";

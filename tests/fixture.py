@@ -56,5 +56,26 @@ for name, date, assets in (("Dual", "2026-02-01", {"armv7": {"url": base + "miss
                     "distribution": "release", "latest": "1.0.0",
                     "versions": [{"version": "1.0.0", "size": 1, "sha256": "0" * 64, "url": base + "missing-armv7.zip", "assets": assets,
                                   "channel": "stable", "date": date, "yanked": False}]})
+
+# M3: a package whose install.sh fails after writing part of its folder (rolled back), one built for the other architecture (refused before
+# MPC stops) and one whose zip has a "../" name (refused before unpacking). All effects, older than Dual/Armonly so the cards keep their order.
+def pkg(name, files, date):
+    zp = os.path.join(out, "%s-1.0.0-mpc-armv7.zip" % name)
+    with zipfile.ZipFile(zp, "w") as z:
+        for fn, body in files:
+            z.writestr(fn, body)
+    d = open(zp, "rb").read()
+    plugins.append({"id": name.lower(), "name": name, "author": "acme", "repo": "acme/mpc-vst-" + name.lower(), "kind": "effect",
+                    "license": "MIT", "summary": "A stand-in for a failing package.", "style": "utility", "tags": ["test"],
+                    "distribution": "release", "latest": "1.0.0",
+                    "versions": [{"version": "1.0.0", "size": len(d), "sha256": hashlib.sha256(d).hexdigest(),
+                                  "url": base + os.path.basename(zp), "channel": "stable", "date": date, "yanked": False}]})
+FAIL_SH = ('#!/bin/sh\nwhile [ $# -gt 0 ]; do [ "$1" = -t ] && T=$2; shift; done\n'
+           'mkdir -p "$T/Faily dir" && echo partial > "$T/Faily dir/partial" && echo "disk full" && exit 3\n')
+pkg("Faily", [("Faily-1.0.0/install.sh", FAIL_SH), ("Faily-1.0.0/uninstall.sh", "#!/bin/sh\nexit 0\n"),
+              ("Faily-1.0.0/mpc-plugin.json", '{"folder": "portable/Faily dir", "arch": "armv7"}\n')], "2025-03-01")
+pkg("Wrongarch", [("Wrongarch-1.0.0/install.sh", "#!/bin/sh\nexit 0\n"), ("Wrongarch-1.0.0/uninstall.sh", "#!/bin/sh\nexit 0\n"),
+                  ("Wrongarch-1.0.0/mpc-plugin.json", '{"arch": "aarch64"}\n')], "2025-02-01")
+pkg("Evil", [("Evil-1.0.0/install.sh", "#!/bin/sh\nexit 0\n"), ("Evil-1.0.0/../escape.txt", "x")], "2025-01-01")
 json.dump({"schema": 1, "plugins": plugins}, open(os.path.join(out, "catalog.json"), "w"), indent=1)
 print("fixture: %d packages in %s" % (len(plugins), out))
