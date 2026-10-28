@@ -1139,6 +1139,44 @@ static void scan_installed(const device_t *d, pkg_t *pkg, int n) {
 
 /* ---- jobs ---- */
 
+/* MPC.settings.bak-* piles up (every installer makes one): keep the newest BAK_KEEP, delete the rest. Only regular files with that exact
+ * name prefix, only in the settings folder, only after a successful apply with MPC running (never while it is being stopped). */
+#define BAK_KEEP 10
+static int prune_backups(const device_t *d) {
+    if (!d->settings[0]) return 0;
+    char dir[300];
+    snprintf(dir, sizeof dir, "%s", d->settings);
+    char *sl = strrchr(dir, '/');
+    if (!sl) return 0;
+    *sl = 0;
+    const char *pre = strrchr(d->settings, '/') + 1;
+    char want[80];
+    snprintf(want, sizeof want, "%s.bak-", pre);
+    struct { char name[260]; time_t t; } *b = calloc(512, sizeof *b);
+    int n = 0, gone = 0;
+    DIR *dp = b ? opendir(dir) : NULL;
+    struct dirent *e;
+    while (dp && (e = readdir(dp)) && n < 512) {
+        char f[600];
+        struct stat st;
+        snprintf(f, sizeof f, "%s/%s", dir, e->d_name);
+        if (strncmp(e->d_name, want, strlen(want)) || stat(f, &st) || !S_ISREG(st.st_mode)) continue;
+        snprintf(b[n].name, sizeof b[n].name, "%s", e->d_name);
+        b[n++].t = st.st_mtime;
+    }
+    if (dp) closedir(dp);
+    for (int i = 1; i < n; i++)   /* newest first */
+        for (int j = i; j > 0 && b[j].t > b[j - 1].t; j--) { typeof(*b) x = b[j]; b[j] = b[j - 1]; b[j - 1] = x; }
+    for (int i = BAK_KEEP; i < n; i++) {
+        char f[600];
+        snprintf(f, sizeof f, "%s/%s", dir, b[i].name);
+        if (!unlink(f)) gone++;
+    }
+    free(b);
+    if (gone) logf_("pruned %d old settings backups (kept the newest %d)", gone, BAK_KEEP);
+    return gone;
+}
+
 /* The result of the last apply (apply.sh's per-item lines "id|ok|" or "id|fail|reason"), shown once after MPC is back. */
 static void show_result(mgr_t *m, const pkg_t *pkg, int n) {
     char *s = slurp(WORK "/result", 8192);
@@ -1165,6 +1203,7 @@ static void show_result(mgr_t *m, const pkg_t *pkg, int n) {
     free(s);
     rename(WORK "/result", WORK "/result.seen");
     if (!ok && !bad) return;
+    if (ok) prune_backups(m->dev);
     if (bad) say_locked(m, ERR, "Last apply: %d done, %d failed and put back as they were. %s", ok, bad, first);
     else say_locked(m, OK, "Last apply: %d done.", ok);
 }

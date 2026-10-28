@@ -140,6 +140,10 @@ grep -qF "Last apply: 0 done, 1 failed and put back as they were. Faily: disk fu
 grep -qF "Newlib: needs glibc 9.99 or newer, this MPC has" /tmp/safe-glibc.out
 rm -rf /tmp/openmpc-pm; PM_GLIBC=2.39 /tmp/drive_addins one Oldos > /tmp/safe-os.out
 grep -qF "Oldos: is for a different MPC OS, and this one reads as 3.x (from its glibc 2.39). Nothing on the MPC was changed." /tmp/safe-os.out
+# backups pile up: after a success only the newest 10 MPC.settings.bak-* stay, and nothing else is touched
+SD=$(dirname "$(find /media /data -name MPC.settings 2>/dev/null | head -n 1)")
+for k in 01 02 03 04 05 06 07 08 09 10 11 12 13 14; do echo b > "$SD/MPC.settings.bak-t$k"; touch -d "2026-01-$k 10:00" "$SD/MPC.settings.bak-t$k"; done
+echo keep > "$SD/MPC.settings.keep"
 # a success writes the history: Armonly (its install.sh exits 0)
 rm -rf /tmp/openmpc-pm; /tmp/drive_addins one Armonly > /dev/null
 sh /tmp/openmpc-pm/apply.sh
@@ -149,6 +153,7 @@ H=$(find /media /data -name .openmpcpm-history.json 2>/dev/null | head -n 1 || t
 grep -q "\"id\": \"armonly\", \"version\": \"1.0.0\", \"installed\": true" "$H" || { echo "FAIL: no history entry"; cat "$H"; exit 1; }
 echo '"'"'garbage'"'"' > "$H"; rm -rf /tmp/openmpc-pm; /tmp/drive_addins one Armonly > /dev/null; sh /tmp/openmpc-pm/apply.sh; /tmp/drive_addins status > /dev/null
 [ "$(cat "$H")" = garbage ] || { echo "FAIL: a file that is not ours was overwritten"; exit 1; }
+[ "$(ls "$SD" | grep -c '"'"'^MPC.settings.bak-'"'"')" -le 10 ] && [ ! -e "$SD/MPC.settings.bak-t01" ] && [ -e "$SD/MPC.settings.bak-t14" ] && [ -e "$SD/MPC.settings.keep" ] || { echo "FAIL: backup pruning"; ls "$SD"; exit 1; }
 echo "safety OK"
 # last: after it the next "rm -rf /media" fails in the container (cause not found), so nothing may follow it
 fi # safety
