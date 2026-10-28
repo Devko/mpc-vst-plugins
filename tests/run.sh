@@ -100,6 +100,20 @@ mkdir -p "$T/Faily dir" && echo old > "$T/Faily dir/old"
 sh /tmp/openmpc-pm/apply.sh
 grep -q "^faily|fail|disk full" /tmp/openmpc-pm/result
 [ -f "$T/Faily dir/old" ] && [ ! -e "$T/Faily dir/partial" ] || { echo "FAIL: the folder was not put back"; exit 1; }
+# the same with a "big" folder (threshold 0 KB): the safety copy goes beside it on its own drive, and is gone afterwards
+rm -rf /tmp/openmpc-pm; /tmp/drive_addins one Faily > /dev/null
+mkdir -p "$T/Faily dir" && echo old > "$T/Faily dir/old"; rm -rf "$T/Faily dir/partial"
+PM_SNAP_KB=0 sh /tmp/openmpc-pm/apply.sh
+grep -q "^faily|fail|disk full" /tmp/openmpc-pm/result
+[ -f "$T/Faily dir/old" ] && [ ! -e "$T/Faily dir/partial" ] && [ ! -e "$T/.pm-snap-faily" ] || { echo "FAIL: the big-folder rollback"; exit 1; }
+rm -rf /tmp/openmpc-pm; /tmp/drive_addins one Faily > /dev/null
+mkdir -p "$T/Faily dir/x"; mkdir -p "$T/.pm-snap-faily"
+PM_SNAP_KB=0 sh /tmp/openmpc-pm/apply.sh
+grep -q "^faily|fail|an earlier update left a safety copy" /tmp/openmpc-pm/result
+rm -rf "$T/.pm-snap-faily" "$T/Faily dir"
+rm -rf /tmp/openmpc-pm; /tmp/drive_addins one Faily > /dev/null
+mkdir -p "$T/Faily dir"; echo old > "$T/Faily dir/old"; cp "$T/Faily dir/old" /tmp/old.keep
+sh /tmp/openmpc-pm/apply.sh
 /tmp/drive_addins status > /tmp/safe-status.out
 grep -qF "Last apply: 0 done, 1 failed and put back as they were. Faily: disk full" /tmp/safe-status.out
 /tmp/drive_addins one Newlib > /tmp/safe-glibc.out

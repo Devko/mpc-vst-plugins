@@ -1272,12 +1272,20 @@ static void prepare(mgr_t *m, pkg_t *q) {
                    "batch() { grep -q -- '-n)' \"$1\" && printf '%%s' -n; }   # older installers lack -n and restart MPC themselves\n"
                    "SETTINGS='%s'; SNAP='" WORK "/snap'; RES='" WORK "/result'\nrm -rf \"$SNAP\"; mkdir -p \"$SNAP\"; : > \"$RES\"\n"
                    /* item ID FOLDER cmd...: snapshot the plugin folder and MPC.settings, run cmd; on failure put both back and say why (DESIGN 7) */
-                   "item() {\n  id=$1; dir=$2; shift 2\n"
-                   "  [ -n \"$dir\" ] && [ -d \"$dir\" ] && cp -a \"$dir\" \"$SNAP/$id.dir\"\n"
+                   "item() {\n  id=$1; dir=$2; shift 2; snap=''\n"
+                   /* a small folder is copied to RAM (WORK); a big one to a hidden sibling on its own drive, after a free-space check */
+                   "  if [ -n \"$dir\" ] && [ -d \"$dir\" ]; then\n"
+                   "    sz=$(du -sk \"$dir\" 2>/dev/null | cut -f1); sz=${sz:-0}\n"
+                   "    if [ \"$sz\" -le \"${PM_SNAP_KB:-49152}\" ]; then snap=\"$SNAP/$id.dir\"; else snap=\"$(dirname \"$dir\")/.pm-snap-$id\"; fi\n"
+                   "    if [ -e \"$snap\" ]; then echo \"$id|fail|an earlier update left a safety copy at $snap\" >> \"$RES\"; return 1; fi\n"
+                   "    free=$(df -Pk \"$(dirname \"$snap\")\" 2>/dev/null | awk 'NR==2 {print $4}')\n"
+                   "    if [ \"${free:-0}\" -lt $((sz + 65536)) ]; then echo \"$id|fail|not enough free space to keep a safe copy\" >> \"$RES\"; return 1; fi\n"
+                   "    cp -a \"$dir\" \"$snap\" || { rm -rf \"$snap\"; echo \"$id|fail|could not keep a safe copy\" >> \"$RES\"; return 1; }\n"
+                   "  fi\n"
                    "  cp -p \"$SETTINGS\" \"$SNAP/$id.settings\" 2>/dev/null\n"
-                   "  if out=$(\"$@\" 2>&1); then echo \"$out\"; echo \"$id|ok|\" >> \"$RES\"; rm -rf \"$SNAP/$id.dir\" \"$SNAP/$id.settings\"; return 0; fi\n"
+                   "  if out=$(\"$@\" 2>&1); then echo \"$out\"; echo \"$id|ok|\" >> \"$RES\"; [ -n \"$snap\" ] && rm -rf \"$snap\"; rm -f \"$SNAP/$id.settings\"; return 0; fi\n"
                    "  echo \"$out\"\n"
-                   "  if [ -n \"$dir\" ]; then rm -rf \"$dir\"; [ -d \"$SNAP/$id.dir\" ] && cp -a \"$SNAP/$id.dir\" \"$dir\"; fi\n"
+                   "  if [ -n \"$dir\" ]; then rm -rf \"$dir\"; [ -n \"$snap\" ] && [ -d \"$snap\" ] && cp -a \"$snap\" \"$dir\" && rm -rf \"$snap\"; fi\n"
                    "  [ -f \"$SNAP/$id.settings\" ] && cp -p \"$SNAP/$id.settings\" \"$SETTINGS\"\n"
                    "  echo \"$id|fail|$(echo \"$out\" | tail -n 1 | tr '|' ' ')\" >> \"$RES\"; echo \"-- $id failed: rolled back\"; return 1\n}\n",
                 m->dev->state, m->dev->settings);
