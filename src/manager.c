@@ -51,7 +51,7 @@ typedef struct {
 #endif
 #define WORK "/tmp/openmpc-pm"
 #define MAXPKG 256
-#define ROWS 3      /* plugin cards per page */
+#define ROWS 5      /* plugin cards per page */
 #ifndef ADDINS_DIR
 #define ADDINS_DIR "/data/mpc-addins"   /* one folder per addin id, as mpc-vst-plugins' addin installer lays them out */
 #endif
@@ -1627,7 +1627,7 @@ static int mgr_get_param(void *inst, const char *key, char *b, int n) {
     size_t kl = strlen(key);
     /* The wrapper asks every text param for "<key>_on" (a list tile's selection) every 10 ms until it is told there is
      * none: only the cards' titles have one. Answering the others kept ~60 lookups running every 10 ms. */
-    if (kl > 3 && !strcmp(key + kl - 3, "_on") && !(!strncmp(key, "card", 4) && key[4] >= '1' && key[4] <= '3')) return 0;
+    if (kl > 3 && !strcmp(key + kl - 3, "_on") && !(!strncmp(key, "card", 4) && key[4] >= '1' && key[4] <= '0' + ROWS)) return 0;
     pthread_mutex_lock(&m->mu);
     int idx[MAXPKG], nv = visible(m, idx), pages = nv ? (nv + ROWS - 1) / ROWS : 1, ok = 1;
     if (m->page >= pages) m->page = pages - 1;
@@ -1684,7 +1684,7 @@ static int mgr_get_param(void *inst, const char *key, char *b, int n) {
     else if (!strcmp(key, "upd_all")) snprintf(b, n, "%d", upd > 0 && !busy);
     else if (!strcmp(key, "apply_state"))   /* 0 off, 1 apply, 2 preparing, 3 ready (restart), 4 retry */
         snprintf(b, n, "%d", busy ? 2 : m->ready ? 3 : m->failed && q ? 4 : q && !m->dev->problem[0] ? 1 : 0);
-    else if (!strncmp(key, "card", 4) && key[4] >= '1' && key[4] <= '3') {   /* card<r>_1: the name, and its selection */
+    else if (!strncmp(key, "card", 4) && key[4] >= '1' && key[4] <= '0' + ROWS) {   /* card<r>_1: the name, and its selection */
         int k = m->page * ROWS + key[4] - '1', i = k < nv && d < 0 ? idx[k] : -1;
         if (strstr(key, "_on")) snprintf(b, n, "%d", i >= 0 && i == m->sel);
         else snprintf(b, n, "%s", i >= 0 ? m->pkg[i].name : " ");

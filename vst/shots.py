@@ -20,10 +20,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 MPC_VST = os.environ.get("MPC_VST", os.path.join(HERE, "..", "..", "mpc-vst-plugins"))
 OUT = os.path.join(HERE, "images", "shots")
 OUT_BIG = os.path.join(HERE, "images", "shots_detail")
-W, H = 184, 92
+W, H = 112, 56
 BIG = (270, 135)   # layout.conf: picture ... key=d_shot
-CHIP = (122, 69, 180, 89)   # behind the kind text (layout.conf rN_kindtxt)
-ROWS = 3
+CHIP = (74, 42, 110, 54)   # behind the kind text (vst/make_rows.py rN_kindtxt)
+ROWS = 5
 
 
 def crop21(data):
@@ -99,7 +99,7 @@ def main():
             y, r = int(m.group(1)), int(m.group(2))
             rows += 1
             out += ['button cx=%d cy=%d label="" key=r%d_open img=images/shots/%s.png w=%d h=%d when=r%d_shot:%s'
-                    % (37 + W // 2, y + 13 + H // 2, r, i, W, H, r, i) for i in ids]
+                    % (34 + W // 2, y + 7 + H // 2, r, i, W, H, r, i) for i in ids]
     if rows != ROWS or big != 1:
         sys.exit("layout.conf: expected %d card lists and one d_shot picture, found %d and %d" % (ROWS, rows, big))
     open(lc, "w").write("\n".join(out))
