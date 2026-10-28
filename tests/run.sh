@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Offline tests in the gcc:12 Docker image (needs network: they read the live catalog and download one zip).
+#   ONLY=<section> tests/run.sh   one section (devices addins links pick theme safety arch) in a minute or two; no ONLY: everything (about 20 minutes)
 #   tests/run.sh            the wrapper host test, each fake device in tests/devices/, then the addin flow against
 #                           an offline fixture (tests/fixture.py: three addin packages and a file:// catalog)
 # A fake device is a shell script that builds the device's files inside the container: MPC.settings (the real format,
@@ -10,17 +11,24 @@ here="$(cd "$(dirname "$0")/.." && pwd)"
 MV="${MPC_VST:-$here/../mpc-vst-plugins}"
 python3 "$MV/tools/gen_vst.py" "$here/vst/vst.json" --params-h >/dev/null
 MPC_VST="$MV" python3 "$here/tests/fixture.py"
-docker run --rm -v "$here":/p -v "$MV":/mv:ro -w /p gcc:12 bash -c '
+docker run --rm -e ONLY -v "$here":/p -v "$MV":/mv:ro -w /p gcc:12 bash -c '
 set -eo pipefail
 SAN="-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1"
+want() { [ -z "$ONLY" ] || [ "$ONLY" = "$1" ]; }   # ONLY=safety: just that section (devices, addins, links, pick, theme, safety, arch)
+export PM_TAPMS=40   # the double-tap window, short (FS_ANY builds only)
 gcc $SAN -std=gnu11 -w -Ivst/build src/manager.c /mv/tools/host_test.c /mv/wrapper/vst2_wrap.c -lpthread -ldl -lm -o /tmp/host_test
+if want devices; then
 (cd /tmp && ./host_test | tail -n 1)
 gcc $SAN -DFS_ANY=1 -std=gnu11 -w src/manager.c tests/drive.c -lpthread -ldl -o /tmp/drive
 for dev in tests/devices/*.sh; do
   echo "== $dev"
   # each device starts from a clean filesystem
   rm -rf /media /sdcard /nvme /synths /data /tmp/openmpc-pm /tmp/pm-mounts; mkdir -p /media
-  sh "$dev" && /tmp/drive && grep -E "location|target|problem" /tmp/openmpc-pm/device.txt
+  echo "   $(date +%T)"
+  sh "$dev"
+  mkdir -p /tmp/openmpc-pm /tmp/zipcache; cp /tmp/zipcache/*.zip /tmp/openmpc-pm/ 2>/dev/null || true   # the catalog zip downloaded once, not once per device
+  /tmp/drive && grep -E "location|target|problem" /tmp/openmpc-pm/device.txt
+  cp -n /tmp/openmpc-pm/*.zip /tmp/zipcache/ 2>/dev/null || true
   # tests/devices/<name>.expect: lines that must be in device.txt (a test fails without them)
   exp="${dev%.sh}.expect"
   [ -f "$exp" ] || { echo "MISSING $exp: every fake device says what it must resolve to"; exit 1; }
@@ -28,8 +36,12 @@ for dev in tests/devices/*.sh; do
     grep -qxF -- "$line" /tmp/openmpc-pm/device.txt || { echo "FAIL $dev: device.txt lacks: $line"; exit 1; }
   done < "$exp"
 done
+fi # devices
+if want addins; then
 echo "== addins (offline fixture)"
+fi # addins-head
 gcc $SAN -DFS_ANY=1 -DCATALOG_URL=\"file:///p/vst/build/tests/catalog.json\" -std=gnu11 -w src/manager.c tests/drive.c -lpthread -ldl -o /tmp/drive_addins
+if want addins; then
 rm -rf /media /sdcard /nvme /synths /data /tmp/openmpc-pm /tmp/pm-mounts; mkdir -p /media
 sh tests/devices/mpc-one.sh && sh tests/addins.sh && /tmp/drive_addins addins
 grep -E "^addin" /tmp/openmpc-pm/device.txt
@@ -38,6 +50,8 @@ grep -q "/install.sh'"'"' -y -n -t '"'"'/data/mpc-addins/beta-addin'"'"'" /tmp/o
 grep -q "/data/mpc-addins/alpha-addin/uninstall.sh'"'"' -y -n -t '"'"'/data/mpc-addins/alpha-addin'"'"'" /tmp/openmpc-pm/apply.sh
 ! grep -q gamma /tmp/openmpc-pm/apply.sh
 echo "addins OK"
+fi # addins
+if want links; then
 echo "== links (offline fixture): a package that needs a symbolic link"
 rm -rf /media /sdcard /nvme /synths /data /tmp/openmpc-pm /tmp/pm-mounts; mkdir -p /media
 sh tests/devices/mpc-one.sh
@@ -50,6 +64,8 @@ rm -rf /tmp/openmpc-pm; /tmp/drive_addins links > /tmp/links-yes.out
 grep -q "apply_state 3" /tmp/links-yes.out
 grep -q "/linky.*install.sh\|Linky-1.0.0/install.sh" /tmp/openmpc-pm/apply.sh
 echo "links OK"
+fi # links
+if want pick; then
 echo "== pick (offline fixture): two usable locations, CHANGE on the restart prompt"
 rm -rf /media /sdcard /nvme /synths /data /tmp/openmpc-pm /tmp/pm-mounts
 mkdir -p /media
@@ -59,6 +75,8 @@ grep -qF "prompt: confirm=1 pick=1 |Install to: /sdcard/Synths  (1 of 2)|" /tmp/
 grep -qF "after CHANGE: confirm=1 pick=1 |Install to: /media/CARD/Synths  (2 of 2)|" /tmp/pick.out
 grep -qF -- "-t '"'"'/media/CARD/Synths'"'"'" /tmp/openmpc-pm/apply.sh
 echo "pick OK"
+fi # pick
+if want theme; then
 echo "== theme (offline fixture): the switch, the prompt, and the skin swap in apply.sh"
 rm -rf /media /sdcard /nvme /synths /data /tmp/openmpc-pm /tmp/pm-mounts /tmp/own; mkdir -p /media
 sh tests/devices/mpc-one.sh
@@ -83,6 +101,8 @@ sh /tmp/openmpc-pm/apply.sh
 grep -qF "start: can=1 theme=1 |LIGHT| apply_state=0" /tmp/theme2.out
 unset PM_OWN
 echo "theme OK"
+fi # theme
+if want safety; then
 echo "== safety (offline fixture): refused before MPC stops; a failed install is rolled back and reported"
 rm -rf /media /sdcard /nvme /synths /data /tmp/openmpc-pm /tmp/pm-mounts; mkdir -p /media
 sh tests/devices/mpc-one.sh
@@ -122,6 +142,8 @@ rm -rf /tmp/openmpc-pm; PM_GLIBC=2.39 /tmp/drive_addins one Oldos > /tmp/safe-os
 grep -qF "Oldos: is for a different MPC OS, and this one reads as 3.x (from its glibc 2.39). Nothing on the MPC was changed." /tmp/safe-os.out
 echo "safety OK"
 # last: after it the next "rm -rf /media" fails in the container (cause not found), so nothing may follow it
+fi # safety
+if want arch; then
 echo "== arch (offline fixture): the aarch64 zip on Gen2, the armv7 one otherwise, and no card when there is none"
 rm -rf /tmp/openmpc-pm; PM_ARCH=aarch64 /tmp/drive_addins arch > /tmp/arch-64.out
 grep -q "card 1: DU" /tmp/arch-64.out      # Dual only: Armonly has no aarch64 zip
@@ -131,4 +153,5 @@ rm -rf /tmp/openmpc-pm; /tmp/drive_addins arch 2 > /tmp/arch-32.out
 grep -q "card 1: AR" /tmp/arch-32.out && grep -q "card 2: DU" /tmp/arch-32.out
 grep -q "apply_state 4" /tmp/arch-32.out   # Dual'"'"'s armv7 zip is missing: the install fails
 echo "arch OK"
+fi # arch
 '

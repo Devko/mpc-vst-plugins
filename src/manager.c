@@ -1267,7 +1267,8 @@ static void prepare(mgr_t *m, pkg_t *q) {
     if (f) {
         fprintf(f, "#!/bin/sh\n# written by the OpenMPC Plugin Manager G2; runs as a transient systemd unit, outside MPC\n"
                    "exec >>" WORK "/apply.log 2>&1\necho \"== apply $(date)\"\nSTATE='%s'\n"
-                   "systemctl stop acvs\ni=0; while pidof MPC >/dev/null && [ $i -lt 30 ]; do sleep 1; i=$((i + 1)); done\n"
+                   "quiesce() { systemctl stop acvs; i=0; while pidof MPC >/dev/null && [ $i -lt 30 ]; do sleep 1; i=$((i + 1)); done; }\n"
+                   "quiesce\n"
                    "setstate() { grep -v \"^$1 \" \"$STATE\" 2>/dev/null > \"$STATE.new\"; [ -n \"$2\" ] && echo \"$1 $2\" >> \"$STATE.new\"; mv \"$STATE.new\" \"$STATE\"; }\n"
                    "batch() { grep -q -- '-n)' \"$1\" && printf '%%s' -n; }   # older installers lack -n and restart MPC themselves\n"
                    "SETTINGS='%s'; SNAP='" WORK "/snap'; RES='" WORK "/result'\nrm -rf \"$SNAP\"; mkdir -p \"$SNAP\"; : > \"$RES\"\n"
@@ -1283,7 +1284,8 @@ static void prepare(mgr_t *m, pkg_t *q) {
                    "    cp -a \"$dir\" \"$snap\" || { rm -rf \"$snap\"; echo \"$id|fail|could not keep a safe copy\" >> \"$RES\"; return 1; }\n"
                    "  fi\n"
                    "  cp -p \"$SETTINGS\" \"$SNAP/$id.settings\" 2>/dev/null\n"
-                   "  if out=$(\"$@\" 2>&1); then echo \"$out\"; echo \"$id|ok|\" >> \"$RES\"; [ -n \"$snap\" ] && rm -rf \"$snap\"; rm -f \"$SNAP/$id.settings\"; return 0; fi\n"
+                   "  out=$(\"$@\" 2>&1); rc=$?\n  pidof MPC >/dev/null && quiesce   # an installer without -n started MPC again: MPC starts once, at the end\n"
+                   "  if [ $rc -eq 0 ]; then echo \"$out\"; echo \"$id|ok|\" >> \"$RES\"; [ -n \"$snap\" ] && rm -rf \"$snap\"; rm -f \"$SNAP/$id.settings\"; return 0; fi\n"
                    "  echo \"$out\"\n"
                    "  if [ -n \"$dir\" ]; then rm -rf \"$dir\"; [ -n \"$snap\" ] && [ -d \"$snap\" ] && cp -a \"$snap\" \"$dir\" && rm -rf \"$snap\"; fi\n"
                    "  [ -f \"$SNAP/$id.settings\" ] && cp -p \"$SNAP/$id.settings\" \"$SETTINGS\"\n"
@@ -1677,6 +1679,9 @@ static void act(mgr_t *m, int i, const char *f) {   /* act, reinstall or remove 
 /* MPC sent one tap twice on a Live III (2026-10-28 trace of THEME, and the page arrows): a second press within `ms` of the last
  * accepted one is the same tap. Returns 1 for that repeat; otherwise records the time and returns 0. */
 static int repeated(long long *last, int ms) {
+#ifdef FS_ANY
+    if (getenv("PM_TAPMS")) ms = ms ? atoi(getenv("PM_TAPMS")) : 0;   /* tests: a short window, so they need not wait 250 ms between taps */
+#endif
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     long long now = ts.tv_sec * 1000LL + ts.tv_nsec / 1000000;
