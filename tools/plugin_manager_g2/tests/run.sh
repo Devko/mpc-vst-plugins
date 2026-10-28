@@ -11,8 +11,8 @@ here="$(cd "$(dirname "$0")/.." && pwd)"
 MV="${MPC_VST:-$here/../..}"
 python3 "$MV/tools/gen_vst.py" "$here/vst/vst.json" --params-h >/dev/null
 MPC_VST="$MV" python3 "$here/tests/fixture.py"
-docker run --rm -e ONLY -v "$here":/p -v "$MV":/mv:ro -w /p gcc:12 bash -c '
-set -eo pipefail
+docker run --rm -e ONLY -e TRACE -e DEV -v "$here":/p -v "$MV":/mv:ro -w /p gcc:12 bash -c '
+set -eo pipefail; [ -z "$TRACE" ] || set -x
 SAN="-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1"
 want() { [ -z "$ONLY" ] || [ "$ONLY" = "$1" ]; }   # ONLY=safety: just that section (devices, addins, links, pick, theme, safety, arch)
 export PM_TAPMS=40   # the double-tap window, short (FS_ANY builds only)
@@ -20,14 +20,16 @@ gcc $SAN -std=gnu11 -w -Ivst/build src/manager.c /mv/tools/host_test.c /mv/wrapp
 if want devices; then
 (cd /tmp && ./host_test | tail -n 1)
 gcc $SAN -DFS_ANY=1 -std=gnu11 -w src/manager.c tests/drive.c -lpthread -ldl -o /tmp/drive
-for dev in tests/devices/*.sh; do
+for dev in tests/devices/${DEV:-*}.sh; do
   echo "== $dev"
   # each device starts from a clean filesystem
   rm -rf /media /sdcard /nvme /synths /data /tmp/openmpc-pm /tmp/pm-mounts; mkdir -p /media
   echo "   $(date +%T)"
   sh "$dev"
   mkdir -p /tmp/openmpc-pm /tmp/zipcache; cp /tmp/zipcache/*.zip /tmp/openmpc-pm/ 2>/dev/null || true   # the catalog zip downloaded once, not once per device
-  /tmp/drive && grep -E "location|target|problem" /tmp/openmpc-pm/device.txt
+  /tmp/drive > /tmp/drive.out && grep -E "location|target|problem" /tmp/openmpc-pm/device.txt
+  # tests/devices/<name>.banner: the red banner a device with a problem must show (plain words)
+  [ ! -f "${dev%.sh}.banner" ] || grep -qF -- "$(cat "${dev%.sh}.banner")" /tmp/drive.out || { echo "FAIL $dev: banner is not: $(cat "${dev%.sh}.banner")"; grep banner /tmp/drive.out | head -n 2; exit 1; }
   cp -n /tmp/openmpc-pm/*.zip /tmp/zipcache/ 2>/dev/null || true
   # tests/devices/<name>.expect: lines that must be in device.txt (a test fails without them)
   exp="${dev%.sh}.expect"
@@ -140,6 +142,50 @@ grep -qF "Last apply: 0 done, 1 failed and put back as they were. Faily: disk fu
 grep -qF "Newlib: needs glibc 9.99 or newer, this MPC has" /tmp/safe-glibc.out
 rm -rf /tmp/openmpc-pm; PM_GLIBC=2.39 /tmp/drive_addins one Oldos > /tmp/safe-os.out
 grep -qF "Oldos: is for a different MPC OS, and this one reads as 3.x (from its glibc 2.39). Nothing on the MPC was changed." /tmp/safe-os.out
+# a folder MPC does not list (plugin-meta.xml, no entry) is a card in INSTALLED; REGISTER adds its entry and nothing else changes
+SY=$(find /media -type d -name Synths 2>/dev/null | head -n 1)
+mkdir -p "$SY/Orphan Test Folder"; : > "$SY/Orphan Test Folder/o.so"
+cat > "$SY/Orphan Test Folder/plugin-meta.xml" <<EOF
+<PLUGIN name="Orphan Test" descriptiveName="Orphan Test" format="VST" category="Synth" manufacturer="OpenMPC"
+ version="1.0" file="%payload-path%/Orphan Test Folder/o.so" uid="4f544f31" isInstrument="1" fileTime="0" infoUpdateTime="0"
+ numInputs="0" numOutputs="2" isShell="0" hasARAExtension="0" uniqueId="1" pluginFormatName="VST"/>
+EOF
+SET=$(find /media /data -name MPC.settings 2>/dev/null | head -n 1 || true)
+! grep -q 4f544f31 "$SET"
+rm -rf /tmp/openmpc-pm; /tmp/drive_addins one "Orphan Test" 1 1 > /tmp/safe-orphan.out
+grep -q "apply_state 3" /tmp/safe-orphan.out || { cat /tmp/safe-orphan.out; exit 1; }
+sh /tmp/openmpc-pm/apply.sh
+grep -q "^orphan-Orphan-Test-Folder|ok|register" /tmp/openmpc-pm/result || { cat /tmp/openmpc-pm/result /tmp/openmpc-pm/apply.log; exit 1; }
+grep -q "uid=\"4f544f31\"" "$SET" && grep -q "file=\"$SY/Orphan Test Folder/o.so\"" "$SET" || { echo "FAIL: the entry was not added"; exit 1; }
+/tmp/drive_addins one "Orphan Test" 1 1 | grep -q "card 1: OR" && { echo "FAIL: a registered folder is still offered"; exit 1; }
+rm -rf "$SY/Orphan Test Folder"
+# a zip put on the drive (local-plugins/) is a card and installs by the same steps
+LD=$(dirname "$(find /media -type d -name Synths 2>/dev/null | head -n 1)")/local-plugins
+mkdir -p "$LD"; cp /p/vst/build/tests/Linky-1.0.0-mpc-armv7.zip "$LD/Mine-1.0.0.zip"
+rm -rf /tmp/openmpc-pm; /tmp/drive_addins one Mine-1.0.0 1 > /tmp/safe-local.out
+grep -q "apply_state 3" /tmp/safe-local.out || { cat /tmp/safe-local.out; ls -la "$LD"; exit 1; }
+sh /tmp/openmpc-pm/apply.sh
+grep -q "^local-Mine-1.0.0|ok|install local" /tmp/openmpc-pm/result
+rm -rf "$LD"
+# backups pile up: after a success only the newest 10 MPC.settings.bak-* stay, and nothing else is touched
+SD=$(dirname "$(find /media /data -name MPC.settings 2>/dev/null | head -n 1)")
+for k in 01 02 03 04 05 06 07 08 09 10 11 12 13 14; do echo b > "$SD/MPC.settings.bak-t$k"; touch -d "2026-01-$k 10:00" "$SD/MPC.settings.bak-t$k"; done
+echo keep > "$SD/MPC.settings.keep"
+# a success writes the history: Armonly (its install.sh exits 0)
+rm -rf /tmp/openmpc-pm; /tmp/drive_addins one Armonly > /dev/null
+sh /tmp/openmpc-pm/apply.sh
+grep -q "^armonly|ok|install 1.0.0" /tmp/openmpc-pm/result
+/tmp/drive_addins status > /dev/null
+H=$(find /media /data -name .openmpcpm-history.json 2>/dev/null | head -n 1 || true)
+grep -q "\"id\": \"armonly\", \"version\": \"1.0.0\", \"installed\": true" "$H" || { echo "FAIL: no history entry"; cat "$H"; exit 1; }
+echo '"'"'garbage'"'"' > "$H"; rm -rf /tmp/openmpc-pm; /tmp/drive_addins one Armonly > /dev/null; sh /tmp/openmpc-pm/apply.sh; /tmp/drive_addins status > /dev/null
+[ "$(cat "$H")" = garbage ] || { echo "FAIL: a file that is not ours was overwritten"; exit 1; }
+[ "$(ls "$SD" | grep -c '"'"'^MPC.settings.bak-'"'"')" -le 10 ] && [ ! -e "$SD/MPC.settings.bak-t01" ] && [ -e "$SD/MPC.settings.bak-t14" ] && [ -e "$SD/MPC.settings.keep" ] || { echo "FAIL: backup pruning"; ls "$SD"; exit 1; }
+# the image cache nearly full (black patches on a Live III): a warning, and none when there is room
+rm -rf /tmp/openmpc-pm; PM_CACHE_PCT=92 /tmp/drive_addins status > /tmp/safe-cache.out
+grep -qF "image cache is 92% full: restart the MPC" /tmp/safe-cache.out || { cat /tmp/safe-cache.out; exit 1; }
+rm -rf /tmp/openmpc-pm; PM_CACHE_PCT=10 /tmp/drive_addins status > /tmp/safe-cache2.out
+! grep -q "image cache" /tmp/safe-cache2.out
 echo "safety OK"
 # last: after it the next "rm -rf /media" fails in the container (cause not found), so nothing may follow it
 fi # safety
