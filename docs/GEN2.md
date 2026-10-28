@@ -33,7 +33,9 @@ feature on our side). Both plugins' `tested.json` carry the device. This settles
   `/storage/Synths`, so that folder exists, is executable and is what MPC scans; the full `/data` did not stop earlier
   settings edits. Their `Content.Manager.Directory` is `/media/MPC/` (the SD card, `mmcblk1p1`), so the community manager 1.2.1's
   "automatic" plugin location would be `/media/MPC/Synths` (also registered with MPC), not `/storage/Synths`; whether that SD
-  mount permits executables was not shown (the manager refuses a `noexec` drive and then wants SETUP > Plugin location). `tools/release.py` still prints `-t /nvme/Synths` for Gen2 builds, which is wrong on a One.
+  mount permits executables was not shown (the manager refuses a `noexec` drive and then wants SETUP > Plugin location).
+  `tools/release.py` used to print `-t /nvme/Synths` for every Gen2 build, wrong on a One: since 2026-10-28 a Gen2 `INSTALL.md` says
+  `<your Synths folder>` and tells the reader to take it from `SynthContentLocations` (`/nvme/Synths` Live III, `/storage/Synths` One).
 - `vst.json` `targets: ["armv7", "aarch64"]` + `tools/build_port.sh ... all` is now proven end to end on a second, ordinary port
   (Profit-08: no custom build script, just the generic path) — any future port can follow the same checklist (docs/PORTING.md).
 

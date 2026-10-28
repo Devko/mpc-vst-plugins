@@ -28,6 +28,7 @@ static void page(const char *k, int twice) { usleep((tapms() + 50) * 1000); if (
 
 static void cards(void) {
   printf("  [%s] %s | status(%s): %s | apply_state %s\n", get("page_txt"), get("summary"), get("status_kind"), get("status"), get("apply_state"));
+  if (get("problem")[0] == '1') printf("  banner: %s\n", get("problem_txt"));
   for (int r = 1; r <= 5; r++) {
     char k[32];
     #define F(f) (snprintf(k, sizeof k, "r%d_" f, r), get(k))
@@ -96,14 +97,15 @@ int main(int argc, char **argv) {
   }
   if (argc > 1 && !strcmp(argv[1], "status")) { cards(); e->destroy(m); return 0; }   /* what the manager says on its own (the last apply) */
   if (argc > 2 && !strcmp(argv[1], "one")) {   /* queue the effect called argv[2] and APPLY: the prepare step's verdict */
-    set("kind", "2");
-    for (int p = 0; p < 2; p++) {   /* the effects run to two pages now */
+    if (argc > 4) set("tab", argv[4]);
+    set("kind", argc > 3 ? argv[3] : "2");
+    for (int p = 0, done = 0; p < 2 && !done; p++) {   /* the effects run to two pages now */
     for (int r = 1; r <= 5; r++) {
       char k[32];
       snprintf(k, sizeof k, "card%d_1", r);
-      if (!strcmp(get(k), argv[2])) { snprintf(k, sizeof k, "r%d_act", r); press(k); }
+      if (!strcmp(get(k), argv[2])) { snprintf(k, sizeof k, "r%d_act", r); press(k); done = 1; break; }
     }
-    page("page_next", 0);
+    if (!done) page("page_next", 0);
     }
     press("apply");
     for (int i = 0; i < 60 && strcmp(get("apply_state"), "3") && strcmp(get("apply_state"), "4"); i++) sleep(1);
