@@ -26,10 +26,13 @@ feature on our side). Both plugins' `tested.json` carry the device. This settles
   `/sdcard` or `/storage` depending on device tree flags under `/sys/firmware/devicetree/base/chosen/` (`inmusic,nvme-fitted`,
   `inmusic,emmc-content`, `inmusic,internal-sd-fitted`, `inmusic,acvs-loopback-content`), so the internal drive is not
   `/nvme/Synths` everywhere. `tools/desktop` now tries `/nvme/Synths` then `/storage/Synths` as the internal drive and lists
-  `/storage` as a drive that can be given a Synths folder; `mpc-store.sh` falls back the same way. **Not confirmed on a One:**
-  whether `/storage/Synths` exists and is exec-mounted there, which folders MPC itself scans (the user was asked for their
-  `MPC.settings` plugin paths), and whether `/data` being full affects settings edits. `tools/release.py` still prints
-  `-t /nvme/Synths` for Gen2 builds, which is wrong on a One.
+  `/storage` as a drive that can be given a Synths folder; `mpc-store.sh` falls back the same way. **Confirmed by the same
+  user's follow-up (2026-10-28, `mount` and `grep` over SSH):** `/storage` is `exfat (rw,relatime,fmask=0022,dmask=0022,...)`,
+  no `noexec`; `/synths` is `ext4 (ro)`; `/data` is `ext4 (rw)`. Their `MPC.settings` `SynthContentLocations` lists
+  `/media/MPC/Synths` and `/storage/Synths`, and eight plugins (including Acid-303) are already installed and registered under
+  `/storage/Synths`, so that folder exists, is executable and is what MPC scans; the full `/data` did not stop earlier
+  settings edits. Still to check: the value of `Content.Manager.Directory` on a One (what the community manager's "automatic"
+  plugin location follows). `tools/release.py` still prints `-t /nvme/Synths` for Gen2 builds, which is wrong on a One.
 - `vst.json` `targets: ["armv7", "aarch64"]` + `tools/build_port.sh ... all` is now proven end to end on a second, ordinary port
   (Profit-08: no custom build script, just the generic path) — any future port can follow the same checklist (docs/PORTING.md).
 
