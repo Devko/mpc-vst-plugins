@@ -1889,3 +1889,19 @@ Offline check of the trigger stage (2026-10-28, x86 host, no device): `poc/stept
 reports `triggers: 2` and a "trigger fire" stage; the same plugin built with the previous wrapper reports none and is swept
 as before. A synthetic effect whose trigger burns 2 ms of CPU FAILs under the old bench (sweep p99 69 %) and PASSes with the
 new one (trigger max 70 %); at 2.8 ms (over `TRIGGER_WARN_PCT`) it WARNs. `bench.c` is clean under ASan/UBSan. Not run on a device.
+
+## OpenMPC Plugin Manager G2: what the Live III showed (2026-10-28, device, MPC OS 3.10.0.49 unless marked offline)
+- **One tap arrives as two `set` events** for a trigger param, with no release between: seen on a THEME toggle (trace: `set theme_btn=1` twice, the
+  pill flipped and flipped back), the page arrows and INSTALL/UPDATE. The manager ignores the same button twice within 250 ms (THEME 700 ms). A
+  quick deliberate double tap is lost by design.
+- **A tap on a readout may not reach a button drawn under it.** The Kind/Sort pills already put an invisible button over the text; the THEME pill
+  now draws its button after its readout. Fixed in layout order; the whole-pill tap was reported, not separately retested on the device.
+- **The MPC OS version cannot be read reliably.** `/etc/os-release` is the Yocto base (`VERSION="5.0.17 (scarthgap)"`), and `MPC.settings` keeps a stale
+  `StartupWizard.LastVersionShownFor` (3.9.1.2 on a device that runs 3.10). The manager reads the device's glibc at run time and infers MPC OS 2.x
+  (below 2.39) or 3.x from it.
+- **Catalog zips are per architecture**: `versions[].assets.armv7` / `.aarch64`; the top-level `url` is the armv7 zip. acid-303, commander and tr-mpc have an
+  aarch64 asset; remote and skipback have none (offline: from the live `catalog.json`). A manager that took `url` made three updates fail on the Live III
+  ("this build is for Gen1 ...", read from the apply log).
+- **Offline only (x86 container, fake devices):** the rollback of a failed install (folder and `MPC.settings` restored), zip inspection before unpacking, and the glibc/OS
+  and architecture refusals. See `tools/plugin_manager_g2/DESIGN.md`.
+
