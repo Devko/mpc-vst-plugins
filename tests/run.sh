@@ -51,7 +51,8 @@ grep -q "apply_state 3" /tmp/links-yes.out
 grep -q "/linky.*install.sh\|Linky-1.0.0/install.sh" /tmp/openmpc-pm/apply.sh
 echo "links OK"
 echo "== pick (offline fixture): two usable locations, CHANGE on the restart prompt"
-rm -rf /media /sdcard /nvme /synths /data /tmp/openmpc-pm /tmp/pm-mounts; mkdir -p /media
+rm -rf /media /sdcard /nvme /synths /data /tmp/openmpc-pm /tmp/pm-mounts
+mkdir -p /media
 sh tests/devices/two-targets.sh
 /tmp/drive_addins pick > /tmp/pick.out
 grep -qF "prompt: confirm=1 pick=1 |Install to: /sdcard/Synths  (1 of 2)|" /tmp/pick.out
@@ -81,4 +82,15 @@ sh /tmp/openmpc-pm/apply.sh
 /tmp/drive_addins themeshow > /tmp/theme2.out
 grep -qF "start: can=1 theme=1 |LIGHT| apply_state=0" /tmp/theme2.out
 unset PM_OWN
-echo "theme OK"'
+echo "theme OK"
+# last: after it the next "rm -rf /media" fails in the container (cause not found), so nothing may follow it
+echo "== arch (offline fixture): the aarch64 zip on Gen2, the armv7 one otherwise, and no card when there is none"
+rm -rf /tmp/openmpc-pm; PM_ARCH=aarch64 /tmp/drive_addins arch > /tmp/arch-64.out
+grep -q "card 1: DU" /tmp/arch-64.out      # Dual only: Armonly has no aarch64 zip
+! grep -q "card 1: AR\|card 2: DU" /tmp/arch-64.out
+grep -q "apply_state 3" /tmp/arch-64.out   # the aarch64 zip downloaded and verified
+rm -rf /tmp/openmpc-pm; /tmp/drive_addins arch 2 > /tmp/arch-32.out
+grep -q "card 1: AR" /tmp/arch-32.out && grep -q "card 2: DU" /tmp/arch-32.out
+grep -q "apply_state 4" /tmp/arch-32.out   # Dual'"'"'s armv7 zip is missing: the install fails
+echo "arch OK"
+'

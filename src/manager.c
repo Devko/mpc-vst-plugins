@@ -94,7 +94,8 @@ typedef struct {
     unsigned vis_rev;             /* visible()'s cache: the rev it was worked out at (+1, so 0 = none), its list */
     int vis_n, vis_idx[MAXPKG];
     int confirm;                  /* the restart prompt is open (the second APPLY); only shown while ready */
-    long long theme_t, page_t;    /* ms of the last accepted theme / page press (monotonic) */
+    long long theme_t, tap_t;     /* ms of the last accepted theme press / button press (monotonic) */
+    char tap_key[32];             /* the button of that press */
     int theme, theme_applied, theme_can;   /* 0 dark, 1 light: the one wanted, the one in `Plugin Skins` at MPC's start, and whether the folder holds both skins */
     char own[300];                /* this plugin's own folder (its skins live there) */
     int tsel, reprompt;           /* which usable location new installs go to; CHANGE re-prepares and reopens the prompt */
@@ -375,7 +376,8 @@ static const char *jobject(const char *p, member_fn f, void *ud) {
 
 #define NOTES_MAX 4096   /* release notes kept per version while parsing (What's new is near the top) */
 typedef struct { char version[24], url[512], sha[72], channel[16], cpu[8], cpu_pct[12], tested[48], date[12];
-                 long long size; int yanked; char *notes, *about; } ver_t;
+                 long long size; int yanked; char *notes, *about;
+                 struct { char url[512], sha[72]; long long size; } as[2]; int has_assets; } ver_t;   /* as[0] armv7, as[1] aarch64 */
 typedef struct { char s[48]; } str_t;
 typedef struct { char verdict[8], pct[12]; } cpu_t;
 
@@ -392,8 +394,35 @@ static const char *device_member(const char *k, const char *v, void *ud) {
     return *v == '"' && !strcmp(k, "device") ? jstr(v, ((str_t *)ud)->s, sizeof ((str_t *)ud)->s) : NULL;
 }
 
+/* the zip for this device: a Gen2 (aarch64) MPC takes the "aarch64" asset, anything else the "armv7" one */
+static int want_asset(void) {
+    struct utsname u;
+    const char *a = getenv("PM_ARCH");   /* tests: pretend to be this machine */
+    return a ? !strcmp(a, "aarch64") : uname(&u) == 0 && !strcmp(u.machine, "aarch64");
+}
+typedef struct { char url[512], sha[72]; long long size; } asset_t;
+static const char *asset_member(const char *k, const char *v, void *ud) {
+    asset_t *a = ud;
+    if (*v == '"' && !strcmp(k, "url")) return jstr(v, a->url, sizeof a->url);
+    if (*v == '"' && !strcmp(k, "sha256")) return jstr(v, a->sha, sizeof a->sha);
+    if (!strcmp(k, "size") && *v >= '0' && *v <= '9') { a->size = atoll(v); return NULL; }
+    return NULL;
+}
+static const char *assets_member(const char *k, const char *v, void *ud) {
+    ver_t *x = ud;
+    int i = !strcmp(k, "aarch64") ? 1 : !strcmp(k, "armv7") ? 0 : -1;
+    if (i < 0 || *v != '{') return NULL;
+    asset_t a = {{0}, {0}, 0};
+    const char *q = jobject(v, asset_member, &a);
+    snprintf(x->as[i].url, sizeof x->as[i].url, "%s", a.url);
+    snprintf(x->as[i].sha, sizeof x->as[i].sha, "%s", a.sha);
+    x->as[i].size = a.size;
+    return q;
+}
+
 static const char *ver_member(const char *k, const char *v, void *ud) {
     ver_t *x = ud;
+    if (!strcmp(k, "assets") && *v == '{') { x->has_assets = 1; return jobject(v, assets_member, x); }
     if (!strcmp(k, "channel") && *v == '"') return jstr(v, x->channel, sizeof x->channel);
     if (!strcmp(k, "size") && *v >= '0' && *v <= '9') { x->size = atoll(v); return NULL; }
     if (!strcmp(k, "cpu") && *v == '{') {   /* the bench verdict (PASS, WARN or FAIL) and p99 load */
@@ -488,6 +517,12 @@ static const char *pkg_member(const char *k, const char *v, void *ud) {
             if (ver.about) ver.about[0] = 0;
             p = jobject(p, ver_member, &ver);
             if (!p) return NULL;
+            if (ver.has_assets) {   /* the zip for this device; none for it: nothing to install here (the top-level url is the armv7 one) */
+                int w = want_asset();
+                snprintf(ver.url, sizeof ver.url, "%s", ver.as[w].url);
+                snprintf(ver.sha, sizeof ver.sha, "%s", ver.as[w].sha);
+                if (ver.as[w].url[0]) ver.size = ver.as[w].size;
+            }
             if (!ver.yanked) x->nver++;
             if (!ver.yanked && ver.date[0] && (!x->first[0] || strcmp(ver.date, x->first) < 0)) snprintf(x->first, sizeof x->first, "%s", ver.date);
             int pinned = x->latest[0] && !x->url[0], beta = !strcmp(ver.channel, "beta");
@@ -1517,6 +1552,20 @@ static int repeated(long long *last, int ms) {
     return 0;
 }
 
+/* the trigger params (a tap), not the option params the host steps on purpose (kind, sort, ...), the keyboard keys or THEME (its own window) */
+static int is_button(const char *key) {
+    static const char *const end[] = {"_act", "_open", "_more", "_reinstall", "_remove", "_btn", "_pick1", "_pick2", "_pick3", "_pick4",
+                                      "_close", "_back", "_cancel", "_go", "_clear", "_next", "_prev"};
+    size_t kl = strlen(key);
+    if (!strcmp(key, "theme_btn")) return 0;
+    if (!strcmp(key, "update_all") || !strcmp(key, "apply") || !strcmp(key, "refresh") || !strncmp(key, "d_tag", 5)) return 1;
+    for (size_t i = 0; i < sizeof end / sizeof *end; i++) {
+        size_t el = strlen(end[i]);
+        if (kl > el && !strcmp(key + kl - el, end[i])) return 1;
+    }
+    return 0;
+}
+
 static void mgr_set_param(void *inst, const char *key, const char *val) {
     mgr_t *m = inst;
     double v = atof(val);
@@ -1525,6 +1574,10 @@ static void mgr_set_param(void *inst, const char *key, const char *val) {
     pthread_mutex_lock(&m->mu);
     int idx[MAXPKG], nv = visible(m, idx), pages = nv ? (nv + ROWS - 1) / ROWS : 1;
     int busy = m->busy == J_PREPARE || m->busy == J_LAUNCH;
+    if (v >= 0.5 && is_button(key)) {   /* the same button twice within 250 ms is one tap */
+        if (!strcmp(key, m->tap_key) && repeated(&m->tap_t, 250)) { pthread_mutex_unlock(&m->mu); return; }
+        if (strcmp(key, m->tap_key)) { snprintf(m->tap_key, sizeof m->tap_key, "%s", key); repeated(&m->tap_t, 0); }
+    }
     if (m->confirm && !m->reprompt && (!m->ready || busy)) m->confirm = 0;   /* nothing left to restart for */
     if (v >= 0.5 && !strcmp(key, "theme_btn") && m->theme_can && !m->confirm && !busy) {   /* the next apply carries it */
         if (repeated(&m->theme_t, 700)) { pthread_mutex_unlock(&m->mu); return; }
@@ -1608,8 +1661,8 @@ static void mgr_set_param(void *inst, const char *key, const char *val) {
     } else if (key[0] == 'd' && key[1] == '_') {   /* d_act, d_more, d_reinstall, d_remove */
         int i = detail_of(m);
         if (i >= 0 && !busy) act(m, i, key + 2);
-    } else if (!strcmp(key, "page_prev") && !m->detail[0] && m->page > 0 && !repeated(&m->page_t, 250)) { m->page--; m->menu = -1; }   /* hidden by the details */
-    else if (!strcmp(key, "page_next") && !m->detail[0] && m->page + 1 < pages && !repeated(&m->page_t, 250)) { m->page++; m->menu = -1; }
+    } else if (!strcmp(key, "page_prev") && !m->detail[0] && m->page > 0) { m->page--; m->menu = -1; }   /* hidden by the details */
+    else if (!strcmp(key, "page_next") && !m->detail[0] && m->page + 1 < pages) { m->page++; m->menu = -1; }
     else if (!strcmp(key, "refresh")) post(m, J_REFRESH);
     else if (!strcmp(key, "update_all") && !busy) {
         for (int i = 0; i < m->npkg; i++) if (has_update(&m->pkg[i]) && !m->pkg[i].queued) requeue(m, &m->pkg[i], Q_INSTALL);

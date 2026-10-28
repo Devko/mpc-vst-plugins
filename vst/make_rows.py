@@ -10,40 +10,40 @@ import re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROWS = 5
-TOP, PITCH, H = 210, 74, 70   # the list area is y 210..584; rows 74 apart, 70 tall
-THUMB = (112, 56)             # keep in step with vst/shots.py and make_images.py (card_off.svg)
+TOP, PITCH, H = 210, 84, 80   # the list area is y 210..630 (the footer starts at 640); rows 84 apart, 80 tall
+THUMB = (136, 68)             # keep in step with vst/shots.py and make_images.py (card_off.svg)
 
 
 def layout_rows():
     out = []
     for r in range(1, ROWS + 1):
         t = TOP + PITCH * (r - 1)
-        c = t + 35
+        c = t + 40
         b = lambda cx, cy, key, img, w, h, when: out.append(   # noqa: E731
             'button cx=%d cy=%d label="" key=%s img=images/%s w=%d h=%d when=%s' % (cx, cy, key, img, w, h, when))
         k = "r%d_" % r
         out.append('list x=24 y=%d w=1232 h=%d cols=1 rows=1 th=%d gap=0 key=card%d img=images/card_off.svg img_on=images/card_on.svg '
-                   'tx=136 ty=1 ttw=536 tth=38 tsize=33 tweight=bold tcolor=ececed when=%svis:on' % (t, H, H, r, k))
+                   'tx=160 ty=2 ttw=516 tth=44 tsize=37 tweight=bold tcolor=ececed when=%svis:on' % (t, H, H, r, k))
         # the thumbnails (shots.py adds them here), then the initials of a plugin without one and the corner text
-        out.append('readout box=0 w=112 h=34 cx=90 cy=%d label="" key=%sinit tsize=32 tweight=bold tcolor=ececed talign=center tpad=0 when=%sshot:none' % (c - 2, k, k))
-        out.append('readout box=0 w=40 h=14 cx=125 cy=%d label="" key=%skindtxt tsize=12 tcolor=c9ccd1 talign=right tpad=2' % (t + 55, k))
-        out.append('readout box=0 w=536 h=26 cx=428 cy=%d label="" key=%smeta tsize=23 tweight=regular tcolor=b4b7bc talign=left tpad=0' % (t + 52, k))
-        b(425, c - 2, k + "open", "card_hit.svg", 540, 60, k + "vis:on")
+        out.append('readout box=0 w=136 h=40 cx=102 cy=%d label="" key=%sinit tsize=38 tweight=bold tcolor=ececed talign=center tpad=0 when=%sshot:none' % (c - 2, k, k))
+        out.append('readout box=0 w=46 h=16 cx=146 cy=%d label="" key=%skindtxt tsize=14 tcolor=c9ccd1 talign=right tpad=2' % (t + 64, k))
+        out.append('readout box=0 w=516 h=30 cx=442 cy=%d label="" key=%smeta tsize=26 tweight=regular tcolor=b4b7bc talign=left tpad=0' % (t + 61, k))
+        b(450, c - 2, k + "open", "card_hit.svg", 530, 70, k + "vis:on")
         # badges: the channel and CPU on the first line, the old-install and tested ones on the second
-        b(736, t + 20, "noop", "badge_stable.svg", 72, 26, k + "chan:stable")
-        b(732, t + 20, "noop", "badge_beta.svg", 64, 26, k + "chan:beta")
-        b(836, t + 20, "noop", "badge_cpu.svg", 112, 26, k + "cpu:on")
-        b(752, t + 50, "noop", "badge_old.svg", 104, 26, k + "old:on")
-        b(912, t + 50, "noop", "badge_tested.svg", 200, 26, k + "tested:on")
-        out.append('readout box=0 w=166 h=26 cx=924 cy=%d label="" key=%stested_txt tsize=22 tcolor=7fd6a8 talign=left tpad=0 when=%stested:on' % (t + 50, k, k))
-        out.append('readout box=0 w=86 h=32 cx=948 cy=%d label="" key=%sver tsize=31 tcolor=ececed talign=left tpad=0' % (t + 20, k))
-        out.append('readout box=0 w=64 h=22 cx=1014 cy=%d label="" key=%sfrom tsize=21 tcolor=f0b44a talign=left tpad=0' % (t + 22, k))
+        b(736, t + 23, "noop", "badge_stable.svg", 72, 26, k + "chan:stable")
+        b(732, t + 23, "noop", "badge_beta.svg", 64, 26, k + "chan:beta")
+        b(836, t + 23, "noop", "badge_cpu.svg", 112, 26, k + "cpu:on")
+        b(752, t + 58, "noop", "badge_old.svg", 104, 26, k + "old:on")
+        b(912, t + 58, "noop", "badge_tested.svg", 200, 26, k + "tested:on")
+        out.append('readout box=0 w=166 h=26 cx=924 cy=%d label="" key=%stested_txt tsize=22 tcolor=7fd6a8 talign=left tpad=0 when=%stested:on' % (t + 58, k, k))
+        out.append('readout box=0 w=90 h=36 cx=950 cy=%d label="" key=%sver tsize=34 tcolor=ececed talign=left tpad=0' % (t + 23, k))
+        out.append('readout box=0 w=64 h=22 cx=1014 cy=%d label="" key=%sfrom tsize=22 tcolor=f0b44a talign=left tpad=0' % (t + 25, k))
         for st, img in (("install", "btn_install"), ("update", "btn_update"), ("installed", "btn_installed"), ("q_install", "btn_q_install"),
                         ("q_update", "btn_q_update"), ("q_remove", "btn_q_remove"), ("disabled", "btn_disabled")):
-            b(1129, c, k + "act", img + ".svg", 150, 44, "%sstate:%s" % (k, st))
-        b(1094, c, k + "reinstall", "btn_reinstall.svg", 76, 44, k + "state:menu")
-        b(1172, c, k + "remove", "btn_remove.svg", 76, 44, k + "state:menu")
-        b(1236, c, k + "more", "more.svg", 44, 44, k + "inst:yes")
+            b(1129, c, k + "act", img + ".svg", 150, 48, "%sstate:%s" % (k, st))
+        b(1094, c, k + "reinstall", "btn_reinstall.svg", 76, 48, k + "state:menu")
+        b(1172, c, k + "remove", "btn_remove.svg", 76, 48, k + "state:menu")
+        b(1236, c, k + "more", "more.svg", 44, 48, k + "inst:yes")
     return out
 
 

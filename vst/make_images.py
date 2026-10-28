@@ -80,8 +80,8 @@ def main():
     svg("net_off.svg", 100, 24, '<circle cx="5" cy="12" r="4.5" fill="%s"/>' % RED + text(16, 17, "OFFLINE", 15, "#ff9a93", 600, spacing=1))
     # a plugin card (the list row's own picture): the thumbnail tile is part of it
     for name, fill, edge in (("card_off.svg", PANEL, "#222326"), ("card_on.svg", "#1d1e21", RED)):
-        svg(name, 1232, 70, '<rect x="1" y="1" width="1230" height="68" rx="10" fill="%s" stroke="%s" stroke-width="2"/>' % (fill, edge)
-            + '<rect x="10" y="7" width="112" height="56" rx="6" fill="#24262a" stroke="#34363b"/>')
+        svg(name, 1232, 80, '<rect x="1" y="1" width="1230" height="78" rx="10" fill="%s" stroke="%s" stroke-width="2"/>' % (fill, edge)
+            + '<rect x="10" y="6" width="136" height="68" rx="6" fill="#24262a" stroke="#34363b"/>')
     # the details (layout.conf "detail view"), over the card area and the space under it. What the details switch on
     # their own (picture, CPU and tested colours, What's new, tags) is baked over the page background, so the panel is
     # that colour too, outlined; the facts panel's labels; the picture's empty tile (d_shot "none")
@@ -132,7 +132,7 @@ def main():
     pill = lambda w: '<rect x="0.5" y="0.5" width="%d" height="43" rx="22" fill="none" stroke="#3a3c41"/>' % (w - 1)
     svg("dd_filter.svg", 200, 44, pill(200) + icon("filter", 18, 12, 20, DIM, 2) + caret(170))
     svg("dd_sort.svg", 236, 44, pill(236) + icon("updown", 16, 12, 20, DIM, 2) + text(44, 28, "Sort", 17, DIM, 400) + caret(206))
-    svg("card_hit.svg", 540, 60, '<rect width="540" height="60" fill="#000" fill-opacity="0"/>')   # a card's title and description
+    svg("card_hit.svg", 530, 70, '<rect width="530" height="70" fill="#000" fill-opacity="0"/>')   # a card's title and description
     for w in (200, 236):
         svg("dd_hit_%d.svg" % w, w, 44, '<rect width="%d" height="44" fill="#000" fill-opacity="0"/>' % w)
         svg("dd_open_%d.svg" % w, w, 44, '<rect x="1" y="1" width="%d" height="42" rx="21" fill="#ffffff" fill-opacity="0.06" stroke="%s" stroke-width="2"/>' % (w - 2, INK))

@@ -14,9 +14,15 @@ static void *m;
 
 static const char *get(const char *k) { static char b[32][128]; static int i; i = (i + 1) % 32; b[i][0] = 0; e->get_param(m, k, b[i], 128); return b[i]; }
 static void set(const char *k, const char *v) { e->set_param(m, k, v); }
-static void press(const char *k) { set(k, "1"); set(k, "0"); }
+/* the manager drops the same button twice within 250 ms (MPC delivers one tap twice): a test that really taps one twice waits */
+static void press(const char *k) {
+  static char last[64];
+  if (!strcmp(k, last)) usleep(270000);
+  snprintf(last, sizeof last, "%s", k);
+  set(k, "1"); set(k, "0");
+}
 /* a page tap after a pause (as a finger), once or delivered twice (as MPC did on a Live III: the second one must not step again) */
-static void page(const char *k, int twice) { usleep(300000); if (twice) set(k, "1"); press(k); }
+static void page(const char *k, int twice) { usleep(300000); if (twice) set(k, "1"); set(k, "1"); set(k, "0"); }
 
 static void cards(void) {
   printf("  [%s] %s | status(%s): %s | apply_state %s\n", get("page_txt"), get("summary"), get("status_kind"), get("status"), get("apply_state"));
@@ -84,6 +90,13 @@ int main(int argc, char **argv) {
     press("target_next");
     for (int i = 0; i < 60 && strcmp(get("apply_state"), "3"); i++) sleep(1);
     printf("after CHANGE: confirm=%s pick=%s |%s|\n", get("confirm"), get("confirm_pick"), get("confirm_dest"));
+    e->destroy(m); return 0;
+  }
+  if (argc > 1 && !strcmp(argv[1], "arch")) {   /* the zip for the device (tests/fixture.py "Dual", "Armonly"): EFFECTS, install card 1 */
+    set("kind", "2"); cards();
+    press(argc > 2 ? "r2_act" : "r1_act"); press("apply");
+    for (int i = 0; i < 60 && strcmp(get("apply_state"), "3") && strcmp(get("apply_state"), "4"); i++) sleep(1);
+    cards();
     e->destroy(m); return 0;
   }
   if (argc > 1 && !strcmp(argv[1], "links")) {   /* a package that needs a symbolic link (tests/fixture.py "Linky"): queue it and APPLY */

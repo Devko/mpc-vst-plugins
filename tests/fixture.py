@@ -45,5 +45,16 @@ plugins.append({"id": "linky", "name": "Linky", "author": "acme", "repo": "acme/
                 "versions": [{"version": "1.0.0", "size": len(data), "sha256": hashlib.sha256(data).hexdigest(),
                               "url": "file:///p/vst/build/tests/" + os.path.basename(lz), "channel": "stable",
                               "date": "2026-01-01", "yanked": False}]})
+# the zip for the device: "Dual" has a (missing) armv7 zip and a real aarch64 one, "Armonly" only an armv7 one (nothing to install on Gen2)
+base = "file:///p/vst/build/tests/"
+sha = hashlib.sha256(data).hexdigest()
+for name, date, assets in (("Dual", "2026-02-01", {"armv7": {"url": base + "missing-armv7.zip", "sha256": "0" * 64, "size": 1},
+                                                    "aarch64": {"url": base + os.path.basename(lz), "sha256": sha, "size": len(data)}}),
+                           ("Armonly", "2026-01-01", {"armv7": {"url": base + os.path.basename(lz), "sha256": sha, "size": len(data)}})):
+    plugins.append({"id": name.lower(), "name": name, "author": "acme", "repo": "acme/mpc-vst-" + name.lower(), "kind": "effect",
+                    "license": "MIT", "summary": "A stand-in for the per-architecture zips.", "style": "utility", "tags": ["test"],
+                    "distribution": "release", "latest": "1.0.0",
+                    "versions": [{"version": "1.0.0", "size": 1, "sha256": "0" * 64, "url": base + "missing-armv7.zip", "assets": assets,
+                                  "channel": "stable", "date": date, "yanked": False}]})
 json.dump({"schema": 1, "plugins": plugins}, open(os.path.join(out, "catalog.json"), "w"), indent=1)
 print("fixture: %d packages in %s" % (len(plugins), out))
