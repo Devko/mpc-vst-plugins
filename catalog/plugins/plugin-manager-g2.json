@@ -1,4 +1,4 @@
 { "id": "plugin-manager-g2", "name": "Plugin Manager G2", "author": "sd88me", "repo": "sd88me/mpc-vst-plugins",
   "kind": "instrument", "style": "utility", "tags": ["installer", "catalog", "manager", "gen2", "utility"], "license": "MIT",
   "summary": "Browse this catalog and install, update and remove plugins on the MPC itself, with rollback if an install fails. A VST with its own screen (light or dark), five plugins per page with thumbnails, local zips and registering folders MPC does not list. Gen2 (aarch64) first; a fork of poloq's MIT mpc-vst-manager.",
-  "asset_pattern": "Plugin-Manager-G2-*-mpc-aarch64.zip" }
+  "asset_pattern": "Plugin-Manager-G2-*-mpc-aarch64.zip", "flags_reviewed": ["runs programs"] }
