@@ -1908,4 +1908,11 @@ new one (trigger max 70 %); at 2.8 ms (over `TRIGGER_WARN_PCT`) it WARNs. `bench
   `MPC.settings.bak-*` after a successful apply), local zips (`<drive>/local-plugins/<name>.zip` become cards), and REGISTER for a folder that has a
   `plugin-meta.xml` but no list entry (the installer's `plugin_list.awk`, `MPC.settings` snapshotted first). A test orphan was made on the Live III
   (2026-10-28) to try registration; not yet run there. A big plugin's rollback copy goes beside it on its own drive, not in RAM.
+- **MPC's skin image cache can fill a Live III's RAM and make parts of a screen draw black (device, 2026-10-28, MPC OS 3.10.0.49).** `/var/volatile` (a 3.9 GB
+  tmpfs; `/var/cache`, `/var/spool` and `/srv` are overlays over it) held `/var/volatile/tmp/filmstrips`: 3497 `temp_*.img` files, 4.15 GB, 100% used, free RAM
+  1.4 GB of 8. Each skin load of the manager wrote 100 to 400 files (250 to 830 MB) while its skin had a thumbnail button per catalog id per row
+  (159 ids x 5 rows); with the volume full, the THEME text, the ONLINE pill, the disk bar, the UPDATES count and the status line drew as black rectangles
+  (identical on three builds, so not the skin layout). MPC had none of the files open; deleting them (with the owner's OK) took the volume to 0% and
+  the skin drew normally after reopening the plugin. A load of the same skin with thumbnails only for the 39 ids that have an aarch64 zip added 14 MB
+  (96 files). Only a reboot is known to empty it otherwise (not tried). The manager now warns at 85% used. Same mechanism as the 2026-10-04 note above.
 
