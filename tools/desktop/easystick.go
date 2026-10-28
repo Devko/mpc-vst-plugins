@@ -7,13 +7,15 @@ package main
 // nor the generation. No firmware is read here.
 //
 // The stick runs as root on the device, so the release is pinned by SHA-256 and never "latest". To move to a new
-// release, bump the three constants below after reading its changelog and testing it on a device.
+// release, read its changelog, test it on a device, then update tools/desktop/easystick-pin.json (picked up by
+// installers already out) and, at the next installer release, the compiled-in fallback below.
 
 import (
 	"archive/zip"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,13 +23,14 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
 
 const (
 	easyStickVersion = "v1.2.1" // stable; 1.2.1 fixes Gen2 installs when the SSD has no Synths folder (follows MPC's Content Download Drive); beta.2 device-tested on a Live III, v1.2.1 retest pending (2026-10-28)
-	easyStickMaxSize = 16 << 20        // the zip is ~1.8 MB; refuse anything wildly larger
+	easyStickMaxSize = 16 << 20 // the zip is ~1.8 MB; refuse anything wildly larger
 )
 
 // easyStickSHA256 is a var, like the URL, so tests can pin a fixture instead.
@@ -37,10 +40,61 @@ var easyStickSHA256 = "c05199ae06111d4377f2e0e2c8fe3a127a10f8fe4f34cb9e2d5ae75f4
 var easyStickURL = "https://github.com/Eurikon/plugin-manager-usb-for-open-mpc/releases/download/" +
 	easyStickVersion + "/plugin-manager-usb-" + easyStickVersion + ".zip"
 
+// easyPin is one reviewed release of the community manager. The compiled-in one is the fallback; the installer
+// prefers easystick-pin.json from this repo's main branch, so a newly tested release can be adopted with a one-file PR
+// instead of a new installer release. Either way the zip is checked against its SHA-256 before anything is written.
+type easyPin struct {
+	Version string `json:"version"`
+	URL     string `json:"url"`
+	SHA256  string `json:"sha256"`
+}
+
+// easyPinURL is a var so tests can point it at a local server; empty means "use the compiled-in pin only".
+var easyPinURL = "https://raw.githubusercontent.com/sd88me/mpc-vst-plugins/main/tools/desktop/easystick-pin.json"
+
+// easyReleasePrefix is the only place a pin file may send the download, so a changed pin file can't point the
+// installer at an arbitrary host.
+const easyReleasePrefix = "https://github.com/Eurikon/plugin-manager-usb-for-open-mpc/releases/download/"
+
+var hex64 = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+func (p easyPin) valid() bool {
+	return p.Version != "" && strings.HasPrefix(p.URL, easyReleasePrefix) && !strings.ContainsAny(p.URL, " \t\r\n") && hex64.MatchString(p.SHA256)
+}
+
+func builtinEasyPin() easyPin {
+	return easyPin{Version: easyStickVersion, URL: easyStickURL, SHA256: easyStickSHA256}
+}
+
+// currentEasyPin returns the pin file's release when it can be fetched and is well-formed, else the compiled-in one.
+func currentEasyPin() easyPin {
+	if easyPinURL == "" {
+		return builtinEasyPin()
+	}
+	c := &http.Client{Timeout: 5 * time.Second}
+	resp, err := c.Get(easyPinURL)
+	if err != nil {
+		return builtinEasyPin()
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return builtinEasyPin()
+	}
+	var p easyPin
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<10)).Decode(&p); err != nil || !p.valid() {
+		return builtinEasyPin()
+	}
+	return p
+}
+
 // fetchEasyStick downloads the pinned zip and checks its hash before returning it.
 func fetchEasyStick() ([]byte, error) {
+	return fetchEasyStickPin(currentEasyPin())
+}
+
+func fetchEasyStickPin(pin easyPin) ([]byte, error) {
 	c := &http.Client{Timeout: 2 * time.Minute}
-	resp, err := c.Get(easyStickURL)
+	resp, err := c.Get(pin.URL)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't download the plugin manager stick: %w", err)
 	}
@@ -55,7 +109,7 @@ func fetchEasyStick() ([]byte, error) {
 	if len(data) > easyStickMaxSize {
 		return nil, errors.New("the plugin manager download is larger than expected; refusing it")
 	}
-	if sum := sha256.Sum256(data); hex.EncodeToString(sum[:]) != easyStickSHA256 {
+	if sum := sha256.Sum256(data); hex.EncodeToString(sum[:]) != pin.SHA256 {
 		return nil, errors.New("the plugin manager download doesn't match the checksum this installer expects; refusing it")
 	}
 	return data, nil
