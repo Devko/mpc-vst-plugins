@@ -31,6 +31,7 @@
 #include <ctype.h>
 #include <sys/utsname.h>
 #include <gnu/libc-version.h>
+#include "plugin_list_awk.h"
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -77,10 +78,11 @@ typedef struct {
     char uids[4][16];     /* build-yourself components' VST uids (catalog "components") */
     int legacy;           /* registered, but not from a plugin folder (old /sdcard/vst layout); an addin folder
                            * without uninstall.sh (made by hand): either is updated in place, not removed */
-    int queued;           /* 0, Q_INSTALL, Q_REMOVE */
+    int queued;           /* 0, Q_INSTALL, Q_REMOVE, Q_REGISTER */
+    int orphan;           /* 1 + its index in device_t.orphan: a folder MPC does not list (the card offers REGISTER) */
     char dir[256];        /* unpacked package (install.sh / uninstall.sh), set while preparing */
 } pkg_t;
-enum { Q_INSTALL = 1, Q_REMOVE = 2 };
+enum { Q_INSTALL = 1, Q_REMOVE = 2, Q_REGISTER = 3 };
 enum { J_NONE, J_REFRESH, J_PREPARE, J_LAUNCH };
 
 typedef struct device device_t;
@@ -679,6 +681,8 @@ struct device {
     char addins[64];   /* ADDINS_DIR when its parent is a writable folder, else "" (no addin can be installed) */
     int nloc, nent, naddin, systemd_run, cgroup2;
     entry_t ent[128];
+    struct { char folder[300], name[64], uid[16], file[320], entry[1500]; int inst; } orphan[8];   /* folders with a plugin-meta.xml and no entry */
+    int norphan;
     addin_t addin[32];
 };
 
@@ -1027,6 +1031,83 @@ static const char *manifest_member(const char *k, const char *v, void *ud) {
     return NULL;
 }
 
+/* A folder in a content location with a plugin-meta.xml whose file= exists but that MPC's list has no entry for (by file or uid): copied by hand,
+ * or dropped from the list while a card was out. The card offers REGISTER: the entry is added from plugin-meta.xml by the installer's own awk
+ * (apply.sh, MPC stopped, settings backed up). %payload-path% in the entry stands for the content location. */
+static const char *xml_attr(const char *s, const char *attr, char *out, size_t n) {
+    char pat[40];
+    snprintf(pat, sizeof pat, " %s=\"", attr);
+    const char *p = strstr(s, pat);
+    out[0] = 0;
+    if (!p) return NULL;
+    p += strlen(pat);
+    const char *e = strchr(p, '"');
+    if (!e || (size_t)(e - p) >= n) return NULL;
+    memcpy(out, p, e - p);
+    out[e - p] = 0;
+    return out;
+}
+
+static void detect_orphans(device_t *d) {
+    d->norphan = 0;
+    for (int u = 0; u < d->nusable; u++) {
+        DIR *dp = opendir(d->usable[u]);
+        struct dirent *e;
+        while (dp && (e = readdir(dp)) && d->norphan < 8) {
+            char meta[640], el[1500], file[320], uid[16], *s, *a, *b;
+            if (e->d_name[0] == '.' || !safe(e->d_name)) continue;
+            snprintf(meta, sizeof meta, "%s/%s/plugin-meta.xml", d->usable[u], e->d_name);
+            if (!(s = slurp(meta, 16 << 10))) continue;
+            if (!(a = strstr(s, "<PLUGIN")) || !(b = strstr(a, "/>"))) { free(s); continue; }
+            snprintf(el, sizeof el, "%.*s", (int)(b + 2 - a), a);
+            free(s);
+            for (char *q = el; *q; q++) if (*q == '\n' || *q == '\r' || *q == '\t') *q = ' ';
+            char *pp = strstr(el, "%payload-path%");   /* the content location the folder is in */
+            if (pp) {
+                char rest[1500];
+                snprintf(rest, sizeof rest, "%s", pp + strlen("%payload-path%"));
+                snprintf(pp, sizeof el - (pp - el), "%s%s", d->usable[u], rest);
+            }
+            if (!xml_attr(el, "file", file, sizeof file) || !xml_attr(el, "uid", uid, sizeof uid) || !is_file(file) || !safe(file)) continue;
+            int listed = 0;
+            for (int k = 0; k < d->nent && !listed; k++) listed = !strcmp(d->ent[k].file, file) || !strcasecmp(d->ent[k].uid, uid);
+            if (listed) continue;
+            int o = d->norphan++;
+            snprintf(d->orphan[o].folder, sizeof d->orphan[o].folder, "%s/%s", d->usable[u], e->d_name);
+            snprintf(d->orphan[o].file, sizeof d->orphan[o].file, "%s", file);
+            snprintf(d->orphan[o].uid, sizeof d->orphan[o].uid, "%s", uid);
+            snprintf(d->orphan[o].entry, sizeof d->orphan[o].entry, "%s", el);
+            char nm[64], ins[8];
+            snprintf(d->orphan[o].name, sizeof d->orphan[o].name, "%s", xml_attr(el, "name", nm, sizeof nm) ? nm : e->d_name);
+            d->orphan[o].inst = xml_attr(el, "isInstrument", ins, sizeof ins) && ins[0] == '1';
+        }
+        if (dp) closedir(dp);
+    }
+}
+
+static int add_orphans(const device_t *d, pkg_t *pkg, int n) {
+    for (int o = 0; o < d->norphan && n < MAXPKG; o++) {
+        pkg_t *p = &pkg[n++];
+        memset(p, 0, sizeof *p);
+        const char *base = strrchr(d->orphan[o].folder, '/') + 1;
+        snprintf(p->id, sizeof p->id, "orphan-%s", base);
+        for (char *q = p->id; *q; q++) if (!isalnum((unsigned char)*q) && *q != '-' && *q != '.') *q = '-';
+        snprintf(p->name, sizeof p->name, "%s", d->orphan[o].name);
+        snprintf(p->author, sizeof p->author, "not in MPC's list");
+        snprintf(p->kind, sizeof p->kind, "%s", d->orphan[o].inst ? "instrument" : "effect");
+        snprintf(p->dist, sizeof p->dist, "release");
+        snprintf(p->url, sizeof p->url, "orphan:");
+        snprintf(p->channel, sizeof p->channel, "stable");
+        snprintf(p->tags, sizeof p->tags, "orphan");
+        snprintf(p->installed, sizeof p->installed, "?");
+        snprintf(p->synths, sizeof p->synths, "%s", d->orphan[o].folder);
+        snprintf(p->summary, sizeof p->summary, "This folder is in a content location but MPC's plugin list has no entry for it, so MPC does not show the plugin. REGISTER adds the entry from its plugin-meta.xml (MPC restarts; MPC.settings is backed up first).");
+        snprintf(p->updated, sizeof p->updated, "0000-00-00");
+        p->orphan = o + 1;
+    }
+    return n;
+}
+
 /* Zips the user put on a drive: <a content location's parent>/local-plugins/<name>.zip become cards ("local zip"), installed by the same steps as a
  * catalog package (zip inspection, arch/glibc check, rollback). Nothing vouches for them: the card shows the zip's own sha256, and the
  * catalog's checksum rule does not apply. Returns the new package count. */
@@ -1121,7 +1202,7 @@ static void hist_record(const device_t *d, const char *id, const char *act, cons
     if (k == n && n < HIST_MAX) n++;
     if (k < n) {
         snprintf(h[k].id, sizeof h[k].id, "%s", id);
-        if (!strcmp(act, "install")) { snprintf(h[k].ver, sizeof h[k].ver, "%s", ver); h[k].inst = 1; }
+        if (!strcmp(act, "install") || !strcmp(act, "register")) { snprintf(h[k].ver, sizeof h[k].ver, "%s", ver); h[k].inst = 1; }
         else h[k].inst = 0;
         h[k].t = (long)time(NULL);
     }
@@ -1285,6 +1366,8 @@ static void do_refresh(mgr_t *m) {
     theme_init(m);
     write_report(m->dev);
     scan_installed(m->dev, tmp, l.n);
+    detect_orphans(m->dev);
+    l.n = add_orphans(m->dev, tmp, l.n);
     struct statvfs sv;   /* the header's storage readout: the drive plugins go to */
     const char *disk = dest(m)[0] ? dest(m) : "/media/az01-internal";
     float used = 0;
@@ -1374,6 +1457,7 @@ static void prepare(mgr_t *m, pkg_t *q) {
     int i;
     for (i = 0; i < nq && !err; i++) {
         pkg_t *p = &q[i];
+        if (p->queued == Q_REGISTER) continue;   /* an entry is added from the folder's plugin-meta.xml: nothing to fetch */
         if (is_addin(p) && p->queued == Q_REMOVE) continue;   /* removed by the uninstall.sh in its folder: nothing to fetch */
         if (!p->url[0] || strlen(p->sha) != 64 || !safe(p->id) || !safe(p->name)) { err = "has no download in the catalog"; break; }
         snprintf(path, sizeof path, WORK "/%s.zip", p->id);
@@ -1461,6 +1545,20 @@ static void prepare(mgr_t *m, pkg_t *q) {
              * install) goes to the first good SynthContentLocations entry. The installer moves the entry by uid.
              * An addin's folder is ADDINS_DIR/<id>: its installer is told that folder, and its removal runs the
              * uninstall.sh kept there (-n: MPC is already stopped; no STATE record, the folder's manifest has it). */
+            if (p->queued == Q_REGISTER) {
+                const char *key = !strcmp(m->dev->arch, "aarch64") ? "pluginList-arm-64bit" : "pluginList-arm";
+                char ef[300];
+                snprintf(ef, sizeof ef, WORK "/%s.entry", p->id);
+                FILE *x = fopen(ef, "w");
+                if (x) { fputs(m->dev->orphan[p->orphan - 1].entry, x); fclose(x); }
+                FILE *a = fopen(WORK "/plugin_list.awk", "w");
+                if (a) { fputs(PLUGIN_LIST_AWK, a); fclose(a); }
+                if (!x || !a) { err = "could not write the registration files"; break; }
+                fprintf(f, "echo '-- register %s'\nitem '%s' '' register '' sh -c 'awk -v mode=add -v file=\"$1\" -v uid=\"$2\" -v entryfile=\"$3\" "
+                           "-v listkey=%s -f \"$4\" \"$5\" > \"$5.new\" && mv \"$5.new\" \"$5\"' sh '%s' '%s' '%s' '" WORK "/plugin_list.awk' '%s' && rm -f '%s'\n",
+                        p->id, p->id, key, m->dev->orphan[p->orphan - 1].file, m->dev->orphan[p->orphan - 1].uid, ef, m->dev->settings, ef);
+                continue;
+            }
             char target[280];
             if (is_addin(p) && p->queued == Q_REMOVE) snprintf(target, sizeof target, "%s", p->synths);
             else if (is_addin(p)) snprintf(target, sizeof target, "%s/%s", m->dev->addins, p->id);
@@ -1627,10 +1725,11 @@ static int visible(const mgr_t *m, int *idx) {
     return m->vis_n;
 }
 
-enum { S_NONE, S_INSTALL, S_UPDATE, S_INSTALLED, S_Q_INSTALL, S_Q_UPDATE, S_Q_REMOVE, S_DISABLED, S_MENU };
+enum { S_NONE, S_INSTALL, S_UPDATE, S_INSTALLED, S_Q_INSTALL, S_Q_UPDATE, S_Q_REMOVE, S_DISABLED, S_MENU, S_REGISTER, S_Q_REGISTER };
 
 static int pkg_state(const mgr_t *m, int i) {   /* card_state() without the card's menu */
     const pkg_t *p = &m->pkg[i];
+    if (p->orphan) return p->queued ? S_Q_REGISTER : S_REGISTER;
     if (p->queued == Q_REMOVE) return S_Q_REMOVE;
     if (p->queued == Q_INSTALL) return installed(p) ? S_Q_UPDATE : S_Q_INSTALL;
     if (m->dev->problem[0] && !installed(p)) return S_DISABLED;
@@ -1750,7 +1849,7 @@ static void card_field(const mgr_t *m, int i, const char *f, char *b, int n) {
     else if (!p) snprintf(b, n, !strcmp(f, "state") || !strcmp(f, "inst") || !strcmp(f, "chan") || !strcmp(f, "cpu") ||
                                  !strcmp(f, "old") || !strcmp(f, "tested") || !strcmp(f, "shot") ? "0" : " ");
     else if (!strcmp(f, "state")) snprintf(b, n, "%d", card_state(m, i));
-    else if (!strcmp(f, "inst")) snprintf(b, n, "%d", installed(p));
+    else if (!strcmp(f, "inst")) snprintf(b, n, "%d", installed(p) && !p->orphan);
     else if (!strcmp(f, "init")) initials(p->name, b);
     else if (!strcmp(f, "shot")) snprintf(b, n, "%d", shot(p->id));
     else if (!strcmp(f, "kindtxt")) snprintf(b, n, "%s", is_addin(p) ? "ADDIN" : !strcmp(p->kind, "effect") ? "FX" : "INST");
@@ -1826,11 +1925,13 @@ static void act(mgr_t *m, int i, const char *f) {   /* act, reinstall or remove 
     int st = pkg_state(m, i);
     m->sel = i;
     if (!strcmp(f, "act")) {
-        if (st == S_INSTALL || st == S_UPDATE) requeue(m, p, Q_INSTALL);
+        if (st == S_REGISTER) requeue(m, p, Q_REGISTER);
+        else if (st == S_Q_REGISTER) requeue(m, p, 0);
+        else if (st == S_INSTALL || st == S_UPDATE) requeue(m, p, Q_INSTALL);
         else if (st == S_Q_INSTALL || st == S_Q_UPDATE || st == S_Q_REMOVE) requeue(m, p, 0);
         else if (st == S_DISABLED) say_locked(m, ERR, "Installing is turned off on this MPC (%s)", m->dev->problem);
-    } else if (!installed(p)) {
-        /* the menu (Reinstall, Remove) is only on installed plugins */
+    } else if (!installed(p) || p->orphan) {
+        /* the menu (Reinstall, Remove) is only on installed plugins (not on a folder MPC does not list) */
     } else if (!strcmp(f, "more")) m->menu = m->menu == i ? -1 : i;
     else if (!strcmp(f, "reinstall")) requeue(m, p, Q_INSTALL);
     else if (!strcmp(f, "remove")) {

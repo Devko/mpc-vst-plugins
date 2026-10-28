@@ -140,6 +140,23 @@ grep -qF "Last apply: 0 done, 1 failed and put back as they were. Faily: disk fu
 grep -qF "Newlib: needs glibc 9.99 or newer, this MPC has" /tmp/safe-glibc.out
 rm -rf /tmp/openmpc-pm; PM_GLIBC=2.39 /tmp/drive_addins one Oldos > /tmp/safe-os.out
 grep -qF "Oldos: is for a different MPC OS, and this one reads as 3.x (from its glibc 2.39). Nothing on the MPC was changed." /tmp/safe-os.out
+# a folder MPC does not list (plugin-meta.xml, no entry) is a card in INSTALLED; REGISTER adds its entry and nothing else changes
+SY=$(find /media -type d -name Synths 2>/dev/null | head -n 1)
+mkdir -p "$SY/Orphan Test Folder"; : > "$SY/Orphan Test Folder/o.so"
+cat > "$SY/Orphan Test Folder/plugin-meta.xml" <<EOF
+<PLUGIN name="Orphan Test" descriptiveName="Orphan Test" format="VST" category="Synth" manufacturer="OpenMPC"
+ version="1.0" file="%payload-path%/Orphan Test Folder/o.so" uid="4f544f31" isInstrument="1" fileTime="0" infoUpdateTime="0"
+ numInputs="0" numOutputs="2" isShell="0" hasARAExtension="0" uniqueId="1" pluginFormatName="VST"/>
+EOF
+SET=$(find /media /data -name MPC.settings 2>/dev/null | head -n 1 || true)
+! grep -q 4f544f31 "$SET"
+rm -rf /tmp/openmpc-pm; /tmp/drive_addins one "Orphan Test" 1 1 > /tmp/safe-orphan.out
+grep -q "apply_state 3" /tmp/safe-orphan.out || { cat /tmp/safe-orphan.out; exit 1; }
+sh /tmp/openmpc-pm/apply.sh
+grep -q "^orphan-Orphan-Test-Folder|ok|register" /tmp/openmpc-pm/result || { cat /tmp/openmpc-pm/result /tmp/openmpc-pm/apply.log; exit 1; }
+grep -q "uid=\"4f544f31\"" "$SET" && grep -q "file=\"$SY/Orphan Test Folder/o.so\"" "$SET" || { echo "FAIL: the entry was not added"; exit 1; }
+/tmp/drive_addins one "Orphan Test" 1 1 | grep -q "card 1: OR" && { echo "FAIL: a registered folder is still offered"; exit 1; }
+rm -rf "$SY/Orphan Test Folder"
 # a zip put on the drive (local-plugins/) is a card and installs by the same steps
 LD=$(dirname "$(find /media -type d -name Synths 2>/dev/null | head -n 1)")/local-plugins
 mkdir -p "$LD"; cp /p/vst/build/tests/Linky-1.0.0-mpc-armv7.zip "$LD/Mine-1.0.0.zip"
