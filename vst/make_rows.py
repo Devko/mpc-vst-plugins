@@ -23,11 +23,11 @@ def layout_rows():
             'button cx=%d cy=%d label="" key=%s img=images/%s w=%d h=%d when=%s' % (cx, cy, key, img, w, h, when))
         k = "r%d_" % r
         out.append('list x=24 y=%d w=1232 h=%d cols=1 rows=1 th=%d gap=0 key=card%d img=images/card_off.svg img_on=images/card_on.svg '
-                   'tx=136 ty=3 ttw=530 tth=34 tsize=28 tweight=bold tcolor=ececed when=%svis:on' % (t, H, H, r, k))
+                   'tx=136 ty=1 ttw=536 tth=38 tsize=33 tweight=bold tcolor=ececed when=%svis:on' % (t, H, H, r, k))
         # the thumbnails (shots.py adds them here), then the initials of a plugin without one and the corner text
         out.append('readout box=0 w=112 h=34 cx=90 cy=%d label="" key=%sinit tsize=32 tweight=bold tcolor=ececed talign=center tpad=0 when=%sshot:none' % (c - 2, k, k))
         out.append('readout box=0 w=40 h=14 cx=125 cy=%d label="" key=%skindtxt tsize=12 tcolor=c9ccd1 talign=right tpad=2' % (t + 55, k))
-        out.append('readout box=0 w=530 h=22 cx=425 cy=%d label="" key=%smeta tsize=19 tweight=regular tcolor=b4b7bc talign=left tpad=0' % (t + 53, k))
+        out.append('readout box=0 w=536 h=26 cx=428 cy=%d label="" key=%smeta tsize=23 tweight=regular tcolor=b4b7bc talign=left tpad=0' % (t + 52, k))
         b(425, c - 2, k + "open", "card_hit.svg", 540, 60, k + "vis:on")
         # badges: the channel and CPU on the first line, the old-install and tested ones on the second
         b(736, t + 20, "noop", "badge_stable.svg", 72, 26, k + "chan:stable")
@@ -35,9 +35,9 @@ def layout_rows():
         b(836, t + 20, "noop", "badge_cpu.svg", 112, 26, k + "cpu:on")
         b(752, t + 50, "noop", "badge_old.svg", 104, 26, k + "old:on")
         b(912, t + 50, "noop", "badge_tested.svg", 200, 26, k + "tested:on")
-        out.append('readout box=0 w=166 h=26 cx=924 cy=%d label="" key=%stested_txt tsize=21 tcolor=7fd6a8 talign=left tpad=0 when=%stested:on' % (t + 50, k, k))
-        out.append('readout box=0 w=80 h=28 cx=945 cy=%d label="" key=%sver tsize=26 tcolor=ececed talign=left tpad=0' % (t + 20, k))
-        out.append('readout box=0 w=64 h=20 cx=1012 cy=%d label="" key=%sfrom tsize=18 tcolor=f0b44a talign=left tpad=0' % (t + 22, k))
+        out.append('readout box=0 w=166 h=26 cx=924 cy=%d label="" key=%stested_txt tsize=22 tcolor=7fd6a8 talign=left tpad=0 when=%stested:on' % (t + 50, k, k))
+        out.append('readout box=0 w=86 h=32 cx=948 cy=%d label="" key=%sver tsize=31 tcolor=ececed talign=left tpad=0' % (t + 20, k))
+        out.append('readout box=0 w=64 h=22 cx=1014 cy=%d label="" key=%sfrom tsize=21 tcolor=f0b44a talign=left tpad=0' % (t + 22, k))
         for st, img in (("install", "btn_install"), ("update", "btn_update"), ("installed", "btn_installed"), ("q_install", "btn_q_install"),
                         ("q_update", "btn_q_update"), ("q_remove", "btn_q_remove"), ("disabled", "btn_disabled")):
             b(1129, c, k + "act", img + ".svg", 150, 44, "%sstate:%s" % (k, st))

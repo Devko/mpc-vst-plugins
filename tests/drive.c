@@ -15,6 +15,8 @@ static void *m;
 static const char *get(const char *k) { static char b[32][128]; static int i; i = (i + 1) % 32; b[i][0] = 0; e->get_param(m, k, b[i], 128); return b[i]; }
 static void set(const char *k, const char *v) { e->set_param(m, k, v); }
 static void press(const char *k) { set(k, "1"); set(k, "0"); }
+/* a page tap after a pause (as a finger), once or delivered twice (as MPC did on a Live III: the second one must not step again) */
+static void page(const char *k, int twice) { usleep(300000); if (twice) set(k, "1"); press(k); }
 
 static void cards(void) {
   printf("  [%s] %s | status(%s): %s | apply_state %s\n", get("page_txt"), get("summary"), get("status_kind"), get("status"), get("apply_state"));
@@ -94,7 +96,7 @@ int main(int argc, char **argv) {
   printf("DISCOVER\n"); cards();
   printf("details: tap card 2, BACK, thumbnail of card 1, page arrows ignored, queue from the details, BACK\n");
   set("card2_1", "1"); details(); press("d_back"); printf("  view=%s\n", get("view"));
-  press("r1_open"); press("page_next"); details(); press("d_act"); details(); press("d_act"); press("d_back"); cards();
+  press("r1_open"); page("page_next", 0); details(); press("d_act"); details(); press("d_act"); press("d_back"); cards();
   printf("tag search: details of card 1, its first tag, then clear\n");
   press("r1_open"); press("d_tag1"); printf("  view=%s hdr=%s chip=%s\n", get("view"), get("hdr"), get("tag_txt")); cards();
   press("tag_clear"); printf("  hdr=%s\n", get("hdr")); cards();
@@ -115,7 +117,7 @@ int main(int argc, char **argv) {
   press("sort_btn"); press("sort_pick4"); printf("  sort=%s (%s)\n", get("sort"), get("sort_txt")); cards();
   press("kind_btn"); printf("  kind_open=%s hl=%s\n", get("kind_open"), get("kind_hl")); press("kind_pick3"); printf("  kind=%s (%s)\n", get("kind"), get("kind_txt")); cards();
   press("kind_btn"); press("kind_pick1"); press("sort_btn"); press("sort_pick1"); printf("  back to %s, %s\n", get("kind_txt"), get("sort_txt"));
-  press("page_next"); cards(); press("page_next"); cards();
+  page("page_next", 0); cards(); page("page_next", 1); cards();
   set("tab", "2"); printf("UPDATES\n"); cards();
   set("tab", "1"); printf("INSTALLED\n"); cards();
   set("tab", "0"); set("kind", "2"); printf("EFFECTS\n"); cards(); set("kind", "0");

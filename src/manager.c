@@ -94,7 +94,7 @@ typedef struct {
     unsigned vis_rev;             /* visible()'s cache: the rev it was worked out at (+1, so 0 = none), its list */
     int vis_n, vis_idx[MAXPKG];
     int confirm;                  /* the restart prompt is open (the second APPLY); only shown while ready */
-    long long theme_t;            /* ms of the last accepted theme press (monotonic) */
+    long long theme_t, page_t;    /* ms of the last accepted theme / page press (monotonic) */
     int theme, theme_applied, theme_can;   /* 0 dark, 1 light: the one wanted, the one in `Plugin Skins` at MPC's start, and whether the folder holds both skins */
     char own[300];                /* this plugin's own folder (its skins live there) */
     int tsel, reprompt;           /* which usable location new installs go to; CHANGE re-prepares and reopens the prompt */
@@ -1506,6 +1506,17 @@ static void act(mgr_t *m, int i, const char *f) {   /* act, reinstall or remove 
     }
 }
 
+/* MPC sent one tap twice on a Live III (2026-10-28 trace of THEME, and the page arrows): a second press within `ms` of the last
+ * accepted one is the same tap. Returns 1 for that repeat; otherwise records the time and returns 0. */
+static int repeated(long long *last, int ms) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    long long now = ts.tv_sec * 1000LL + ts.tv_nsec / 1000000;
+    if (now - *last < ms) return 1;
+    *last = now;
+    return 0;
+}
+
 static void mgr_set_param(void *inst, const char *key, const char *val) {
     mgr_t *m = inst;
     double v = atof(val);
@@ -1516,11 +1527,7 @@ static void mgr_set_param(void *inst, const char *key, const char *val) {
     int busy = m->busy == J_PREPARE || m->busy == J_LAUNCH;
     if (m->confirm && !m->reprompt && (!m->ready || busy)) m->confirm = 0;   /* nothing left to restart for */
     if (v >= 0.5 && !strcmp(key, "theme_btn") && m->theme_can && !m->confirm && !busy) {   /* the next apply carries it */
-        struct timespec ts;   /* MPC sent one tap twice on a Live III (2026-10-28 trace): a second press within 700 ms is the same tap */
-        clock_gettime(CLOCK_MONOTONIC, &ts);
-        long long now = ts.tv_sec * 1000LL + ts.tv_nsec / 1000000;
-        if (now - m->theme_t < 700) { pthread_mutex_unlock(&m->mu); return; }
-        m->theme_t = now;
+        if (repeated(&m->theme_t, 700)) { pthread_mutex_unlock(&m->mu); return; }
         m->theme = !m->theme;
         theme_save(m);
         m->ready = 0;   /* a prepared apply.sh does not have the swap (or still has it): prepare again */
@@ -1601,15 +1608,15 @@ static void mgr_set_param(void *inst, const char *key, const char *val) {
     } else if (key[0] == 'd' && key[1] == '_') {   /* d_act, d_more, d_reinstall, d_remove */
         int i = detail_of(m);
         if (i >= 0 && !busy) act(m, i, key + 2);
-    } else if (!strcmp(key, "page_prev") && !m->detail[0] && m->page > 0) { m->page--; m->menu = -1; }   /* hidden by the details */
-    else if (!strcmp(key, "page_next") && !m->detail[0] && m->page + 1 < pages) { m->page++; m->menu = -1; }
+    } else if (!strcmp(key, "page_prev") && !m->detail[0] && m->page > 0 && !repeated(&m->page_t, 250)) { m->page--; m->menu = -1; }   /* hidden by the details */
+    else if (!strcmp(key, "page_next") && !m->detail[0] && m->page + 1 < pages && !repeated(&m->page_t, 250)) { m->page++; m->menu = -1; }
     else if (!strcmp(key, "refresh")) post(m, J_REFRESH);
     else if (!strcmp(key, "update_all") && !busy) {
         for (int i = 0; i < m->npkg; i++) if (has_update(&m->pkg[i]) && !m->pkg[i].queued) requeue(m, &m->pkg[i], Q_INSTALL);
     } else if (!strcmp(key, "apply") && !busy) {
         if (m->ready) m->confirm = 1;   /* restart only from the prompt */
         else if (count_queued(m) && !m->dev->problem[0]) post(m, J_PREPARE);
-    } else if (key[0] == 'r' && key[1] >= '1' && key[1] <= '3' && key[2] == '_' && !m->detail[0]) {
+    } else if (key[0] == 'r' && key[1] >= '1' && key[1] <= '0' + ROWS && key[2] == '_' && !m->detail[0]) {
         int k = m->page * ROWS + key[1] - '1';
         const char *f = key + 3;
         if (k < nv && !strcmp(f, "open")) {   /* the thumbnail */
@@ -1688,7 +1695,7 @@ static int mgr_get_param(void *inst, const char *key, char *b, int n) {
         int k = m->page * ROWS + key[4] - '1', i = k < nv && d < 0 ? idx[k] : -1;
         if (strstr(key, "_on")) snprintf(b, n, "%d", i >= 0 && i == m->sel);
         else snprintf(b, n, "%s", i >= 0 ? m->pkg[i].name : " ");
-    } else if (key[0] == 'r' && key[1] >= '1' && key[1] <= '3' && key[2] == '_') {
+    } else if (key[0] == 'r' && key[1] >= '1' && key[1] <= '0' + ROWS && key[2] == '_') {
         int k = m->page * ROWS + key[1] - '1';
         card_field(m, k < nv && d < 0 ? idx[k] : -1, key + 3, b, n);
     } else if (!strcmp(key, "view")) snprintf(b, n, "%d", d >= 0);
