@@ -19,6 +19,17 @@ feature on our side). Both plugins' `tested.json` carry the device. This settles
   are at `/data/Settings/MPC/MPC.settings`. JV-880 1.0.8 aarch64 installed there (`install.sh -t /nvme/Synths`) loads, draws its
   skin, browses expansions and makes sound — `pluginList-arm-64bit` confirmed again. The installer now handles this: `mpc-store.sh`
   defaults to `/nvme/Synths` when `/sdcard` is absent, and `tools/desktop` scans `/nvme/Synths` and makes it the "internal drive".
+- **MPC One (Gen2), MPC OS 3.9.1 (2026-10-28, a user's `mount`/`df -h` over SSH plus the stock firmware's mount units, offline):
+  no NVMe.** `/` is a 624 MB dm-verity root (96% used); `/synths` is eMMC `mmcblk0p11` (17.8 GB, 91% used, 1.5 GB free);
+  `/data` is `mmcblk0p12` (33 GB, shown 100% used: it holds the user-storage image); **`/storage` is a 31 GB loopback
+  (`loop0p1`, 17 GB free)**, the Key 37's layout; the SD card is `/media/MPC`. The firmware mounts `/nvme`, `/content`,
+  `/sdcard` or `/storage` depending on device tree flags under `/sys/firmware/devicetree/base/chosen/` (`inmusic,nvme-fitted`,
+  `inmusic,emmc-content`, `inmusic,internal-sd-fitted`, `inmusic,acvs-loopback-content`), so the internal drive is not
+  `/nvme/Synths` everywhere. `tools/desktop` now tries `/nvme/Synths` then `/storage/Synths` as the internal drive and lists
+  `/storage` as a drive that can be given a Synths folder; `mpc-store.sh` falls back the same way. **Not confirmed on a One:**
+  whether `/storage/Synths` exists and is exec-mounted there, which folders MPC itself scans (the user was asked for their
+  `MPC.settings` plugin paths), and whether `/data` being full affects settings edits. `tools/release.py` still prints
+  `-t /nvme/Synths` for Gen2 builds, which is wrong on a One.
 - `vst.json` `targets: ["armv7", "aarch64"]` + `tools/build_port.sh ... all` is now proven end to end on a second, ordinary port
   (Profit-08: no custom build script, just the generic path) — any future port can follow the same checklist (docs/PORTING.md).
 

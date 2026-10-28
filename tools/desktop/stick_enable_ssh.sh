@@ -90,7 +90,16 @@ else
         ssh-keygen -q -t ed25519 -f /run/ssh/hostkey -N "" && HK="-h /run/ssh/hostkey"
     fi
     [ -f /run/ssh/sshd.pid ] && kill "$(cat /run/ssh/sshd.pid 2>/dev/null)" 2>/dev/null
-    # shellcheck disable=SC2086
-    /usr/sbin/sshd $HK $AUTHOPTS -o PidFile=/run/ssh/sshd.pid
+    # In its own systemd unit when there is one: started straight from the stick's script, sshd would live in that script's transient
+    # unit and be killed when the unit ends (the plugin manager's hand-over ends it within seconds).
+    if command -v systemd-run >/dev/null 2>&1 && [ -z "${ENABLE_SSH_NO_UNIT:-}" ]; then
+        systemctl stop mpc-usb-sshd >/dev/null 2>&1 || true   # set -e: it exits 5 when there is no such unit yet
+        # shellcheck disable=SC2086
+        systemd-run --unit=mpc-usb-sshd --collect /usr/sbin/sshd -D $HK $AUTHOPTS -o PidFile=/run/ssh/sshd.pid >/dev/null 2>&1 \
+            || /usr/sbin/sshd $HK $AUTHOPTS -o PidFile=/run/ssh/sshd.pid
+    else
+        # shellcheck disable=SC2086
+        /usr/sbin/sshd $HK $AUTHOPTS -o PidFile=/run/ssh/sshd.pid
+    fi
     echo "done: sshd is running with that key, until the next reboot (re-run this, e.g. by reinserting the stick, after one)"
 fi

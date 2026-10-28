@@ -1727,3 +1727,187 @@ Maschine 4, Rhythmbank 6; JV-880, Dexed and Profit-8 show all theirs. Existing b
   own binary. Built with `tools/mpc310_on_391/` (2 copies of the salt found in the image, as in the binary).
 - Caveats: 3.10 may rewrite `MPC.settings` (the stick backs it up first); projects saved in 3.10 may not open in 3.9.1.
 
+
+## 2026-10-26: Xenia (Waldorf Microwave XT emulation) port started (offline only, no ROM, no device)
+Own repo `mpc-vst-xenia` (Gen2 only, GPL-3.0), built like the Osirus port. "Xenia" is gearmulator's name for its Microwave XT plugin (`waldi/xt/xtLib`, on `wLib`, the
+68k `mc68k` emulator and the DSP56300 JIT); unlike Osirus there was no Schwung glue to adapt, so `src/dsp/xenia_engine.cpp` drives `xt::Device` through
+`synthLib::Plugin` itself. Facts so far, all from source and offline runs, none from a ROM or a device:
+- ROM: `xt::RomLoader::findROM()` takes a 256 kB `.bin` starting `C0 DE`, or two 128 kB halves (starting `C0 00` / `DE 00`), or an OS update `.mid` (166-171 kB) over a full ROM; the highest version wins.
+- Parameters: single parameter change sysex `F0 3E 0E <dev> 20 <part> <idxH> <idxL> <raw> F7`; `xt::State` caches the edit buffer and ROM singles (bank A/B, `getSingle` offsets 0 and 100)
+  and forwards to the device; a ROM single is fetched by a `SingleRequest` (`00 <bank> <prog>`) the device answers with a 265-byte dump (name at byte 247, 16 chars).
+- The device runs at 40 kHz with 4 output channels (main 0/1); `Plugin` resamples to the host's rate. Boot is synchronous inside the `xt::Device` constructor (runs the firmware until `isBootCompleted`).
+- Offline: the wrapper host test passes with the engine linked (x86, ASan/UBSan, no ROM: the engine reports "No Microwave XT ROM in xenia/roms/"); an aarch64 `xenia.so` links with `--no-undefined`.
+  A Debian bookworm toolchain (the Docker image) keeps glibc <= 2.36; an Ubuntu 24.04 cross toolchain links `__isoc23_strtol` (GLIBC_2.38), which the catalog would reject.
+- A Chromium without Docker can render the skin: `pip install --target` Playwright, a `sitecustomize.py` that gives `launch()` the installed browser's `executable_path`, and `tools/gen_vst.py` / `studio.py preview` run unchanged.
+- Popup lists of 97 options (wavetable names) open as a 9-column x 11-row panel with `cw=118`; a list of 128 numbered options (LFO delay, arp tempo) cannot fit and is a knob instead.
+Open: the first boot of a ROM, level, CPU on a Live III, everything on a device. Status and next steps: `mpc-vst-xenia/docs/DEVELOPMENT.md`.
+
+
+## 2026-10-27: Xenia first ROM boot (x86) and first run on a Live III (device: Live III, MPC OS 3.9.1.2)
+`mpc-vst-xenia`, tested with a real Microwave XT ROM (two 128 kB halves). x86 facts come from `test/engine_test.cpp`, device facts from the user's Live III.
+- **The XT boots in Multi mode, and a single dump to the Single-mode edit buffer (`0x20`) is accepted and ignored.** On the device the bank/preset steppers changed the name and the
+  value cache but the sound stayed the same; the x86 test reproduced it (four different presets: the same rms and brightness). Sending the ROM single to the Multi-mode edit buffer
+  (`0x30`, location 0 = part 1, checksum redone) makes the presets sound different. Single parameter change sysex works either way (the part byte addresses it). The test compares a
+  note's rms and brightness across presets: names alone prove nothing.
+- Boot of the emulator takes 0.5-0.7 s on x86. The engine must not report Ready until the first sound has arrived, or the first notes play the power-on state (silence).
+- ROM single requests are sometimes dropped by the emulated XT (one request per four blocks): the name harvest needed 3 passes on x86 to get all 200 names, so it re-scans for what is
+  still missing (bounded); a once-through harvest left tiles blank until selected on the device.
+- Level: with the sound in the right buffer a note (MIDI 60, velocity 100) peaks at 0.165 (-16 dBFS) at 1.0 gain, so the GAIN default is 250% (peak about 0.31 on x86). **Not compared with a
+  factory instrument:** the Live III has no audio capture tool and the factory synths are firmware built-ins.
+- **CPU on the Live III:** the emulator's thread (`DSP A`) takes 35-36% of one of the eight cores (three 10 s windows, DROPOUTS 0); x86 21%. The cost is the emulated DSP running at the real
+  instrument's speed, so it is the same whatever is playing. Method: `utime + stime` (fields 14 and 15) of `/proc/<MPC pid>/task/<tid>/stat` (the process-level `stat` is the main thread
+  only); BusyBox has no `getconf`, CLK_TCK is 100. `bench.sh` is meaningless here (silent PASS).
+- Skin: a list row's text defaults to `theme_accent`; with `theme_lcd` == `theme_accent` the text is invisible on an idle tile and only shows on the lit one (and the same for readouts and
+  popups), so keep the two apart (Xenia: olive `theme_lcd` 9fae62, near-black accent 1f2414) or set `tcolor=` on the list. A selected tile's border takes `theme_seg_active` (from `shadow_skin.py`, not checked by eye on the device). Panel frames come
+  from `skin.css` (`.frame-border`, `.frame-title`, `.frame-rule`); the chassis brightness is set in `tools/make_skin.py` (a wordmark baked against the old colour needs its RGB brightened with
+  the same factor, or a darker box shows behind it).
+- Q-Link sub-pages: several `qlinks "Title" = key,...` lines under one tab make one MPC sub-page each (up to 16 keys, four per outlined column, `-` leaves a slot empty). A tab with more knobs than
+  one set holds needs them or the rest have no Q-Link. A column that mixes keys from several rows outlines one big rectangle: group each column by what is drawn together.
+- Install: `install.sh` into `/nvme/Synths` prints `cp: can't preserve ownership` for every file (harmless). Once in nine installs `acvs` was left inactive after the installer's stop (no
+  "canceled" message): `systemctl start acvs` brought MPC back. A restart cleared the filmstrip cache (524 MB afterwards; 3.9 GB before the first install).
+- Verified on the Live III: loads, sound, bank and preset steppers, BANKS tiles and the data wheel on banks and patches, Q-Link sub-pages, the option popups (wavetable list), DROPOUTS 0.
+  **Not verified:** saving and reloading a project, INIT PATCH, long sessions (a stuck note seen once at the start of the early builds did not recur; PANIC clears it), the level against a
+  factory instrument.
+
+## 2026-10-27: desktop installer "easy stick" (offline; device test pending)
+
+- Eurikon's `v1.2.0-beta.1` zip (sha256 `8e8aa956...ab22`, 1.8 MB) read offline: a universal stick (`autorun/` for 3.9.1, `Plugin Manager helper.xpa` for 3.10, runtimes `armv7` and `aarch64`); `open.sh` chooses by `uname -m`; Gen2 uses `/data/Settings/MPC/MPC.settings` and prefers `/nvme/Synths`. He has Gen1 hardware only. Nothing from it was run on a device yet.
+- `tools/desktop/easystick.go`: downloads the pinned release, checks the hash, unpacks onto an empty drive (path-traversal refused, nothing written if any name is unsafe). Go tests green (docker golang:1.26).
+- Our firmware-built stick is kept under Advanced (SSH, addin reapply). Our previous Force/Live III stick was backed up to `~/stick-backup-ours-2026-10-27` (outside the repo; contains `autorun.check`, not the salt).
+
+### Device test, Live III (Gen2), MPC OS 3.9.1 then 3.10 (2026-10-27, device)
+
+- **3.9.1: works.** Eurikon's `v1.2.0-beta.1` stick: stock prompt appeared on a fresh insertion, Open launched the manager, it installed Daemon 1.0.1 (aarch64) into `/nvme/Synths` and updated `MPC.settings` (backup made); MPC returned; the plugin loaded on a track. Shift + Menu (2 s) reopened the manager. Teardown logged `ERROR: Could not restore CRTC` (harmless here).
+- Autorun runs **one** script at boot: with a second autorun stick already inserted at boot (our 3.10-on-3.9.1 stick), that one wins and the other stick gets no prompt; reinsert it after boot. With the 3.10 overlay active, no autorun prompt appears at all (the 3.10 binary has no autorun reader).
+- **Addin clash (found, not fixed):** his temporary `99-mpc-usb-shortcut.conf` uses an `EnvironmentFile` that replaces our `Environment=LD_PRELOAD` (drop-in on `/run`). His supervisor reads `LD_PRELOAD` from the running MPC's `/proc` environment; on Gen2 the addins were applied after MPC started, so it saw none and MPC ran with only his hook until the session ended. Reading `systemctl show acvs -p Environment` would include the `/run` drop-ins.
+- **3.10 on Gen2: helper loads but the manager does not open.** `Plugin Manager helper.xpa` imported to `/nvme/MPC Documents/Devices/Plugin Manager helper`; after restart the journal shows `Found, link: Plugin Manager` then `Plugin manager helper: native UI binding unavailable`; Shift + Menu does nothing. Its Lua reads `debug.getupvalue(mpc.ui.popups.ShowInfoPopup, 2)` and needs a userdata, which this MPC (3.10.0.49 run as an overlay on 3.9.1) does not give. Not conclusive for a stock 3.10 Gen2 (ours is an overlay); reported to the author.
+
+### Live III (Gen2), 3.10 overlay: the community manager's helper opens, then MPC crash-loops on return (2026-10-27, device + offline)
+
+- **Native UI binding on Gen2 3.10.0.49:** the helper's `pmu_ui_init` failed at its first data check: the std::function manager/invoker are at `base + 0x1926ce0` / `0x1926740`, not the `0x18f7720` / `0x190e6a0` in `v1.2.0-beta.1`. Every other fingerprint and pointer-chain value matched (firmware hash, 10 instruction words, closure, member, queue words), checked with an instrumented build on the device. With the two constants changed Shift + Menu opened the manager on a Gen2 3.10.
+- Our 3.10-on-3.9.1 overlay is only inside MPC's mount namespace, so the helper's `bootstrap.sh` (a systemd unit, host namespace) sees the 3.9.1 `/usr/bin/MPC` and exits "unsupported firmware" (status 10). Test-only quirk; on a real 3.10 it passes.
+- **After Return to MPC, MPC segfaulted about 1.4 s after every start (18+ restarts, Sentry uploads).** Two crashpad minidumps (`/data/sentry/.sentry-db`) show the same deterministic crash: `pc` = `mpc_remote_addin.so + 0x13ae4` (entry of its `snd_rawmidi_read`, stack at its limit), `lr` = `forcespoof.so + 0x63e4` (its `snd_rawmidi_read` calling its next function). That is runaway recursion between the two shims' `snd_rawmidi_read` wrappers, which appeared when the manager's temporary `99-mpc-usb-shortcut.conf` appended its `shortcut-hook.so` (a fifth `snd_rawmidi_read` wrapper) after commander, forcespoof, remote and skipback. Recovery: `systemctl stop mpc-usb-manager` (removes the drop-in) then restart `acvs`. Likely cause, not proven here: commander's `dlsym` breaks `dlsym(RTLD_NEXT)` chaining (see 2026-10-13); the shims on this device may predate the dlvsym fix.
+
+### 2026-10-27: desktop installer: Advanced is now "turn on SSH", optionally combined with the plugin manager (offline only)
+
+- `BuildSSHStick` (tools/desktop/stick.go) replaces the Go `BuildStick`: SSH (key or password, one required) + addin reapply, plus the community manager's bundle when ticked (default). The manager's files stay byte-identical; its `open.sh` moves to `autorun/manager-open.sh`; our wrapper `open.sh` detaches into `mpc-usb-advanced`, runs `mpc-extras.sh`, then `exec`s the manager. `autorun.check` covers all listed files (so it still needs the firmware salt, 3.9.1 only); `USB-SHA256.json` is regenerated.
+- `mpc-extras.sh` restarts `acvs` once when `systemctl show acvs -p Environment` LD_PRELOAD differs from the running MPC's `/proc/<pid>/environ`: that is the case on a Live III after a reboot, and it stops the manager's supervisor reading no addins (see the 3.10 entry above).
+- Dropped from the app's stick: the preset catalog list (`install.txt`) and the embedded `mpc-store.sh`; `tools/usb_stick/*.py` keep them. Go tests (docker golang:1.26) cover layout, check, inventory, refusals and a run of the wrapper plus extras with fake addins. Not run on a device yet.
+
+### Live III (Gen2, 3.9.1): the combined advanced stick, first device run (2026-10-27, device)
+
+- Stick built by the desktop code from the Live III's own `/usr/bin/MPC` (3.9.1, sha256 a36af088...) plus the pinned manager release. Stock prompt appeared, Open ran the wrapper: `mpc-extras-result.txt` shows SSH enabled with the key, all five addins reapplied, "Restarting MPC once so the addins load", then the manager opened, downloaded the catalog and closed on Return.
+- **Two problems found.** (1) SSH was gone afterwards (port 22 closed) although the log said sshd was running: sshd was started from the stick's transient unit and killed when it ended. Fixed in `enable_ssh.sh` (own unit `mpc-usb-sshd`); not re-tested on the device. (2) After Return MPC crash-looped (display not lit) because the released `shortcut-hook.so` crashes MPC when commander is loaded (the dlsym/RTLD_NEXT chain, see the 3.10 entry); pulling the stick ended the session and MPC came back. Upstream PR with the hook fix: https://github.com/Eurikon/plugin-manager-usb-for-open-mpc/pull/1.
+- The Live III's remote addin answers on its LAN port even with SSH down: its MCP endpoint (`POST /mcp`) can read the stick's result files when SSH is unavailable.
+
+### 2026-10-28: Eurikon merged our PR; installer pin moved to v1.2.0-beta.2 (offline check; device retest pending)
+
+- His PR #1 (the two Gen2 3.10 offsets, and resolving the hook's next `snd_rawmidi_read` through libc's versioned `dlsym`) was merged 2026-10-27 and shipped as `v1.2.0-beta.2` (zip sha256 `44a43647...b3a1`). He also changed the supervisor to read the service's current environment and ordered environment files before restarting MPC, which covers the addin-clash note. Compared with beta.1: same file list and an identical `autorun/open.sh`; changed only the helper `.xpa`, the checksum files and the shortcut/hook binaries. The aarch64 hook now contains `dlvsym`.
+- `easyStickVersion`/`easyStickSHA256` in `tools/desktop/easystick.go` now point at it. Still to confirm on the Live III: the hook no longer crashes MPC with commander loaded, the easy and combined sticks end to end, and 3.10.
+
+### 2026-10-28: Live III (Gen2, 3.9.1) retest with the community manager v1.2.0-beta.2 (device)
+
+- The combined advanced stick (our wrapper + beta.2 bundle, built from the Live III's own `/usr/bin/MPC` and the sshd fixes) ran end to end: stock prompt, SSH step, five addins reapplied, one MPC restart, manager opened, catalog install of a plugin (CW-78 1.1.2) worked, Return to MPC.
+- **Confirmed fixed:** no crash after Return with commander loaded (beta.2 hook, `dlvsym`); the manager's session kept the four addins in `LD_PRELOAD` in order with its hook appended last (its supervisor now reads the service's environment); `mpc-usb-sshd` (own unit) keeps SSH up after the stick's script ends.
+- Found and fixed on the way: `enable_ssh.sh` aborted with status 5 under `set -e` when `systemctl stop mpc-usb-sshd` met a unit that did not exist yet (the first sshd fix); the new test in `tools/test_usb_stick.py` runs that exact block against a `systemctl` that exits 5 and fails on the old script.
+- Not retested: MPC OS 3.10 on Gen2 with beta.2's helper (our 3.10 is an overlay on 3.9.1, where the helper's `bootstrap.sh` also needs `MPC=` pointed at the 3.10 binary, a quirk of that setup only).
+
+### 2026-10-28: Live III (Gen2), MPC 3.10.0.49 overlay on 3.9.1, community manager v1.2.0-beta.2 helper (device)
+
+- Imported the beta.2 `Plugin Manager helper.xpa` into `/nvme/MPC Documents`, restarted: the helper logged no "binding unavailable" (his corrected Gen2 offsets work). With the overlay-only `MPC=` patch in the helper's `bootstrap.sh`, a fresh stick insertion opened the manager; it downloaded the catalog and closed on Return. MPC restarted into 3.10 with the four addins in `LD_PRELOAD` in order and the manager's hook last, `NRestarts=0`, no core dumps: the commander `dlsym` crash is gone on 3.10 as well.
+- Non-fatal log line: `Plugin manager helper: loading popup unavailable; continuing launch` (the optional native loading dialog). Still not a stock 3.10 install: the overlay needs the `bootstrap.sh` patch above to pass its firmware check; a real 3.10 would not.
+
+
+### 2026-10-28: installer pin moved to the community manager's stable v1.2.1 (offline check; device retest pending)
+
+- Twisted Cable (Eurikon) promoted beta.2 to the stable `v1.2.0`, then shipped `v1.2.1` (2026-10-28; zip sha256 `c05199ae...2b9f`, matches his published `.sha256`). 1.2.1 fixes Gen2 plugin installs when the selected SSD has no `Synths` folder: storage follows MPC's Content Download Drive setting, SETUP > Plugin location allows manual drive/folder choice, and an unsuitable drive stops the install instead of silently picking another (his offline validation only; hardware confirmation pending). Compared with beta.2 (1.2.0; 1.2.1 likewise): `autorun/open.sh` and `autorun.json` are identical, so our wrapper's assumptions hold; only the two `manager` binaries, the helper `.xpa` and the checksum files changed. `easyStickVersion`/`easyStickSHA256` in `tools/desktop/easystick.go` now point at it.
+- His note: people on 1.1.x or the 1.2 betas must re-download (1.2 is a migration, not an update); from 1.2 on, auto-update works. The helper's "loading popup unavailable" log line is expected on our 3.10-over-3.9.1 overlay (the popup only hides a background flicker); a stock 3.10 device is still unconfirmed.
+- **Pin file (offline-tested):** the installer now reads the reviewed release from `tools/desktop/easystick-pin.json` on `main` at run time (5 s timeout), so adopting a tested release is a one-file PR with no installer release. A pin is accepted only if its URL is under the manager project's releases and the sha256 is 64 hex digits; anything else, or no network, falls back to the compiled-in pin. The zip hash is checked either way. Anyone who can push to `main` can therefore change what the stick runs as root, the same trust as our releases.
+- **2026-10-28 rollback to v1.2.0 (user report, not reproduced by us):** a Live III owner on MPC OS 3.10 (his repo's issue #3) reimaged the stick with the latest bundle and re-imported the helper; Shift+Menu then gives a brief black screen and returns to project select, and going back to the previous release worked again (reported to us second-hand). The 1.2.1 helper `.xpa` differs from 1.2.0 only in its runtime hash files (`bootstrap.sh`, `controller.ini`, the entry `.so` files are identical); the `manager` binaries differ (`main.cpp`/`plugin_storage.cpp` added for the Content Download Drive). So the suspect is the 1.2.1 manager failing at start, not the helper. The tradeoff: 1.2.0 can fail installs on an SSD with no `Synths` folder (his issue #2). The pin file and the compiled-in fallback now point at v1.2.0 until he has looked at it.
+- Still to do on the Live III: one run of the v1.2.0 / v1.2.1 stick (3.9.1 path), to confirm nothing regressed from beta.2.
+
+## 2026-10-27: skin search path, read-only look at a Live III (3.10) and a Force (3.9.1) (device, read-only; hypothesis not yet tested)
+
+Question: do plugins installed to some folders load on MPC OS 3.10 but show no skin because the folder is not a `SynthContentLocations` entry? Nothing was written to either device.
+- **Live III (Gen2), device:** rootfs 3.9.1, running `MPC` 3.10.0.49 (bind-mounted from a kit on `/data` over `/usr/bin/MPC` and `/usr/share/Akai`, see 2026-10-24). The journal still prints `MPC 3.9.1`, so it is not a version check there. Key `pluginList-arm-64bit`. `SynthContentLocations`: `/nvme/Synths`, `/synths/Expansions`, `/synths/Synths`, `/usr/share/Akai/Content/Synths`. All 29 registered third-party plugins are under `/nvme/Synths` (listed) and have `Plugin Skins/TUI.json`.
+- **Force (Gen1), device:** 3.9.1, key `pluginList-arm`. Locations: `/media/662522/Synths`, `/sdcard/Expansions`, `/sdcard/Synths`, `/synths/Synths`, `/usr/share/Akai/Content/Synths`. All 72 registered plugins are under a listed location (66 `/sdcard/Synths`, 6 `/media/662522/Synths`); 70 have a skin folder, 2 Airwindows channel plugins have none.
+- Both units' `MPC.settings` kept every registration across many saves, and the Live III's across the move to 3.10 (13 entries in `bak-before-310`, 29 now). No unlisted-folder case exists on either unit, so this shows nothing yet about skins for unlisted folders.
+- `<PLUGIN>` tags span several lines in `MPC.settings`; a per-line grep undercounts them. Join the lines first.
+
+## 2026-10-27: a plugin's skin is found only through a `SynthContentLocations` entry; tested on MPC 3.10.0.49 (device: Live III, Gen2)
+
+Write test on a Live III running the 3.10.0.49 app from a kit over a 3.9.1 rootfs. A copy of an installed plugin was registered in `pluginList-arm-64bit` with a new name and uid, in a `Synths` folder (`/nvme/Synths-test/Synths`, exfat, rw) that is not in `SynthContentLocations`. The plugin always loaded from its `file=` path (the log shows `Attempting to load VST: <that path>`); only the skin varied.
+- **A copy whose binary still reports the original name is a trap.** With the copy's own `Plugin Skins` hidden, a skin still drew: MPC found the original plugin's skin in a listed folder, apparently by the name the loaded binary reports (the log shows `Creating VST instance: lucky_dip`), not the registered name. The test only means something once the copy's binary reports its own name (same-length patch of the name string and the uid in the `.so` copy).
+- **Unlisted folder, own skin present, binary renamed: loads, no skin.**
+- **Same folder added to `SynthContentLocations` with MPC stopped, then start: the skin draws.**
+- **Trailing slash** (`<Location>/nvme/Synths-test/Synths/</Location>`): the skin still draws, and MPC's own later save keeps the slash verbatim.
+- **MPC 3.10 kept our edits:** after each start and a later save, the locations list (order and content) and the plugin entry were unchanged; the only diff against what was written was the unrelated `MidiDevices.Table` line. Not tested: a clean-quit rewrite, a location with a space in its own path, a leaf not named `Synths`.
+- `MPC.settings` has CRLF line endings: a pattern ending in `/>` needs `[ \t\r]*$`, and inserted lines need `\r` or the file ends up mixed.
+- Offline from this: a plugin installed under a folder that is not a content location loads but shows no skin, so an installer or manager that falls back to such a folder needs to say so or add the location. Read-only look at the two devices is in the 2026-10-27 entry above.
+
+## 2026-10-27: MPC 3.9.1 vs 3.10.0 binaries, skin and content-location strings (offline, stock update images; hashes checked against device)
+
+Extracted the rootfs (largest xz stream) of `MPC-3.9.1-Gen2`, `MPC-3.10.0-Gen2`, `MPC-3.10.0-Gen1` and `Force-3.9.1` update images with `debugfs -c`, diffed `strings` of the four `MPC` executables, and read one stock Gen2 `data` dump. Gen1 3.9.1 is the Force image (board `inmusic,ada2`; the 3.10.0 Gen1 image is `inmusic,acv5`), so the Gen1 comparison is Force 3.9.1 against MPC 3.10.0, not like for like. Everything below from strings is **inference**; no disassembly (no aarch64 disassembler here).
+- **Device check of the binaries:** a Live III's rootfs `MPC` and its 3.10 kit `MPC` are byte-identical to the Gen2 3.9.1 and 3.10.0 image binaries. The Force's `/usr/bin/MPC` has the image's size but a different hash (patched, as expected for that unit), so use the image as the stock reference.
+- **3.9.1 → 3.10.0, both generations the same:** the path literals are unchanged (`/sdcard`, `/nvme`, `/synths`, `/storage`, `/content`, `/media/az01-internal`, `/media/az01-internal-sd`, `/media/acvs-content`, `/media/acvs-synths`, `/usr/share/Akai/Content/Synths`, `/data/Settings`), and `Plugin Skins` and `SynthContentLocations` sit in the same string-table neighbourhood. Nothing skin- or location-related is new. New in 3.10.0: `*.scriptpkg`, `/usr/bin/az01-signed-fs`, `autorun.json` and the "Script detected on ... Do you want to run it?" prompt (autorun only; no plugin or skin folder is named near it), `/usr/bin/umount`, `nvme.mount`/`synths.mount` (next to USB-mux and xhci strings, so apparently unit names for USB mode, not scanning). Gone: the `.check` literal. `autorun` and `.json` are still present in 3.10 (the 2026-10-23 entry said they were gone).
+- **Gen1 vs Gen2 (same version):** same path literals (the `/nvme` string is in the Gen1 binary too). The plugin key suffix `64bit` is a literal only in the Gen2 binaries; `pluginList` and `-arm` are separate literals, so the key is built at run time.
+- **What MPC does not contain:** `plugin-meta.xml` is not referenced by `MPC` or any other `/usr/bin` or `/usr/sbin` binary (only `MPC` mentions `Plugin Skins`), and there are no `noexec`, `/proc/mounts`, `getmntent`, `exfat` strings, so nothing says a location is filtered by mount type before it is scanned. `removable`, `statfs` and `edisks` are present once to three times; what they gate is unknown.
+- **Fresh-install default list, device/dump evidence only:** a stock Gen2 `data` dump (2026-10-09, before any plugin) lists `/synths/Expansions`, `/synths/Synths`, `/usr/share/Akai/Content/Synths` and removable drives, **without `/nvme/Synths`**; `/synths` is read-only there. A Live III used with our tools lists `/nvme/Synths` (in every backup since 2026-10-23); MPC did not add `/nvme/Synths-test/Synths` on three restarts, and nothing in this repo writes `SynthContentLocations`, so who added `/nvme/Synths` is unknown. The Gen1 evidence is one Force (oldest backup 2026-10-21): `/sdcard/Synths` and `/sdcard/Expansions` are listed. No stock MPC One/Live/X settings file was available, so whether a fresh Gen1 unit lists `/sdcard/Synths` is **not verified**.
+- Strings are not code: where MPC builds the default list, and what it does on a first run, would need a disassembly of the function that references `SynthContentLocations`.
+
+## A one-shot trigger is a tap, not a drag (2026-10-26, MPC Live II, MPC OS 3.x)
+
+DjFx2's `PANIC` trigger was scored **38.5 % p99 / 66.4 % max** of a 2902 µs block in the Q-Link sweep, which
+made a plugin with cheap continuous controls look like a FAIL. Cause: the sweep turned the trigger like a knob,
+so `set_param("panic")` ran on every swept frame, and each call walks the panic state machine and memsets the
+module buffers over three blocks with the output muted. 63 % of 2902 µs is 1828 µs, about what 9 MB of memset
+costs on this ARM. A diagnostic build with the panic branch compiled out measured a sweep of 7.8 % p99 / 9.2 %
+max (PASS) on the same device — that run isolated the trigger, it is not a release measurement.
+
+The plugin was fine; the measurement was wrong. A tap is one discrete event, a drag is a stream, and a sweep
+that changes 4 random parameters per block cannot tell them apart. Every port with a trigger parameter was
+being scored as if a hand could hold the trigger down.
+
+Fix, on both sides of the wrapper/bench boundary:
+- `wrapper/vst2_wrap.c`: vendor opcode `0x7F01` (`EFF_MPC_IS_MOMENTARY`) answers 1 for a `momentary`
+  parameter. MPC never sends it; a plugin built before it answers 0 from the default branch, and the bench
+  then sweeps every parameter as before.
+- `tools/bench.c`: probes that opcode, sweeps only continuous controls, and fires each trigger once per eight
+  blocks in a new **trigger fire** stage. The stage is printed and written to `-j` as `triggers` /
+  `trigger_max_pct`; it does not decide the verdict like a continuous stage, but a tap that reaches
+  `TRIGGER_WARN_PCT` (90 % of a block) turns a PASS into a WARN, because such a tap glitches the next block.
+- `docs/BENCH.md` documents the stage, the threshold and the reasoning.
+
+DjFx2 with the fix (bench on the device, MPC Live II, MPC OS 3.x): sweep 7.7 % p99 / 9.2 % max (**PASS**),
+trigger fire 38.5 % p99 / 66.4 % max. The trigger cost is real and stays visible; it just is not the verdict
+for a plugin whose continuous controls are cheap.
+
+General rule, same shape as the jv880 stepper lesson above: **if a parameter's `set_param` does bulk work it
+must be a one-shot trigger, and a trigger must be measured as a tap, not as a drag.**
+
+Offline check of the trigger stage (2026-10-28, x86 host, no device): `poc/steptest` built as a `.so` with the new wrapper
+reports `triggers: 2` and a "trigger fire" stage; the same plugin built with the previous wrapper reports none and is swept
+as before. A synthetic effect whose trigger burns 2 ms of CPU FAILs under the old bench (sweep p99 69 %) and PASSes with the
+new one (trigger max 70 %); at 2.8 ms (over `TRIGGER_WARN_PCT`) it WARNs. `bench.c` is clean under ASan/UBSan. Not run on a device.
+
+## OpenMPC Plugin Manager G2: what the Live III showed (2026-10-28, device, MPC OS 3.10.0.49 unless marked offline)
+- **One tap arrives as two `set` events** for a trigger param, with no release between: seen on a THEME toggle (trace: `set theme_btn=1` twice, the
+  pill flipped and flipped back), the page arrows and INSTALL/UPDATE. The manager ignores the same button twice within 250 ms (THEME 700 ms). A
+  quick deliberate double tap is lost by design.
+- **A tap on a readout may not reach a button drawn under it.** The Kind/Sort pills already put an invisible button over the text; the THEME pill
+  now draws its button after its readout. Fixed in layout order; the whole-pill tap was reported, not separately retested on the device.
+- **The MPC OS version cannot be read reliably.** `/etc/os-release` is the Yocto base (`VERSION="5.0.17 (scarthgap)"`), and `MPC.settings` keeps a stale
+  `StartupWizard.LastVersionShownFor` (3.9.1.2 on a device that runs 3.10). The manager reads the device's glibc at run time and infers MPC OS 2.x
+  (below 2.39) or 3.x from it.
+- **Catalog zips are per architecture**: `versions[].assets.armv7` / `.aarch64`; the top-level `url` is the armv7 zip. acid-303, commander and tr-mpc have an
+  aarch64 asset; remote and skipback have none (offline: from the live `catalog.json`). A manager that took `url` made three updates fail on the Live III
+  ("this build is for Gen1 ...", read from the apply log).
+- **Offline only (x86 container, fake devices):** the rollback of a failed install (folder and `MPC.settings` restored), zip inspection before unpacking, and the glibc/OS
+  and architecture refusals. See `tools/plugin_manager_g2/DESIGN.md`.
+
+
+### 2026-10-28: MPC One (Gen2) layout; the installer's Gen2 internal drive is no longer only `/nvme/Synths` (offline + a user report)
+
+- A user's MPC One (aarch64, OS 3.9.1) sent `mount | grep ...` and `df -h`: no `/nvme`; `/synths` = eMMC ext4 (91% used), `/storage` = a 31 GB loopback with 17 GB free, `/data` 100% (it holds the loopback image), SD at `/media/MPC`. This is the layout behind their earlier "unknown internal drive path" report and behind Eurikon's v1.2.0 "Plugin content folder or settings missing" (it guessed `/nvme/Synths`).
+- Firmware (stock Gen2 3.9.1 image, read offline): `nvme.mount` is conditioned on the device tree flag `inmusic,nvme-fitted`, `storage.mount` on `inmusic,acvs-loopback-content`, `content.mount` on `inmusic,emmc-content`, `sdcard.mount` on `inmusic,internal-sd-fitted`; hostname files map `acva3` to the One, `acvc` to the XL, `acvg` to the Live III, `acvr2` to the Key 37. MPC also reads `inmusic,panel-rotation` for its screen orientation (see the XL entry).
+- Change: `SynthsAlt` in `tools/desktop/device.go` is now an ordered list (`/nvme/Synths /storage/Synths`; the first found becomes the internal drive when `/sdcard/Synths` is absent), `/storage/Synths` is a root and `/storage` a drive that can be given a Synths folder; two new tests (`gen2_test.go`) cover a One with no NVMe and the first-wins order. `go test ./...` passes. `tools/mpc-store.sh` has the same fallback. Not run against a real One.

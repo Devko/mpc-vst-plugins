@@ -7,8 +7,9 @@ package main
 // autorun/autorun.check = sha256(autorun.json + open.sh + the listed files + salt), checked by the stock MPC OS "USB script"
 // reader (Gen1, Force and Gen2 on MPC OS up to 3.9.1; removed in 3.10.0, docs/GEN2.md). The salt is 37 bytes kept
 // XOR-obfuscated in the MPC executable, found by scanning rather than a fixed offset, so it works on any firmware build that
-// keeps the same scheme. The stick can also carry an SSH public key (tools/usb_stick/enable_ssh.sh): lets a user with no SSH
-// access yet get both a one-time root shell (to install plugins/addins) and an ordinary SSH login, from one stick.
+// keeps the same scheme. This is the advanced stick: it turns on SSH (a public key, or a password) and puts installed addins back,
+// then opens the community plugin manager (easystick.go) when the user wants it too. Plugins are installed from that manager;
+// this stick no longer installs a preset list itself (tools/usb_stick/*.py still does, for a CLI user).
 
 import (
 	"bytes"
@@ -29,14 +30,11 @@ import (
 	"github.com/ulikunitz/xz"
 )
 
-//go:embed mpc-store.sh
-var stickMpcStoreSH []byte
+//go:embed stick_adv_open.sh
+var stickAdvOpenSH []byte
 
-//go:embed stick_open.sh
-var stickOpenSH []byte
-
-//go:embed stick_run.sh
-var stickRunSH []byte
+//go:embed stick_extras.sh
+var stickExtrasSH []byte
 
 //go:embed stick_enable_ssh.sh
 var stickEnableSSHSH []byte
@@ -313,8 +311,8 @@ func findSalt(path string, progress func(label string, done, total int64)) (salt
 
 // --- Building the stick ---
 
-const stickPrompt = "MPC PLUGIN INSTALLER\n\nThis installs the plugins listed in install.txt " +
-	"(the plugin manager by default) and restarts MPC.\n\nHave you saved your project?"
+const stickPromptManager = "MPC PLUGIN INSTALLER\n\nThis turns on SSH and puts your addins back, then opens the plugin manager.\n\nHave you saved your project?"
+const stickPromptSSH = "MPC SSH ACCESS\n\nThis turns on SSH and puts your addins back. MPC may restart once.\n\nHave you saved your project?"
 
 type autorunScript struct {
 	Path          string `json:"path"`
@@ -348,16 +346,6 @@ func autorunCheck(autorunDir string, files []string, salt []byte) ([]byte, error
 	return out, nil
 }
 
-// BuildStick writes a stick's files directly into out: autorun/{open.sh,autorun.json,autorun.check,
-// runtime/{run.sh,mpc-store.sh}}, install.txt (one catalog id per line, default plugin-manager) and README-USB.txt.
-// out may be a folder that doesn't exist yet, or one that already exists and is empty -- the usual case when out is
-// a mounted USB stick's own root directory (the mount point always "already exists"), so picking one directly from
-// the drive list writes straight onto it instead of needing a fresh folder first. A non-empty out is refused: this
-// never merges into or overwrites something already there.
-// sshPubKey, when non-empty, must be one line starting "ssh-...": BuildStick also bundles enable_ssh.sh and a copy of that
-// key (never a private key, which this function never sees) so the stick sets up an ordinary SSH login too, not just the
-// one-shot root shell the autorun prompt itself grants. sshPassword is the advanced, less secure alternative (sets root's
-// password and turns password login on instead); at most one of sshPubKey/sshPassword may be given.
 // housekeeping names an OS or file manager creates on its own, on a drive nobody has put anything on yet: not
 // something a user put there, so they don't make a folder count as "not empty" (a freshly formatted Windows drive
 // always has System Volume Information; macOS Finder adds its own after browsing a drive).
@@ -378,8 +366,28 @@ func isHousekeeping(name string) bool {
 	return housekeepingNames[strings.ToLower(name)]
 }
 
-func BuildStick(out string, salt []byte, installIDs []string, sshPubKey []byte, sshPassword string) error {
-	if st, err := os.Stat(out); err == nil {
+// BuildSSHStick writes the advanced stick into out: SSH access (a public key, or a password), addins put back, and, when manager
+// is non-nil (the community plugin manager's release zip, easystick.go), that manager too. The manager's files go in untouched; its
+// open.sh is kept as autorun/manager-open.sh and a wrapper open.sh runs ours first, then it. The salt-based autorun.check is made
+// over the combined set of files (this is why it needs the user's firmware), and USB-SHA256.json is rewritten to match.
+// out may be missing or an empty folder (a mounted drive's own root counts, ignoring its housekeeping files); anything else is
+// refused, so it never merges into what is there. sshPubKey must be one line starting "ssh-" (never a private key); sshPassword is the
+// less secure alternative; exactly one of the two is required, because SSH is the point of this stick.
+func BuildSSHStick(out string, salt []byte, manager []byte, sshPubKey []byte, sshPassword string) error {
+	if len(sshPubKey) > 0 && sshPassword != "" {
+		return errors.New("use an SSH key or a password, not both")
+	}
+	if len(sshPubKey) == 0 && sshPassword == "" {
+		return errors.New("choose how to log in over SSH: a public key, or a password")
+	}
+	if len(sshPubKey) > 0 && !bytes.HasPrefix(bytes.TrimSpace(sshPubKey), []byte("ssh-")) {
+		return errors.New("that doesn't look like an SSH public key (it should start with ssh-)")
+	}
+	if manager != nil {
+		if err := WriteEasyStick(out, manager); err != nil { // checks that out is missing or empty
+			return err
+		}
+	} else if st, err := os.Stat(out); err == nil {
 		if !st.IsDir() {
 			return fmt.Errorf("%s already exists and is not a folder", out)
 		}
@@ -393,44 +401,39 @@ func BuildStick(out string, salt []byte, installIDs []string, sshPubKey []byte, 
 			}
 		}
 	}
-	if len(sshPubKey) > 0 && sshPassword != "" {
-		return errors.New("use an SSH key or a password, not both")
-	}
-	if len(sshPubKey) > 0 && !bytes.HasPrefix(bytes.TrimSpace(sshPubKey), []byte("ssh-")) {
-		return errors.New("that doesn't look like an SSH public key (it should start with ssh-)")
-	}
 	autorunDir := filepath.Join(out, "autorun")
 	runtime := filepath.Join(autorunDir, "runtime")
 	if err := os.MkdirAll(runtime, 0755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(autorunDir, "open.sh"), stickOpenSH, 0644); err != nil {
+	if manager != nil { // the manager's own open.sh moves aside, unchanged, for ours to call
+		own, err := os.ReadFile(filepath.Join(autorunDir, "open.sh"))
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(autorunDir, "manager-open.sh"), own, 0644); err != nil {
+			return err
+		}
+	}
+	write := func(path string, data []byte) error { return os.WriteFile(path, data, 0644) }
+	if err := write(filepath.Join(autorunDir, "open.sh"), stickAdvOpenSH); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(runtime, "run.sh"), stickRunSH, 0644); err != nil {
+	if err := write(filepath.Join(runtime, "mpc-extras.sh"), stickExtrasSH); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(runtime, "mpc-store.sh"), stickMpcStoreSH, 0644); err != nil {
+	if err := write(filepath.Join(runtime, "enable_ssh.sh"), stickEnableSSHSH); err != nil {
 		return err
 	}
 	if len(sshPubKey) > 0 {
-		if err := os.WriteFile(filepath.Join(runtime, "enable_ssh.sh"), stickEnableSSHSH, 0644); err != nil {
+		if err := write(filepath.Join(runtime, "authorized_key.pub"), append(bytes.TrimSpace(sshPubKey), '\n')); err != nil {
 			return err
 		}
-		key := append(bytes.TrimSpace(sshPubKey), '\n')
-		if err := os.WriteFile(filepath.Join(runtime, "authorized_key.pub"), key, 0644); err != nil {
-			return err
-		}
-	} else if sshPassword != "" {
-		if err := os.WriteFile(filepath.Join(runtime, "enable_ssh.sh"), stickEnableSSHSH, 0644); err != nil {
-			return err
-		}
-		if err := os.WriteFile(filepath.Join(runtime, "ssh_password.txt"), []byte(sshPassword+"\n"), 0644); err != nil {
-			return err
-		}
+	} else if err := write(filepath.Join(runtime, "ssh_password.txt"), []byte(sshPassword+"\n")); err != nil {
+		return err
 	}
 	var files []string
-	err := filepath.WalkDir(runtime, func(p string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(autorunDir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
@@ -438,52 +441,81 @@ func BuildStick(out string, salt []byte, installIDs []string, sshPubKey []byte, 
 		if err != nil {
 			return err
 		}
-		files = append(files, filepath.ToSlash(rel))
+		rel = filepath.ToSlash(rel)
+		if rel != "autorun.json" && rel != "autorun.check" && rel != "open.sh" {
+			files = append(files, rel)
+		}
 		return nil
 	})
 	if err != nil {
 		return err
 	}
 	sort.Strings(files)
-	var manifest autorunManifest
-	manifest.Value0.Files = files
-	manifest.Value0.Scripts = []autorunScript{{Path: "open.sh", AskQuestion: true, Message: stickPrompt, YesButtonText: "Install", NoButtonText: "Cancel"}}
-	mj, err := json.MarshalIndent(manifest, "", "  ")
+	prompt := stickPromptSSH
+	if manager != nil {
+		prompt = stickPromptManager
+	}
+	var m autorunManifest
+	m.Value0.Files = files
+	m.Value0.Scripts = []autorunScript{{Path: "open.sh", AskQuestion: true, Message: prompt, YesButtonText: "Open", NoButtonText: "Cancel"}}
+	mj, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(autorunDir, "autorun.json"), append(mj, '\n'), 0644); err != nil {
+	if err := write(filepath.Join(autorunDir, "autorun.json"), append(mj, '\n')); err != nil {
 		return err
 	}
 	check, err := autorunCheck(autorunDir, files, salt)
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(autorunDir, "autorun.check"), check, 0644); err != nil {
+	if err := write(filepath.Join(autorunDir, "autorun.check"), check); err != nil {
 		return err
 	}
-	ids := installIDs
-	if len(ids) == 0 {
-		ids = []string{"plugin-manager"}
+	if manager != nil {
+		if err := rewriteInventory(out); err != nil {
+			return err
+		}
 	}
-	installTxt := "# one catalog plugin id per line; edit before inserting the stick\n"
-	for _, id := range ids {
-		installTxt += id + "\n"
+	readme := "Copy everything in this folder (hidden files too) to the root of a USB stick, insert it into the MPC/Force (MPC OS up to 3.9.1),\n" +
+		"and confirm the prompt. It turns on SSH (a key you gave, or a password) and puts any already-installed addins back;\n" +
+		"what it did is written to mpc-extras-result.txt on the stick. Save your project first: MPC may restart once.\n"
+	if manager != nil {
+		readme += "It then opens the plugin manager (Eurikon's Plugin Manager USB for OPEN MPC, MIT); see the README of that project.\n"
 	}
-	if err := os.WriteFile(filepath.Join(out, "install.txt"), []byte(installTxt), 0644); err != nil {
+	return write(filepath.Join(out, "README-USB.txt"), []byte(readme))
+}
+
+// rewriteInventory regenerates the plugin manager bundle's own USB-SHA256.json (path -> sha256 for every file on the stick except
+// itself and our README) after the wrapper, the extras and the new autorun files changed what is there.
+func rewriteInventory(out string) error {
+	inv := map[string]string{}
+	err := filepath.WalkDir(out, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, err := filepath.Rel(out, p)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if rel == "USB-SHA256.json" || rel == "README-USB.txt" || isHousekeeping(strings.Split(rel, "/")[0]) && rel != ".mpc-manager-id" {
+			return nil
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(b)
+		inv[rel] = hex.EncodeToString(sum[:])
+		return nil
+	})
+	if err != nil {
 		return err
 	}
-	readme := "Copy everything in this folder (hidden files too) to the root of a USB stick, insert it into the MPC/Force, and confirm\n" +
-		"the prompt. Needs internet on the device. The result is written to mpc-install-result.txt on the stick, and a copy of\n" +
-		"MPC.settings to MPC.settings.backup. Save your project first: MPC restarts.\n\n" +
-		"Already have addins installed? Reinserting this stick also reapplies each one's LD_PRELOAD entry, which some devices\n" +
-		"(no persistent /etc) lose on every reboot. See docs/ADDINS.md in the mpc-vst-plugins repo.\n"
-	if len(sshPubKey) > 0 {
-		readme += "\nSSH is also enabled for the public key you gave: persistently if the device's root can be made writable, otherwise\n" +
-			"(a verity rootfs) until the next reboot -- reinsert the stick to redo it.\n"
-	} else if sshPassword != "" {
-		readme += "\nSSH password login is also turned on (advanced, less secure than a key) -- only on a device whose root can be\n" +
-			"made writable; refused on a verity rootfs (most Gen2 units).\n"
+	j, err := json.MarshalIndent(inv, "", "  ")
+	if err != nil {
+		return err
 	}
-	return os.WriteFile(filepath.Join(out, "README-USB.txt"), []byte(readme), 0644)
+	return os.WriteFile(filepath.Join(out, "USB-SHA256.json"), append(j, '\n'), 0644)
 }

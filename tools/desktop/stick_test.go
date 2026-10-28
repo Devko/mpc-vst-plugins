@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"math/rand"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ulikunitz/xz"
@@ -134,29 +136,35 @@ func TestFindSaltFullWidthRunsAreNoise(t *testing.T) {
 	}
 }
 
-func TestBuildStickLayoutAndCheck(t *testing.T) {
-	out := filepath.Join(t.TempDir(), "stick")
-	if err := BuildStick(out, stickSalt, []string{"plugin-manager", "acid"}, nil, ""); err != nil {
-		t.Fatal(err)
-	}
-	a := filepath.Join(out, "autorun")
-	var manifest autorunManifest
-	mj, err := os.ReadFile(filepath.Join(a, "autorun.json"))
+var advKey = []byte("ssh-ed25519 AAAAfake sam@test")
+
+func managerFixture(t *testing.T) []byte {
+	t.Helper()
+	return easyZip(t, map[string]string{
+		"autorun/autorun.json": "{}", "autorun/autorun.check": "old", "autorun/open.sh": "#!/bin/sh\necho manager\n",
+		"autorun/runtime/manager": "bin", "autorun/runtime/launch.sh": "x", ".mpc-manager-id": "id", "USB-SHA256.json": "{}",
+		"Plugin Manager helper.xpa": "xpa", "local-plugins/": "",
+	})
+}
+
+func readAutorun(t *testing.T, out string) autorunManifest {
+	t.Helper()
+	var m autorunManifest
+	mj, err := os.ReadFile(filepath.Join(out, "autorun", "autorun.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := json.Unmarshal(mj, &manifest); err != nil {
+	if err := json.Unmarshal(mj, &m); err != nil {
 		t.Fatal(err)
 	}
-	wantFiles := []string{"runtime/mpc-store.sh", "runtime/run.sh"}
-	if !equalStrings(manifest.Value0.Files, wantFiles) {
-		t.Fatalf("files = %v, want %v", manifest.Value0.Files, wantFiles)
-	}
-	if manifest.Value0.Scripts[0].Path != "open.sh" {
-		t.Fatalf("script path = %q", manifest.Value0.Scripts[0].Path)
-	}
+	return m
+}
+
+func checkMatches(t *testing.T, out string, m autorunManifest) {
+	t.Helper()
+	a := filepath.Join(out, "autorun")
 	h := sha256.New()
-	for _, n := range append([]string{"autorun.json", "open.sh"}, wantFiles...) {
+	for _, n := range append([]string{"autorun.json", "open.sh"}, m.Value0.Files...) {
 		b, err := os.ReadFile(filepath.Join(a, n))
 		if err != nil {
 			t.Fatal(err)
@@ -169,135 +177,183 @@ func TestBuildStickLayoutAndCheck(t *testing.T) {
 	if err != nil || string(got) != want {
 		t.Fatalf("autorun.check = %q, want %q (err %v)", got, want, err)
 	}
-	ids, err := os.ReadFile(filepath.Join(out, "install.txt"))
-	if err != nil {
+}
+
+func TestBuildSSHStickWithoutManagerLayoutAndCheck(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "stick")
+	if err := BuildSSHStick(out, stickSalt, nil, advKey, ""); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(ids, []byte("plugin-manager\nacid\n")) {
-		t.Fatalf("install.txt: %q", ids)
+	m := readAutorun(t, out)
+	want := []string{"runtime/authorized_key.pub", "runtime/enable_ssh.sh", "runtime/mpc-extras.sh"}
+	if !equalStrings(m.Value0.Files, want) {
+		t.Fatalf("files = %v, want %v", m.Value0.Files, want)
 	}
-	if err := BuildStick(out, stickSalt, nil, nil, ""); err == nil {
+	if m.Value0.Scripts[0].Path != "open.sh" || !strings.Contains(m.Value0.Scripts[0].Message, "SSH") {
+		t.Fatalf("script = %+v", m.Value0.Scripts[0])
+	}
+	checkMatches(t, out, m)
+	if _, err := os.Stat(filepath.Join(out, "autorun", "manager-open.sh")); err == nil {
+		t.Error("manager-open.sh written with no manager")
+	}
+	got, err := os.ReadFile(filepath.Join(out, "autorun", "runtime", "authorized_key.pub"))
+	if err != nil || string(got) != string(advKey)+"\n" {
+		t.Fatalf("authorized_key.pub = %q, err %v", got, err)
+	}
+	if err := BuildSSHStick(out, stickSalt, nil, advKey, ""); err == nil {
 		t.Error("building into an existing (now non-empty) folder: want an error")
 	}
 }
 
-// TestBuildStickIntoAnAlreadyExistingEmptyFolder covers the common case where out is a mounted USB stick's own
-// root directory: the mount point always already exists, so BuildStick must not refuse it just for existing.
-func TestBuildStickIntoAnAlreadyExistingEmptyFolder(t *testing.T) {
-	mounted := filepath.Join(t.TempDir(), "stick")
-	if err := os.Mkdir(mounted, 0755); err != nil {
+func TestBuildSSHStickWithManagerKeepsItsFilesAndChecksEverything(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "stick")
+	if err := BuildSSHStick(out, stickSalt, managerFixture(t), advKey, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := BuildStick(mounted, stickSalt, nil, nil, ""); err != nil {
+	m := readAutorun(t, out)
+	for _, need := range []string{"manager-open.sh", "runtime/manager", "runtime/launch.sh", "runtime/mpc-extras.sh", "runtime/enable_ssh.sh"} {
+		found := false
+		for _, f := range m.Value0.Files {
+			found = found || f == need
+		}
+		if !found {
+			t.Errorf("autorun.json does not list %s: %v", need, m.Value0.Files)
+		}
+	}
+	checkMatches(t, out, m)
+	own, _ := os.ReadFile(filepath.Join(out, "autorun", "manager-open.sh"))
+	if string(own) != "#!/bin/sh\necho manager\n" {
+		t.Errorf("the manager's open.sh was changed: %q", own)
+	}
+	wrapper, _ := os.ReadFile(filepath.Join(out, "autorun", "open.sh"))
+	if !bytes.Contains(wrapper, []byte("manager-open.sh")) {
+		t.Error("open.sh does not hand over to the manager")
+	}
+	for _, kept := range []string{".mpc-manager-id", "Plugin Manager helper.xpa", "autorun/runtime/manager"} {
+		if _, err := os.Stat(filepath.Join(out, filepath.FromSlash(kept))); err != nil {
+			t.Errorf("%s missing: %v", kept, err)
+		}
+	}
+	// the manager bundle's own inventory is rewritten to match what is now on the stick
+	var inv map[string]string
+	ij, _ := os.ReadFile(filepath.Join(out, "USB-SHA256.json"))
+	if err := json.Unmarshal(ij, &inv); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(mounted, "autorun", "open.sh")); err != nil {
-		t.Error("open.sh not written into the already-existing folder")
+	b, _ := os.ReadFile(filepath.Join(out, "autorun", "open.sh"))
+	sum := sha256.Sum256(b)
+	if inv["autorun/open.sh"] != hex.EncodeToString(sum[:]) || inv["autorun/manager-open.sh"] == "" || inv["autorun/runtime/mpc-extras.sh"] == "" {
+		t.Errorf("inventory not updated: %v", inv)
+	}
+	if _, ok := inv["USB-SHA256.json"]; ok {
+		t.Error("inventory lists itself")
 	}
 }
 
-func TestBuildStickIntoANonEmptyFolderIsRefused(t *testing.T) {
-	occupied := filepath.Join(t.TempDir(), "stick")
-	if err := os.Mkdir(occupied, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(occupied, "something.txt"), []byte("not ours\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := BuildStick(occupied, stickSalt, nil, nil, ""); err == nil {
-		t.Error("a non-empty existing folder: want an error")
-	}
-}
-
-// TestBuildStickIgnoresADriveSOwnHousekeepingFolders covers the bug the user hit testing a real freshly formatted
-// USB stick, 2026-10-23: Windows always creates "System Volume Information" on a fresh format, which isn't
-// something the user put there and must not block building straight onto the drive's root.
-func TestBuildStickIgnoresADriveSOwnHousekeepingFolders(t *testing.T) {
+func TestBuildSSHStickIntoAnAlreadyExistingEmptyFolderWithHousekeeping(t *testing.T) {
 	mounted := filepath.Join(t.TempDir(), "stick")
-	if err := os.Mkdir(mounted, 0755); err != nil {
-		t.Fatal(err)
-	}
 	for _, name := range []string{"System Volume Information", ".Trashes", "$RECYCLE.BIN"} {
-		if err := os.Mkdir(filepath.Join(mounted, name), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Join(mounted, name), 0755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := BuildStick(mounted, stickSalt, nil, nil, ""); err != nil {
+	if err := BuildSSHStick(mounted, stickSalt, nil, advKey, ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(mounted, "autorun", "open.sh")); err != nil {
-		t.Error("open.sh not written: housekeeping folders should not have been treated as user content")
+		t.Error("open.sh not written: housekeeping folders should not count as user content")
+	}
+	// ...and with the manager too
+	mounted2 := filepath.Join(t.TempDir(), "stick")
+	os.MkdirAll(filepath.Join(mounted2, "System Volume Information"), 0755)
+	if err := BuildSSHStick(mounted2, stickSalt, managerFixture(t), advKey, ""); err != nil {
+		t.Fatal(err)
 	}
 }
 
-func TestBuildStickWithSSHKeyBundlesEnableSSHAndTheKey(t *testing.T) {
+func TestBuildSSHStickIntoANonEmptyFolderIsRefused(t *testing.T) {
+	for _, withManager := range []bool{false, true} {
+		occupied := filepath.Join(t.TempDir(), "stick")
+		os.Mkdir(occupied, 0755)
+		os.WriteFile(filepath.Join(occupied, "something.txt"), []byte("not ours\n"), 0644)
+		var mgr []byte
+		if withManager {
+			mgr = managerFixture(t)
+		}
+		if err := BuildSSHStick(occupied, stickSalt, mgr, advKey, ""); err == nil {
+			t.Errorf("withManager=%v: a non-empty existing folder: want an error", withManager)
+		}
+	}
+}
+
+func TestBuildSSHStickWithPasswordBundlesTheFile(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "stick")
-	pub := []byte("ssh-ed25519 AAAAfake sam@test")
-	if err := BuildStick(out, stickSalt, nil, pub, ""); err != nil {
+	if err := BuildSSHStick(out, stickSalt, nil, nil, "hunter2"); err != nil {
 		t.Fatal(err)
 	}
 	runtime := filepath.Join(out, "autorun", "runtime")
-	if _, err := os.Stat(filepath.Join(runtime, "enable_ssh.sh")); err != nil {
-		t.Error("enable_ssh.sh not bundled")
-	}
-	got, err := os.ReadFile(filepath.Join(runtime, "authorized_key.pub"))
-	if err != nil || string(got) != string(pub)+"\n" {
-		t.Fatalf("authorized_key.pub = %q, err %v", got, err)
-	}
-	readme, _ := os.ReadFile(filepath.Join(out, "README-USB.txt"))
-	if !bytes.Contains(readme, []byte("SSH is also enabled")) {
-		t.Error("README doesn't mention SSH")
-	}
-}
-
-func TestBuildStickWithoutSSHKeyBundlesNoSSHFiles(t *testing.T) {
-	out := filepath.Join(t.TempDir(), "stick")
-	if err := BuildStick(out, stickSalt, nil, nil, ""); err != nil {
-		t.Fatal(err)
-	}
-	runtime := filepath.Join(out, "autorun", "runtime")
-	if _, err := os.Stat(filepath.Join(runtime, "enable_ssh.sh")); err == nil {
-		t.Error("enable_ssh.sh bundled with no key given")
-	}
-	if _, err := os.Stat(filepath.Join(runtime, "authorized_key.pub")); err == nil {
-		t.Error("authorized_key.pub written with no key given")
-	}
-}
-
-func TestBuildStickRefusesSomethingThatIsNotAPublicKey(t *testing.T) {
-	out := filepath.Join(t.TempDir(), "stick")
-	if err := BuildStick(out, stickSalt, nil, []byte("-----BEGIN OPENSSH PRIVATE KEY-----"), ""); err == nil {
-		t.Error("a private key marker: want an error")
-	}
-}
-
-func TestBuildStickWithPasswordBundlesEnableSSHAndTheFile(t *testing.T) {
-	out := filepath.Join(t.TempDir(), "stick")
-	if err := BuildStick(out, stickSalt, nil, nil, "hunter2"); err != nil {
-		t.Fatal(err)
-	}
-	runtime := filepath.Join(out, "autorun", "runtime")
-	if _, err := os.Stat(filepath.Join(runtime, "enable_ssh.sh")); err != nil {
-		t.Error("enable_ssh.sh not bundled")
-	}
 	got, err := os.ReadFile(filepath.Join(runtime, "ssh_password.txt"))
 	if err != nil || string(got) != "hunter2\n" {
 		t.Fatalf("ssh_password.txt = %q, err %v", got, err)
 	}
 	if _, err := os.Stat(filepath.Join(runtime, "authorized_key.pub")); err == nil {
-		t.Error("authorized_key.pub written with no key given")
+		t.Error("authorized_key.pub written with a password")
 	}
-	readme, _ := os.ReadFile(filepath.Join(out, "README-USB.txt"))
-	if !bytes.Contains(readme, []byte("password login is also turned on")) {
-		t.Error("README doesn't mention the password")
+	checkMatches(t, out, readAutorun(t, out))
+}
+
+func TestBuildSSHStickRefusesBadSSHChoices(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "stick")
+	for name, c := range map[string]struct {
+		key []byte
+		pw  string
+	}{
+		"neither":     {nil, ""},
+		"both":        {advKey, "hunter2"},
+		"private key": {[]byte("-----BEGIN OPENSSH PRIVATE KEY-----"), ""},
+	} {
+		if err := BuildSSHStick(out, stickSalt, nil, c.key, c.pw); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+		if _, err := os.Stat(out); err == nil {
+			t.Errorf("%s: wrote something before refusing", name)
+		}
 	}
 }
 
-func TestBuildStickRefusesKeyAndPasswordTogether(t *testing.T) {
-	out := filepath.Join(t.TempDir(), "stick")
-	pub := []byte("ssh-ed25519 AAAAfake sam@test")
-	if err := BuildStick(out, stickSalt, nil, pub, "hunter2"); err == nil {
-		t.Error("key and password together: want an error")
+// The wrapper and the extras script run under BusyBox sh on the device; check them with a scratch addin and a fake enable_ssh.sh.
+func TestStickScriptsRunAndHandOverToTheManager(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh")
+	}
+	root := t.TempDir()
+	out := filepath.Join(root, "stick")
+	if err := BuildSSHStick(out, stickSalt, managerFixture(t), advKey, ""); err != nil {
+		t.Fatal(err)
+	}
+	// a fake enable_ssh.sh and a fake addin that record their calls
+	rt := filepath.Join(out, "autorun", "runtime")
+	os.WriteFile(filepath.Join(rt, "enable_ssh.sh"), []byte("echo ssh \"$@\" >> \"$MPC_LOG\"\n"), 0644)
+	addins := filepath.Join(root, "addins", "demo")
+	os.MkdirAll(addins, 0755)
+	os.WriteFile(filepath.Join(addins, "install.sh"), []byte("echo addin \"$@\" >> \"$MPC_LOG\"\n"), 0644)
+	log := filepath.Join(root, "log")
+	cmd := exec.Command(sh, filepath.Join(out, "autorun", "open.sh"))
+	cmd.Env = append(os.Environ(), "MPC_USB_TEST=1", "MPC_LOG="+log, "MPC_ADDINS_DIR="+filepath.Join(root, "addins"))
+	got, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("open.sh: %v\n%s", err, got)
+	}
+	if !strings.Contains(string(got), "manager") { // the manager's own open.sh ran last
+		t.Errorf("the manager's open.sh did not run: %s", got)
+	}
+	l, _ := os.ReadFile(log)
+	if !strings.Contains(string(l), "ssh --key") || !strings.Contains(string(l), "addin -y -n -t") {
+		t.Errorf("extras did not run: %q", l)
+	}
+	if res, _ := os.ReadFile(filepath.Join(out, "mpc-extras-result.txt")); !strings.Contains(string(res), "Reapplying addin: demo") {
+		t.Errorf("mpc-extras-result.txt: %q", res)
 	}
 }
 
@@ -318,9 +374,6 @@ func TestEmbeddedStickScriptsAreTheCanonicalOnes(t *testing.T) {
 		canon string
 		embed []byte
 	}{
-		{"../mpc-store.sh", stickMpcStoreSH},
-		{"../usb_stick/open.sh", stickOpenSH},
-		{"../usb_stick/run.sh", stickRunSH},
 		{"../usb_stick/enable_ssh.sh", stickEnableSSHSH},
 	} {
 		canon, err := os.ReadFile(c.canon)

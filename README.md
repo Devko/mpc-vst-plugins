@@ -134,6 +134,11 @@ design.
 - **MPC OS 2.x needs a compatible skin.** A plugin marked *MPC OS 3.x only* loads on 2.x and plays from the Q-Links, but its
   touchscreen page stays empty until its developer releases a version with a compatible skin. See
   [MPC OS 2.x vs 3.x](#mpc-os-2x-vs-3x).
+- **A plugin shows no skin (just "Load Plugin") when its folder isn't a content location.** MPC finds a plugin's skin only through
+  a `Synths` folder listed under `SynthContentLocations` in `MPC.settings`. The plugin still loads from its `file=` path, so
+  it works but looks bare. Install into a listed folder (the installers warn when the target isn't one: `install.sh -t <folder>`),
+  or add the folder to the list with MPC stopped and `MPC.settings` backed up, then start MPC. A trailing `/` is fine. Checked
+  on a Live III (MPC 3.10.0), 2026-10-27; details in docs/NOTES.md.
 - **VST2 only.** MPC OS has no VST3 or LV2 support.
 - **Setup needs root SSH to the device**, to copy the plugin and add it to `MPC.settings`, so it is for modded units.
   Adding a new plugin needs one MPC restart; the installers stop and start MPC for you (the service is `acvs`, or
@@ -242,6 +247,7 @@ screen shows. If you are comfortable in a terminal and on 2.x, the output of thi
 - `tools/bench.sh` + `tools/bench.c`: a CPU stress test run on the device, with a PASS/WARN/FAIL verdict for Gen1
   hardware. See [docs/BENCH.md](docs/BENCH.md).
 - `tools/desktop/`: the MPC plugin installer app (Go; a local web page that installs, updates and removes plugins over SSH).
+- `tools/plugin_manager_g2/`: the OpenMPC Plugin Manager G2, a VST that browses the catalog and installs, updates and removes plugins on the MPC itself (Gen2 first, with rollback; a fork of poloq's MIT `mpc-vst-manager`). See [its README](tools/plugin_manager_g2/README.md) and `DESIGN.md`.
 - `tools/mpc-store.sh`: the same install, update, remove, prune and sync from a shell on the device, for the catalog's one-line command.
 - `tools/release.py`: packages a plugin as one shareable zip with an installer, an uninstaller and generated
   INSTALL.md. See [docs/RELEASING.md](docs/RELEASING.md).

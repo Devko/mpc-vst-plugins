@@ -1302,6 +1302,26 @@ class InstallerTest(Base):
         self.assertFalse(os.path.exists(os.path.join(self.legacy_root, "sdcard", "vst", "test_synth.so")))
         self.assertTrue([n for n in os.listdir(self.tmp) if n.startswith("MPC.settings.bak-")])
 
+    def with_locations(self, *locs):
+        """MPC.settings with a real SynthContentLocations block, CRLF like the device's."""
+        block = "".join("      <Location>%s</Location>\n" % loc for loc in locs)
+        xml = SETTINGS_XML.replace('  <VALUE name="SynthContentLocations" val="/sdcard/Synths"/>\n',
+                                   "  <VALUE name=\"SynthContentLocations\">\n    <SynthContentLocations>\n" + block +
+                                   "    </SynthContentLocations>\n  </VALUE>\n")
+        with open(self.settings_path, "w", newline="") as f:
+            f.write(xml.replace("\n", "\r\n"))
+
+    def test_warns_loudly_when_the_target_is_not_a_content_location(self):
+        warn = "is not one of MPC's content locations"
+        for locs, listed in ((["/usr/share/Akai/Content/Synths"], False),
+                             ([self.synths + "-old"], False),    # a longer name that merely starts with the target
+                             ([self.synths], True),
+                             ([self.synths + "/"], True)):       # MPC accepts a trailing slash
+            self.with_locations(*locs)
+            r = self.run_script("install.sh")
+            self.assertEqual(r.returncode, 0, r.stderr)            # warns, does not refuse: the plugin loads either way
+            self.assertEqual(warn in r.stderr, not listed, (locs, r.stderr))
+
     def legacy(self, *parts):
         return os.path.join(self.legacy_root, "sdcard", "vst", *parts)
 

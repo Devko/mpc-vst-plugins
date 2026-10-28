@@ -29,6 +29,12 @@ button:disabled { opacity:.45; cursor:not-allowed; }
 :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .msg { margin:10px 0 0; font-size:14px; }
 .msg.err { color:var(--accent); } .msg.ok { color:var(--ok); }
+.sub b, .small b, .guide b { font-weight:700; color:var(--fg); }
+.guide ul, .guide ol { margin:4px 0 12px; padding-left:22px; }
+.guide li { margin:4px 0; }
+.guide li > ul { margin:2px 0 4px; }
+.guide .lead { margin:10px 0 2px; }
+.callout { border-left:3px solid var(--accent); background:var(--panel-2); padding:8px 12px; margin:8px 0 12px; font-size:14px; border-radius:0 6px 6px 0; }
 .small { font-size:13px; color:var(--muted); }
 ul.list { list-style:none; margin:0; padding:0; border-top:1px solid var(--line); }
 ul.list li { display:flex; gap:12px; align-items:flex-start; padding:10px 2px; border-bottom:1px solid var(--line); }
@@ -96,12 +102,31 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
   <p class="lede">Install plugins from the catalog, or zips you already have, on your MPC or Force. This page runs on your computer only. Nothing about your device is saved.</p>
 </header>
 
+<section id="which" class="guide">
+  <h2>Which one do I need?</h2>
+  <ul>
+    <li><b>Plugin install stick (no SSH needed)</b>: <i>the easy one. Pick this if you are not sure.</i>
+      <ul>
+        <li>Nothing to set up on your MPC and no computer connection.</li>
+        <li>You write a USB stick here, plug it in, confirm <b>one prompt</b>, then browse and install plugins on the MPC's own screen.</li>
+        <li>Needs the MPC online (Wi-Fi or Ethernet).</li>
+        <li><i>Suits:</i> most people.</li>
+      </ul></li>
+    <li><b>Install over SSH</b>: <i>for modded units that already have root SSH.</i>
+      <ul>
+        <li>Installs plugins, addins, your own zips and patches from this computer, with remove, update and backup tools.</li>
+        <li><i>Suits:</i> people who already use SSH, or run a modded MPC or Force.</li>
+      </ul></li>
+    <li><b>Want SSH on a stock unit?</b> Use the stick tab's <b>Advanced</b> section: it turns SSH on from a stick (MPC OS up to 3.9.1). Then the SSH tab works.</li>
+  </ul>
+</section>
+
 <div class="ktabs" id="modetabs" role="tablist" aria-label="Mode">
-  <button type="button" id="mode-install" role="tab" aria-selected="true">Install over SSH</button>
-  <button type="button" id="mode-stick" role="tab" aria-selected="false">Plugin install (no SSH or connection needed)</button>
+  <button type="button" id="mode-stick" role="tab" aria-selected="true">Plugin install (no SSH or connection needed)</button>
+  <button type="button" id="mode-install" role="tab" aria-selected="false">Install over SSH</button>
 </div>
 
-<div id="install-mode">
+<div id="install-mode" hidden>
 <section id="s1">
   <h2><span class="n">1</span>Connect to your device</h2>
   <p class="sub">Your device needs SSH access as <b>root</b> (a modded unit). Use the IP address shown on the device or in your router.</p>
@@ -189,21 +214,61 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
 <div id="selbar" hidden role="region" aria-label="Selected plugins"><span><b id="selcount"></b> <button class="linkbtn" type="button" id="selclear">Clear</button></span><button class="primary" id="go2" type="button">Install…</button></div>
 </div>
 
-<div id="stick-mode" hidden>
-<section id="st-intro">
-  <p class="sub"><b>What this is for:</b> installing the plugin manager (and other catalog plugins) on a device you have no SSH
-  access to at all -- no connecting, no password, no setup. You build a small USB stick here; it does the rest on the device
-  itself.</p>
-  <p class="sub"><b>How it works:</b> MPC OS has its own stock "USB script" reader, built in by Akai (not a security hole): a
-  stick with the right files on it makes MPC ask one on-screen question, then run a script as root. This builds that stick.
-  Nothing is installed until you confirm the prompt on the device's own screen.</p>
-  <p class="sub"><b>Works on:</b> Gen1 MPC (Live/One/X/Key), Force, and Gen2 (Live III, One G2, Key(s) G2) -- but only on
-  <b>MPC OS up to 3.9.1</b>. Akai closed this route in <b>MPC OS 3.10</b> and later; a stick built here will not work on a
-  device already updated past that.</p>
-  <p class="sub"><b>Gen2 devices specifically:</b> their storage can't be made to remember changes the way Gen1/Force can. The
-  plugin manager itself, once installed, stays. But anything else this does -- putting back addins you'd already installed,
-  or the optional SSH access below -- is undone by every reboot, so you'd reinsert the stick and confirm the prompt again
-  each time the device restarts.</p>
+<div id="stick-mode">
+<section id="es" class="guide">
+  <h2>Plugin install stick (no SSH or connection needed)</h2>
+  <ul>
+    <li><b>What it is:</b> browse and install community plugins on the MPC's own screen, with no computer connection, password or setup. This writes a ready-made USB stick; you plug it into the MPC and confirm one prompt.</li>
+    <li><b>Works on:</b>
+      <ul>
+        <li><b>MPC OS 3.9.1:</b> Gen1 MPC (Live, One, X, Key), Force and Gen2 (Live III, One G2, Key(s) G2).</li>
+        <li><b>MPC OS 3.10:</b> Gen1 MPC (needs a one-time setup, see the steps below).</li>
+      </ul></li>
+    <li><b>One stick fits every device</b> and picks the right version itself.</li>
+    <li><b>Credit:</b> the on-device manager is <a href="https://github.com/Eurikon/plugin-manager-usb-for-open-mpc" target="_blank" rel="noopener">Plugin Manager USB for OPEN MPC</a> by <b>Twisted Cable</b> (MIT). This installer downloads that project's release (<span id="es-ver"></span>, checked against a fixed checksum) and copies it to your stick.</li>
+  </ul>
+  <div class="callout"><b>Gen2 is a beta.</b> <i>Tested 2026-10-28 on a Live III with MPC OS 3.9.1, including with addins installed. MPC OS 3.10 on a Gen2 has a fix in this release but is not yet confirmed on a stock 3.10 device.</i></div>
+  <div id="es-drives"></div>
+  <div class="row">
+    <label class="f">Empty USB stick or folder<input id="es-out" type="text" placeholder="pick a mounted stick below, or Browse" spellcheck="false"></label>
+    <button id="es-out-browse" type="button">Browse…</button>
+    <button class="primary" id="es-build" type="button">Download and write…</button>
+  </div>
+  <p class="msg" id="es-msg" role="status" aria-live="polite"></p>
+  <div class="guide" id="es-steps">
+    <p class="lead"><b>Then, on your MPC.</b> <i>Save your project first: opening the manager stops MPC.</i></p>
+    <p class="lead"><b>MPC OS 3.9.1 (and earlier)</b></p>
+    <ol>
+      <li><b>Insert</b> the stick.</li>
+      <li>Choose <b>Open</b> on the prompt that appears.</li>
+    </ol>
+    <p class="lead"><b>MPC OS 3.10: one-time setup first.</b> <i>3.10 has no USB prompt, so the stick carries a small helper you load once.</i></p>
+    <ol>
+      <li><b>Insert</b> the stick.</li>
+      <li>In MPC's <b>File Browser</b>, navigate to your USB stick and select <code>Plugin Manager helper.xpa</code>.</li>
+      <li>Choose <b>Load</b> and pick the internal <b>MPC Documents</b> folder as the destination, <b>not the stick</b>.</li>
+      <li><b>Restart.</b></li>
+      <li>Hold <b>Shift + Menu</b> for two seconds.</li>
+    </ol>
+    <p class="lead"><b>Either way:</b> when you are done, tap <b>Return to MPC</b> and wait up to a minute. <i>Do not power off.</i></p>
+  </div>
+</section>
+<details id="dadv" class="collapse">
+<summary><h2>Advanced: turn on SSH (for developers)</h2><span class="hint">Show</span></summary>
+<section id="st-intro" class="guide">
+  <ul>
+    <li><b>What this is for:</b> developers who want an ordinary <b>SSH login</b> on their device, to install plugins and addins with this installer's SSH tab or by hand.</li>
+    <li><b>What the stick does:</b>
+      <ul>
+        <li>Turns <b>SSH</b> on (a key you give, or a password).</li>
+        <li>Puts back any <b>addins</b> you already installed.</li>
+        <li>Optionally opens the <b>plugin manager</b>, exactly like the easy stick above (tick the box below).</li>
+      </ul></li>
+    <li><b>How it works:</b> MPC OS has its own stock "USB script" reader, built in by Akai (not a security hole). A stick with the right files on it makes MPC ask one on-screen question, then run a script as root. <i>Nothing happens until you confirm that prompt on the device's own screen.</i> The check the reader needs depends on your device's firmware, so this reads your own stock update image once (nothing from it is kept or sent anywhere).</li>
+    <li><b>Works on:</b> Gen1 MPC (Live, One, X, Key), Force and Gen2 (Live III, One G2, Key(s) G2), <b>but only on MPC OS up to 3.9.1</b>.
+      <div class="callout"><i>Akai closed this route in MPC OS 3.10. A stick built here will not work on a device already updated past that; the easy stick above is the only no-SSH option there.</i></div></li>
+    <li><b>Gen2 devices specifically:</b> their storage can't be made to remember changes the way Gen1 and Force can, so SSH and the addins' settings are undone by every reboot. <i>Reinsert the stick and confirm the prompt again after each restart.</i></li>
+  </ul>
 </section>
 <section id="st1">
   <h2><span class="n">1</span>Firmware</h2>
@@ -218,23 +283,19 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
 </section>
 
 <section id="st2" class="off">
-<details id="dst2" class="collapse">
-  <summary><h2><span class="n">2</span>Advanced: SSH access (optional)</h2><span class="hint">Show</span></summary>
-  <p class="sub"><b>Most people can skip this.</b> It only matters if you also want an ordinary SSH login on this device, separate
-  from the one-time install below (which happens either way). Leave it on "None" unless you know you want this.</p>
+  <h2><span class="n">2</span>SSH login</h2>
+  <p class="sub">A key is safer and is what to pick unless you know otherwise: it only adds a key on top of what is already
+  there. Pick one.</p>
   <div class="row">
     <label class="f">
       <span style="display:flex;flex-wrap:wrap;gap:16px;text-transform:none;letter-spacing:0;font:400 15px var(--text);color:var(--fg)">
-        <label><input type="radio" name="st-sshmode" id="st-ssh-none" checked> None (recommended)</label>
-        <label><input type="radio" name="st-sshmode" id="st-ssh-paste"> Use my public key</label>
+        <label><input type="radio" name="st-sshmode" id="st-ssh-paste" checked> Use my public key</label>
         <label><input type="radio" name="st-sshmode" id="st-ssh-gen"> Generate a new key</label>
         <label><input type="radio" name="st-sshmode" id="st-ssh-pw"> Set a password instead</label>
       </span>
     </label>
   </div>
-  <p class="small">A key doesn't weaken your device's login: it only adds a key, on top of what's already there. On a device whose
-  root filesystem can't be made writable (most Gen2 units), it lasts until the next reboot — reinsert the stick to redo it.</p>
-  <label class="f" id="st-sshpaste-wrap" hidden>Public key (the line from your id_ed25519.pub or similar)<input id="st-sshpaste" type="text" placeholder="ssh-ed25519 AAAA... you@host" spellcheck="false"></label>
+  <label class="f" id="st-sshpaste-wrap">Public key (the line from your id_ed25519.pub or similar)<input id="st-sshpaste" type="text" placeholder="ssh-ed25519 AAAA... you@host" spellcheck="false"></label>
   <div id="st-sshgen-wrap" hidden>
     <p class="msg ok" id="st-sshgen-warn"><b>Shown once.</b> Save this private key now (e.g. as <code>~/.ssh/id_mpc</code>, <code>chmod 600</code>); the app does not keep a copy.</p>
     <pre class="log" id="st-sshgen-priv"></pre>
@@ -242,18 +303,18 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
   </div>
   <div id="st-sshpw-wrap" hidden>
     <p class="msg err"><b>Not recommended.</b> A password can be guessed or intercepted; a key can't. This also turns on
-    password login for root over SSH, where before only a key would have worked — anyone who learns this password gets a
+    password login for root over SSH, where before only a key would have worked: anyone who learns this password gets a
     root shell on your device. Only works on a device whose root can be made writable (most Gen1/Force units); refused
     outright on most Gen2 units, which have no writable place to keep it.</p>
     <label class="f">Password<input id="st-sshpw" type="password" autocomplete="new-password" spellcheck="false"></label>
   </div>
-</details>
 </section>
 
 <section id="st3" class="off">
-  <h2><span class="n">3</span>What to install</h2>
-  <p class="sub">Catalog plugin IDs, one or more, comma-separated. The plugin manager (default) then lets you browse and install more from the MPC screen itself.</p>
-  <label class="f">Catalog IDs<input id="st-install" type="text" value="plugin-manager" spellcheck="false"></label>
+  <h2><span class="n">3</span>Plugin manager</h2>
+  <label style="display:flex;gap:10px;align-items:flex-start;font:400 15px var(--text)"><input type="checkbox" id="st-withmgr" checked style="margin-top:4px">
+    <span>Also open the plugin manager from this stick (recommended). It is Twisted Cable's Plugin Manager USB for OPEN MPC, downloaded and
+    checked as for the easy stick above; this stick runs it right after turning SSH on.</span></label>
 </section>
 
 <section id="st4" class="off">
@@ -267,6 +328,7 @@ footer { color:var(--muted); font-size:12.5px; margin-top:24px; }
   </div>
   <p class="msg" id="st-buildmsg" role="status" aria-live="polite"></p>
 </section>
+</details>
 </div>
 
 <footer>Community-provided software. Installing runs a script as root on your device and edits MPC's settings (a backup is made first). Downloads are checked against the catalog's checksums before anything is copied.</footer>
@@ -795,14 +857,14 @@ function stickPoll(since, log) {
     ST.running = false;
     if (j.state === "done") {
       ST.scanHandle = j.result;
-      scanMsg("Found the salt. Set up SSH if you want it (most people don't need to), then build the stick below.", "ok");
+      scanMsg("Found the salt. Now choose how you want to log in over SSH, then build the stick below.", "ok");
       $("st2").classList.remove("off"); $("st3").classList.remove("off"); $("st4").classList.remove("off");
     } else {
       scanMsg(j.result, "err");
     }
   }).catch(function (e) { setTimeout(function () { stickPoll(since, log); }, 1500); });
 }
-["st-ssh-none", "st-ssh-paste", "st-ssh-gen", "st-ssh-pw"].forEach(function (id) {
+["st-ssh-paste", "st-ssh-gen", "st-ssh-pw"].forEach(function (id) {
   $(id).addEventListener("change", function () {
     $("st-sshpaste-wrap").hidden = !$("st-ssh-paste").checked;
     $("st-sshpw-wrap").hidden = !$("st-ssh-pw").checked;
@@ -813,7 +875,7 @@ function stickPoll(since, log) {
         $("st-sshgen-priv").textContent = k.private;
         $("st-sshgen-wrap").hidden = false;
         ST.genPub = k.public.trim();
-      }).catch(function (e) { msg($("st-buildmsg"), e.message, "err"); $("st-ssh-none").checked = true; });
+      }).catch(function (e) { msg($("st-buildmsg"), e.message, "err"); $("st-ssh-paste").checked = true; $("st-sshpaste-wrap").hidden = false; });
     }
   });
 });
@@ -832,15 +894,40 @@ $("st-build").addEventListener("click", function () {
   if (!ST.scanHandle) { msg($("st-buildmsg"), "Scan the firmware first.", "err"); return; }
   var out = $("st-out").value.trim();
   if (!out) { msg($("st-buildmsg"), "Enter a folder to write the stick to.", "err"); return; }
-  var ids = $("st-install").value.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
-  msg($("st-buildmsg"), "Building…");
-  api("/api/stick/build", { ScanHandle: ST.scanHandle, Out: out, Install: ids, SSHPubKey: stickSSHKey(), SSHPassword: stickSSHPassword() })
+  var key = stickSSHKey(), pw = stickSSHPassword();
+  if (!key && !pw) { msg($("st-buildmsg"), "Give a public key, generate one, or set a password: SSH is what this stick is for.", "err"); return; }
+  var withMgr = $("st-withmgr").checked;
+  msg($("st-buildmsg"), withMgr ? "Downloading the plugin manager and building…" : "Building…");
+  api("/api/stick/build", { ScanHandle: ST.scanHandle, Out: out, SSHPubKey: key, SSHPassword: pw, WithManager: withMgr })
     .then(function (r) {
       var where = stickOutIsAMountedDrive(out)
         ? "That's a mounted drive, so it's already on the stick -- just"
         : "Copy everything in " + r.out + " (hidden files too) to the root of a USB stick, then";
-      msg($("st-buildmsg"), "Wrote " + r.out + ". " + where + " insert it into the MPC/Force and confirm the prompt on the device.", "ok");
+      msg($("st-buildmsg"), "Wrote " + r.out + ". " + where + " insert it into the MPC/Force (MPC OS up to 3.9.1) and confirm the prompt on the device.", "ok");
     }).catch(function (e) { msg($("st-buildmsg"), e.message, "err"); });
+});
+
+/* Easy stick: download the pinned community manager stick and write it to a drive. */
+api("/api/stick/easyinfo").then(function (r) { $("es-ver").textContent = r.version; }).catch(function () { $("es-ver").textContent = "a pinned release"; });
+$("es-out-browse").addEventListener("click", function () { openBrowse("dir", $("es-out"), $("es-out").value.trim()); });
+api("/api/drives").then(function (r) {
+  var ds = r.drives || []; if (!ds.length) return;
+  var box = $("es-drives"); box.innerHTML = '<p class="small">Mounted drives: </p>';
+  var ul = el("ul", "list"); box.appendChild(ul);
+  ds.forEach(function (d) {
+    var li = el("li"); var b = el("button", "linkbtn", d.label + " (" + d.path + ")");
+    b.type = "button"; b.onclick = function () { $("es-out").value = d.path; };
+    li.appendChild(b); ul.appendChild(li);
+  });
+}).catch(function () {});
+$("es-build").addEventListener("click", function () {
+  var out = $("es-out").value.trim();
+  if (!out) { msg($("es-msg"), "Pick an empty USB stick or folder first.", "err"); return; }
+  msg($("es-msg"), "Downloading and writing…");
+  api("/api/stick/easy", { Out: out }).then(function (r) {
+    var where = stickOutIsAMountedDrive(out) ? "That's a mounted drive, so it's already on the stick." : "Copy everything in " + r.out + " (hidden files too) to the root of a FAT32 or exFAT USB stick.";
+    msg($("es-msg"), "Wrote " + r.version + " to " + r.out + ". " + where + " Eject it safely, then follow the steps below for your MPC OS.", "ok");
+  }).catch(function (e) { msg($("es-msg"), e.message, "err"); });
 });
 
 api("/api/version").then(function (v) {

@@ -142,6 +142,10 @@ for the pattern). This applies to every future port, not just ones that hit the 
       (TR-MPC's `sNN_fam`, set by the voice `sNN_src`): put `"refresh_display": true` on the param that is written. A plain host write
       no longer asks MPC for an UpdateDisplay (NOTES.md 2026-10-21). Test Q-Links on track edit → automation, not only
       on the plugin screen: that screen takes a different host path.
+- [ ] A param the engine changes by itself (a network or status readout, a progress value) gets `"live": true` in params.json:
+      `gen_vst.py` lists it as `PLUG_LIVE` in params.h and `host_test`'s "parameter 0 toggle changes nothing" check skips it. Without it that check
+      fails offline (2026-10-27, found porting the Plugin Manager). `host_test` also no longer uses parameter 0 for its option-step tests: the
+      wrapper holds parameter 0 for MPC's STOP toggle, so a one-event move of it does not step.
 - [ ] Option lists and `"display": "int"` params step one option or whole number per Q-Link event and per data wheel
       click (`settle()`). If a short one races by under a Q-Link, `"qlink_ticks": N` on that param (opt-in, off by default)
       counts N events per step: 6 suited a 9-option list on a Key 37. It costs N wheel clicks per step too, and on a Force

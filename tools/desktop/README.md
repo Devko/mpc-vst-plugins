@@ -9,18 +9,25 @@ It uses the same release zips and the same `install.sh` as every other route (`d
 path. What it adds: a friendly page, one copy of each zip over SSH (as a tar stream, so executable bits and symlinks survive), and
 one MPC stop and start around the whole batch when the installers allow it.
 
-A second, independent mode (the tab at the top, "Plugin install (no SSH or connection needed)") is for a device you have no SSH
-access to yet: it builds the no-SSH autorun stick (`docs/USB_STICK.md`, `tools/usb_stick/*.py` -- this is a Go port of the same
-algorithm, `tools/desktop/stick.go`, so the app needs no Python) from your device's own stock Akai firmware image. It opens with a
-plain explanation of what this is, how it works, and what it's compatible with (MPC OS up to 3.9.1 only; a Gen2 device like the
-Live III needs the stick reinserted after every reboot to redo what it did). Scanning a Gen2 firmware image for the salt it needs
-can take a few minutes (it decompresses the image's xz-compressed rootfs with a pure-Go decoder); the page shows periodic progress
-so it's clear it's still working. The stick's own prompt then installs the plugin manager (so you can browse and install more from
-the MPC screen itself) and reapplies every already-installed addin's `LD_PRELOAD` entry (needed on a device with no persistent
-`/etc`, docs/ADDINS.md). SSH access is a separate, collapsed "Advanced" section, closed by default -- most people don't need it.
-If you do: paste your own public key, have the app generate one (the private half is shown once and never kept), or -- with
-heavier warnings, since it's less secure and needs a writable root (refused outright on most Gen2 units) -- set a password
-instead. None of this needs the device's own SSH yet -- that's the point. Both the firmware path and the output folder have a
+The same mode opens with an **easy stick** (`tools/desktop/easystick.go`, added 2026-10-27, offline-tested only): it downloads
+the community "Plugin Manager USB for OPEN MPC" release by Twisted Cable (MIT; <https://github.com/Eurikon/plugin-manager-usb-for-open-mpc>),
+pinned to one reviewed version and checked against a fixed SHA-256, never "latest" (the stick runs as root). The pin is read
+at run time from `tools/desktop/easystick-pin.json` on `main` (version, URL, sha256; the URL must be under that project's
+releases), so adopting a tested release is a one-file PR with no installer release; the `easyStickVersion`/`easyStickSHA256`
+constants are the offline fallback, refreshed at the next installer release, and unpacks it onto an empty drive. It needs no firmware: the bundle carries the
+OS 3.9.1 autorun route and the OS 3.10 controller helper, and picks the Gen1 or Gen2 runtime on the device.
+
+Below it, a collapsed **Advanced: turn on SSH (for developers)** section (`tools/desktop/stick.go`, a Go port of the salt scan in
+`tools/usb_stick/saltscan.py`, so the app needs no Python) builds a different stick: it reads the device's own stock Akai firmware
+once for the check the stock "USB script" reader needs (MPC OS up to 3.9.1 only; Akai closed that route in 3.10), turns SSH on (paste
+a public key, have the app generate one whose private half is shown once and never kept, or, with heavier warnings, set a password,
+which needs a writable root and is refused on most Gen2 units) and reapplies every already-installed addin's `LD_PRELOAD` entry
+(needed on a device with no persistent `/etc`, docs/ADDINS.md). A checkbox, on by default, also puts the plugin manager on the same
+stick: the manager's files go in unmodified, its `open.sh` is kept as `autorun/manager-open.sh`, and our `open.sh` runs the SSH and
+addin step first (restarting MPC once if the addins' running `LD_PRELOAD` differs, so the manager sees them), then it. The stick's
+`USB-SHA256.json` is rewritten to match. A Gen2 device like the Live III forgets SSH and the addin drop-in at every reboot, so the
+stick is reinserted after each one. The stick no longer installs a preset plugin list itself (`tools/usb_stick/*.py` still does).
+None of this needs the device's own SSH yet. Both the firmware path and the output folder have a
 **Browse…** button (`/api/browse`, a server-side folder/file picker, since a browser's own file input never exposes a real path)
 instead of typing one, and the output folder step also lists this computer's mounted drives (`/api/drives`; Linux, macOS and
 Windows): pick a mounted USB stick there and Build writes the stick straight onto it, with nothing left to copy by hand.
@@ -30,9 +37,9 @@ Windows): pick a mounted USB stick there and Build writes the stick straight ont
 1. **Connect:** SSH as root with your password, a key in `~/.ssh` (no passphrase), or neither on a device whose root has no password. It reads the device (32-bit ARM or Gen2 aarch64: Gen2 gets the catalog's aarch64 zips; `tar`?
    `systemctl`? where is `MPC.settings`?) and refuses one that is not an MPC OS device. The device's key fingerprint is shown; nothing
    about the device is saved.
-   The device scan lists every writable `Synths` location (the internal drive — `/sdcard/Synths` on Gen1/Force, `/nvme/Synths` on Gen2 such as the Live III where `/sdcard` isn't mounted — and `/media/*/Synths` for cards and drives; read-only mounts such as
+   The device scan lists every writable `Synths` location (the internal drive — `/sdcard/Synths` on Gen1/Force, `/nvme/Synths` on a Gen2 Live III and `/storage/Synths` on a Gen2 MPC One or Key 37 (no NVMe), where `/sdcard` isn't mounted — and `/media/*/Synths` for cards and drives; read-only mounts such as
    MPC's own content folder are skipped, and the same storage reached by two paths is listed once; the internal drive's `Synths` folder is created at connect when it is missing, 2026-10-11). Step 3 lets you pick where to install, the
-   internal drive by default, and warns when MPC does not list the folder as a content location. A writable drive under `/media` (its own
+   internal drive by default, and warns when MPC does not list the folder as a content location (the plugin still loads, but with no skin; the job log repeats it as a `WARNING`, and a package's `install.sh` prints the same warning on stderr, comparing whole entries and ignoring a trailing slash, 2026-10-27). A writable drive under `/media` (its own
    mount point, not MPC OS's `az01-*`/`acvs-*`) that has no `Synths` folder gets a **Create Synths folder** button in that box
    (`/api/mkroot`; only a drive from the last scan is accepted, never a typed path), after which it is a plugin location (2026-10-14, offline). A drive that cannot store symbolic links
    (FAT, exFAT, NTFS) is refused for a package that needs them, and so is a drive without room. A drive mounted `noexec` (an MPC/Force's SSD is) is refused too: MPC cannot load a plugin from it, so the plugin would be listed but only show "Load Plugin".

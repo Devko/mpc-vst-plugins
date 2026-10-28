@@ -325,6 +325,29 @@ class RunScript(unittest.TestCase):
             self.assertEqual(r.returncode, 0)
             self.assertNotIn("Enabling SSH", res)
 
+    def test_on_demand_sshd_goes_in_its_own_unit_even_when_stopping_a_missing_unit_fails(self):
+        # The last block of enable_ssh.sh (the read-only-root branch) under `sh -e`, as on a device where `systemctl stop` of a unit that does
+        # not exist yet exits 5. Found on a Live III 2026-10-27: that exit aborted the script before sshd was started.
+        text = (ROOT / "usb_stick" / "enable_ssh.sh").read_text()
+        start = text.index("    if command -v systemd-run")
+        end = text.index("\n    fi\n", start) + len("\n    fi\n")
+        block = text[start:end]
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            bin_ = d / "bin"; bin_.mkdir()
+            (bin_ / "systemctl").write_text("#!/bin/sh\nexit 5\n")
+            (bin_ / "systemd-run").write_text(f'#!/bin/sh\necho "systemd-run $*" >> "{d}/calls"\n')
+            (bin_ / "sshd").write_text(f'#!/bin/sh\necho "sshd $*" >> "{d}/calls"\n')
+            for f in bin_.iterdir():
+                f.chmod(0o755)
+            script = f'HK="-h /k"; AUTHOPTS="-o X=y"; set -e\n{block.replace("/usr/sbin/sshd", str(bin_ / "sshd"))}\necho reached-the-end\n'
+            r = subprocess.run(["sh", "-c", script], env=dict(os.environ, PATH=f"{bin_}:{os.environ['PATH']}"), capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("reached-the-end", r.stdout)
+            calls = (d / "calls").read_text()
+            self.assertIn("systemd-run --unit=mpc-usb-sshd --collect", calls)
+            self.assertIn(" -D ", calls)
+
 
 if __name__ == "__main__":
     unittest.main()
