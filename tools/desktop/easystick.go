@@ -29,12 +29,12 @@ import (
 )
 
 const (
-	easyStickVersion = "v1.2.0" // rolled back from 1.2.1 (2026-10-28): a Live III on 3.10 reported the manager no longer opens with 1.2.1 and works again with the previous release; see docs/NOTES.md
+	easyStickVersion = "v1.2.2" // upstream stable: includes our fixes (settings crash, running-MPC overlay check, helper failure log, display rotation); device-tested on a Live III (3.10 overlay), 2026-10-28
 	easyStickMaxSize = 16 << 20 // the zip is ~1.8 MB; refuse anything wildly larger
 )
 
 // easyStickSHA256 is a var, like the URL, so tests can pin a fixture instead.
-var easyStickSHA256 = "f7914db2a402aa1bb650f62b44b3a57ed5fdfcbabe04b5d66e934a5cfcf13ad8"
+var easyStickSHA256 = "cd02c6d5714530ad92dc1afc339f1ce2b558ac104c60bb5a5009ab8f83e0b3e2"
 
 // easyStickURL is a var so tests can point it at a local server.
 var easyStickURL = "https://github.com/Eurikon/plugin-manager-usb-for-open-mpc/releases/download/" +
