@@ -28,8 +28,9 @@ feature on our side). Both plugins' `tested.json` carry the device. This settles
   `/nvme/Synths` everywhere. `tools/desktop` now tries `/nvme/Synths` then `/storage/Synths` as the internal drive and lists
   `/storage` as a drive that can be given a Synths folder; `mpc-store.sh` falls back the same way. **Not confirmed on a One:**
   whether `/storage/Synths` exists and is exec-mounted there, which folders MPC itself scans (the user was asked for their
-  `MPC.settings` plugin paths), and whether `/data` being full affects settings edits. `tools/release.py` still prints
-  `-t /nvme/Synths` for Gen2 builds, which is wrong on a One.
+  `MPC.settings` plugin paths), and whether `/data` being full affects settings edits. `tools/release.py` used to print
+  `-t /nvme/Synths` for every Gen2 build, wrong on a One: since 2026-10-28 a Gen2 `INSTALL.md` says `<your Synths folder>` and tells the reader to
+  take it from `SynthContentLocations` (`/nvme/Synths` Live III, `/storage/Synths` One).
 - `vst.json` `targets: ["armv7", "aarch64"]` + `tools/build_port.sh ... all` is now proven end to end on a second, ordinary port
   (Profit-08: no custom build script, just the generic path) — any future port can follow the same checklist (docs/PORTING.md).
 
