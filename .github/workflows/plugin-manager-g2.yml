@@ -42,4 +42,5 @@ jobs:
       about: Browse the OpenMPC catalog and install, update and remove plugins on the MPC itself, with rollback; Gen2 first.
       plugin_id: plugin-manager-g2
       license: MIT
+      gen2_only: true
       dry_run: ${{ inputs.dry_run }}
