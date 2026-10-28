@@ -1854,3 +1854,38 @@ Extracted the rootfs (largest xz stream) of `MPC-3.9.1-Gen2`, `MPC-3.10.0-Gen2`,
 - **What MPC does not contain:** `plugin-meta.xml` is not referenced by `MPC` or any other `/usr/bin` or `/usr/sbin` binary (only `MPC` mentions `Plugin Skins`), and there are no `noexec`, `/proc/mounts`, `getmntent`, `exfat` strings, so nothing says a location is filtered by mount type before it is scanned. `removable`, `statfs` and `edisks` are present once to three times; what they gate is unknown.
 - **Fresh-install default list, device/dump evidence only:** a stock Gen2 `data` dump (2026-10-09, before any plugin) lists `/synths/Expansions`, `/synths/Synths`, `/usr/share/Akai/Content/Synths` and removable drives, **without `/nvme/Synths`**; `/synths` is read-only there. A Live III used with our tools lists `/nvme/Synths` (in every backup since 2026-10-23); MPC did not add `/nvme/Synths-test/Synths` on three restarts, and nothing in this repo writes `SynthContentLocations`, so who added `/nvme/Synths` is unknown. The Gen1 evidence is one Force (oldest backup 2026-10-21): `/sdcard/Synths` and `/sdcard/Expansions` are listed. No stock MPC One/Live/X settings file was available, so whether a fresh Gen1 unit lists `/sdcard/Synths` is **not verified**.
 - Strings are not code: where MPC builds the default list, and what it does on a first run, would need a disassembly of the function that references `SynthContentLocations`.
+
+## A one-shot trigger is a tap, not a drag (2026-10-26, MPC Live II, MPC OS 3.x)
+
+DjFx2's `PANIC` trigger was scored **38.5 % p99 / 66.4 % max** of a 2902 µs block in the Q-Link sweep, which
+made a plugin with cheap continuous controls look like a FAIL. Cause: the sweep turned the trigger like a knob,
+so `set_param("panic")` ran on every swept frame, and each call walks the panic state machine and memsets the
+module buffers over three blocks with the output muted. 63 % of 2902 µs is 1828 µs, about what 9 MB of memset
+costs on this ARM. A diagnostic build with the panic branch compiled out measured a sweep of 7.8 % p99 / 9.2 %
+max (PASS) on the same device — that run isolated the trigger, it is not a release measurement.
+
+The plugin was fine; the measurement was wrong. A tap is one discrete event, a drag is a stream, and a sweep
+that changes 4 random parameters per block cannot tell them apart. Every port with a trigger parameter was
+being scored as if a hand could hold the trigger down.
+
+Fix, on both sides of the wrapper/bench boundary:
+- `wrapper/vst2_wrap.c`: vendor opcode `0x7F01` (`EFF_MPC_IS_MOMENTARY`) answers 1 for a `momentary`
+  parameter. MPC never sends it; a plugin built before it answers 0 from the default branch, and the bench
+  then sweeps every parameter as before.
+- `tools/bench.c`: probes that opcode, sweeps only continuous controls, and fires each trigger once per eight
+  blocks in a new **trigger fire** stage. The stage is printed and written to `-j` as `triggers` /
+  `trigger_max_pct`; it does not decide the verdict like a continuous stage, but a tap that reaches
+  `TRIGGER_WARN_PCT` (90 % of a block) turns a PASS into a WARN, because such a tap glitches the next block.
+- `docs/BENCH.md` documents the stage, the threshold and the reasoning.
+
+DjFx2 with the fix (bench on the device, MPC Live II, MPC OS 3.x): sweep 7.7 % p99 / 9.2 % max (**PASS**),
+trigger fire 38.5 % p99 / 66.4 % max. The trigger cost is real and stays visible; it just is not the verdict
+for a plugin whose continuous controls are cheap.
+
+General rule, same shape as the jv880 stepper lesson above: **if a parameter's `set_param` does bulk work it
+must be a one-shot trigger, and a trigger must be measured as a tap, not as a drag.**
+
+Offline check of the trigger stage (2026-10-28, x86 host, no device): `poc/steptest` built as a `.so` with the new wrapper
+reports `triggers: 2` and a "trigger fire" stage; the same plugin built with the previous wrapper reports none and is swept
+as before. A synthetic effect whose trigger burns 2 ms of CPU FAILs under the old bench (sweep p99 69 %) and PASSes with the
+new one (trigger max 70 %); at 2.8 ms (over `TRIGGER_WARN_PCT`) it WARNs. `bench.c` is clean under ASan/UBSan. Not run on a device.
