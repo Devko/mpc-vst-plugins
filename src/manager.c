@@ -1030,6 +1030,63 @@ static const char *manifest_member(const char *k, const char *v, void *ud) {
  * else the name. The Synths folder is the entry's file= minus "<vendor> - VST - <name>/<so>"; an entry whose .so is
  * not in such a folder is an old-layout install (synths left empty, shown as "old"). An addin is matched by id to
  * the folders under ADDINS_DIR; one without uninstall.sh is shown as "old" too (it can be updated, not removed). */
+/* plugin-history.json (schema 1): what was installed or removed, and when, kept beside the state file so it outlives a lost state file.
+ * One entry per line, written atomically (temp file, fsync, rename); a file that is not ours is left alone. */
+typedef struct { char id[48], ver[24]; int inst; long t; } hist_t;
+#define HIST_MAX 512
+static void hist_path(const device_t *d, char *out, size_t n) { snprintf(out, n, "%s/.openmpcpm-history.json", d->base); }
+
+static int hist_load(const device_t *d, hist_t *h, int *bad) {
+    char p[300], *s;
+    int n = 0;
+    *bad = 0;
+    hist_path(d, p, sizeof p);
+    if (!(s = slurp(p, 256 << 10))) return 0;
+    if (strncmp(s, "{\"schema\": 1,", 13)) { *bad = 1; free(s); return 0; }
+    for (char *l = strtok(s, "\n"); l && n < HIST_MAX; l = strtok(NULL, "\n")) {
+        hist_t x = {{0}, {0}, 0, 0};
+        char inst[8] = "";
+        if (sscanf(l, "{\"id\": \"%47[^\"]\", \"version\": \"%23[^\"]\", \"installed\": %7[a-z], \"time\": %ld", x.id, x.ver, inst, &x.t) < 4) continue;
+        x.inst = !strcmp(inst, "true");
+        h[n++] = x;
+    }
+    free(s);
+    return n;
+}
+
+static void hist_record(const device_t *d, const char *id, const char *act, const char *ver) {
+    hist_t *h = calloc(HIST_MAX + 1, sizeof *h);
+    int bad, n;
+    if (!h) return;
+    n = hist_load(d, h, &bad);
+    if (bad) { logf_("history: not our file, left alone"); free(h); return; }
+    int k = 0;
+    while (k < n && strcmp(h[k].id, id)) k++;
+    if (k == n && n < HIST_MAX) n++;
+    if (k < n) {
+        snprintf(h[k].id, sizeof h[k].id, "%s", id);
+        if (!strcmp(act, "install")) { snprintf(h[k].ver, sizeof h[k].ver, "%s", ver); h[k].inst = 1; }
+        else h[k].inst = 0;
+        h[k].t = (long)time(NULL);
+    }
+    char p[300], t[310];
+    hist_path(d, p, sizeof p);
+    snprintf(t, sizeof t, "%s.new", p);
+    FILE *f = fopen(t, "w");
+    if (f) {
+        fprintf(f, "{\"schema\": 1, \"plugins\": [\n");
+        for (int i = 0; i < n; i++)
+            fprintf(f, "{\"id\": \"%s\", \"version\": \"%s\", \"installed\": %s, \"time\": %ld}%s\n", h[i].id, h[i].ver,
+                    h[i].inst ? "true" : "false", h[i].t, i + 1 < n ? "," : "");
+        fprintf(f, "]}\n");
+        fflush(f);
+        fsync(fileno(f));
+        fclose(f);
+        rename(t, p);
+    }
+    free(h);
+}
+
 static void scan_installed(const device_t *d, pkg_t *pkg, int n) {
     for (int i = 0; i < n; i++) pkg[i].installed[0] = pkg[i].synths[0] = 0, pkg[i].legacy = 0;
     for (int k = 0; k < d->nent; k++) {
@@ -1071,6 +1128,13 @@ static void scan_installed(const device_t *d, pkg_t *pkg, int n) {
         for (int i = 0; i < n; i++)
             if (!strcmp(pkg[i].id, id) && !strcmp(pkg[i].installed, "?")) snprintf(pkg[i].installed, sizeof pkg[i].installed, "%s", ver);
     if (f) fclose(f);
+    hist_t *h = calloc(HIST_MAX + 1, sizeof *h);   /* a version the state file lacks: the history's */
+    int bad, hn = h ? hist_load(d, h, &bad) : 0;
+    for (int i = 0; i < n; i++)
+        for (int k = 0; k < hn; k++)
+            if (h[k].inst && h[k].ver[0] && !strcmp(pkg[i].id, h[k].id) && !strcmp(pkg[i].installed, "?"))
+                snprintf(pkg[i].installed, sizeof pkg[i].installed, "%s", h[k].ver);
+    free(h);
 }
 
 /* ---- jobs ---- */
@@ -1085,7 +1149,11 @@ static void show_result(mgr_t *m, const pkg_t *pkg, int n) {
         char *a = strchr(l, '|'), *b = a ? strchr(a + 1, '|') : NULL;
         if (!b) continue;
         *a = *b = 0;
-        if (!strcmp(a + 1, "ok")) ok++;
+        if (!strcmp(a + 1, "ok")) {
+            ok++;
+            char act[12] = "", ver[24] = "";
+            if (sscanf(b + 1, "%11s %23s", act, ver) >= 1) hist_record(m->dev, l, act, ver);
+        }
         else {
             if (!bad++) {
                 const char *name = l;
@@ -1273,7 +1341,7 @@ static void prepare(mgr_t *m, pkg_t *q) {
                    "batch() { grep -q -- '-n)' \"$1\" && printf '%%s' -n; }   # older installers lack -n and restart MPC themselves\n"
                    "SETTINGS='%s'; SNAP='" WORK "/snap'; RES='" WORK "/result'\nrm -rf \"$SNAP\"; mkdir -p \"$SNAP\"; : > \"$RES\"\n"
                    /* item ID FOLDER cmd...: snapshot the plugin folder and MPC.settings, run cmd; on failure put both back and say why (DESIGN 7) */
-                   "item() {\n  id=$1; dir=$2; shift 2; snap=''\n"
+                   "item() {\n  id=$1; dir=$2; act=$3; ver=$4; shift 4; snap=''\n"
                    /* a small folder is copied to RAM (WORK); a big one to a hidden sibling on its own drive, after a free-space check */
                    "  if [ -n \"$dir\" ] && [ -d \"$dir\" ]; then\n"
                    "    sz=$(du -sk \"$dir\" 2>/dev/null | cut -f1); sz=${sz:-0}\n"
@@ -1285,7 +1353,7 @@ static void prepare(mgr_t *m, pkg_t *q) {
                    "  fi\n"
                    "  cp -p \"$SETTINGS\" \"$SNAP/$id.settings\" 2>/dev/null\n"
                    "  out=$(\"$@\" 2>&1); rc=$?\n  pidof MPC >/dev/null && quiesce   # an installer without -n started MPC again: MPC starts once, at the end\n"
-                   "  if [ $rc -eq 0 ]; then echo \"$out\"; echo \"$id|ok|\" >> \"$RES\"; [ -n \"$snap\" ] && rm -rf \"$snap\"; rm -f \"$SNAP/$id.settings\"; return 0; fi\n"
+                   "  if [ $rc -eq 0 ]; then echo \"$out\"; echo \"$id|ok|$act $ver\" >> \"$RES\"; [ -n \"$snap\" ] && rm -rf \"$snap\"; rm -f \"$SNAP/$id.settings\"; return 0; fi\n"
                    "  echo \"$out\"\n"
                    "  if [ -n \"$dir\" ]; then rm -rf \"$dir\"; [ -n \"$snap\" ] && [ -d \"$snap\" ] && cp -a \"$snap\" \"$dir\" && rm -rf \"$snap\"; fi\n"
                    "  [ -f \"$SNAP/$id.settings\" ] && cp -p \"$SNAP/$id.settings\" \"$SETTINGS\"\n"
@@ -1309,15 +1377,15 @@ static void prepare(mgr_t *m, pkg_t *q) {
                 snprintf(dirp, sizeof dirp, "%s/%s", target, strrchr(fo, '/') ? strrchr(fo, '/') + 1 : fo);
             if (!synths[0] || !safe(synths) || (is_addin(p) && !m->dev->addins[0])) { err = "has no install location"; break; }
             if (is_addin(p) && p->queued == Q_INSTALL)
-                fprintf(f, "echo '-- install %s %s'\nitem '%s' '%s' sh '%s/install.sh' -y -n -t '%s' && rm -rf '" WORK "/%s' '" WORK "/%s.zip'\n",
-                        p->id, p->latest, p->id, dirp, p->dir, synths, p->id, p->id);
+                fprintf(f, "echo '-- install %s %s'\nitem '%s' '%s' install '%s' sh '%s/install.sh' -y -n -t '%s' && rm -rf '" WORK "/%s' '" WORK "/%s.zip'\n",
+                        p->id, p->latest, p->id, dirp, p->latest, p->dir, synths, p->id, p->id);
             else if (is_addin(p))
-                fprintf(f, "echo '-- remove %s'\nitem '%s' '%s' sh '%s/uninstall.sh' -y -n -t '%s'\n", p->id, p->id, dirp, synths, synths);
+                fprintf(f, "echo '-- remove %s'\nitem '%s' '%s' remove '' sh '%s/uninstall.sh' -y -n -t '%s'\n", p->id, p->id, dirp, synths, synths);
             else if (p->queued == Q_INSTALL)
-                fprintf(f, "echo '-- install %s %s'\nitem '%s' '%s' sh '%s/install.sh' -y $(batch '%s/install.sh') -t '%s' && setstate '%s' '%s' && rm -rf '" WORK "/%s' '" WORK "/%s.zip'\n",
-                        p->id, p->latest, p->id, dirp, p->dir, p->dir, synths, p->id, p->latest, p->id, p->id);
+                fprintf(f, "echo '-- install %s %s'\nitem '%s' '%s' install '%s' sh '%s/install.sh' -y $(batch '%s/install.sh') -t '%s' && setstate '%s' '%s' && rm -rf '" WORK "/%s' '" WORK "/%s.zip'\n",
+                        p->id, p->latest, p->id, dirp, p->latest, p->dir, p->dir, synths, p->id, p->latest, p->id, p->id);
             else
-                fprintf(f, "echo '-- remove %s'\nitem '%s' '%s' sh '%s/uninstall.sh' -y $(batch '%s/uninstall.sh') -t '%s' && setstate '%s' '' && rm -rf '" WORK "/%s' '" WORK "/%s.zip'\n",
+                fprintf(f, "echo '-- remove %s'\nitem '%s' '%s' remove '' sh '%s/uninstall.sh' -y $(batch '%s/uninstall.sh') -t '%s' && setstate '%s' '' && rm -rf '" WORK "/%s' '" WORK "/%s.zip'\n",
                         p->id, p->id, dirp, p->dir, p->dir, synths, p->id, p->id, p->id);
         }
         if (theme_dirty(m)) {   /* MPC is stopped: copy the wanted skin over "Plugin Skins" (staged, then swapped; the old one goes last) */
